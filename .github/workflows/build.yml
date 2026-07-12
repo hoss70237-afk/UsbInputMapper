@@ -13,25 +13,19 @@ jobs:
 
     steps:
     - name: Checkout repository
-      # 最新のチェックアウトアクション
       uses: actions/checkout@v4
 
-    - name: Setup MSBuild
-      # v1.1 から v2 に更新 (Node.js の問題を解消)
-      uses: microsoft/setup-msbuild@v2
-
-    - name: Setup NuGet
-      # v1.1 から v2 に更新 (Node.js の問題を解消)
-      uses: NuGet/setup-nuget@v2
-
     - name: Restore NuGet Packages
+      # setup-nugetアクションを使わず、標準搭載のnugetを直接使用
       run: nuget restore UsbInputMapper.sln
 
     - name: Build Solution
-      run: msbuild UsbInputMapper.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8
+      # setup-msbuildアクションを使わず、vswhereを使用して最新のMSBuildを直接探し出して実行
+      run: |
+        $msbuildPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\Current\Bin\MSBuild.exe
+        & $msbuildPath UsbInputMapper.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8
 
     - name: Upload Build Artifact
-      # 最新のアーティファクトアップロードアクション
       uses: actions/upload-artifact@v4
       with:
         name: UsbInputMapper-Release

@@ -41,11 +41,12 @@ jobs:
         # 4. 最新のMSBuildを探してビルド実行
         Write-Host "ビルドを開始します..."
         $msbuildPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\Current\Bin\MSBuild.exe
-        & $msbuildPath $csproj.FullName /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8
+        
+        # ！！！ここで Platform="AnyCPU" (スペースなし) に修正しました ！！！
+        & $msbuildPath $csproj.FullName /p:Configuration=Release /p:Platform="AnyCPU"
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
         name: UsbInputMapper-Release
-        # EXEがどのフォルダで生成されても自動で拾い上げる
         path: "**/bin/Release/"

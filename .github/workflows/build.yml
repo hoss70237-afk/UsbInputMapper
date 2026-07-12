@@ -22,19 +22,22 @@ jobs:
         $pkg = Get-ChildItem -Filter packages.config -Recurse | Select-Object -First 1
         
         if (-not $csproj) { Write-Error "エラー: .csproj ファイルが見つかりません。"; exit 1 }
-        if (-not $pkg) { Write-Error "エラー: packages.config が見つかりません。GitHubにアップロードされているか確認してください。"; exit 1 }
+        if (-not $pkg) { Write-Error "エラー: packages.config が見つかりません。"; exit 1 }
         
         Write-Host "プロジェクト発見: $($csproj.FullName)"
         Write-Host "パッケージ構成発見: $($pkg.FullName)"
         
-        # 2. フォルダ構成のズレによるエラーを防ぐため、DLLの参照パス(HintPath)を絶対パスに自動修正
-        $pkgDir = Join-Path $env:GITHUB_WORKSPACE "packages"
-        $csprojContent = Get-Content $csproj.FullName
-        $csprojContent = $csprojContent -replace "<HintPath>..\\packages\\", "<HintPath>$pkgDir\"
-        $csprojContent = $csprojContent -replace "<HintPath>packages\\", "<HintPath>$pkgDir\"
-        Set-Content -Path $csproj.FullName -Value $csprojContent
+        # 2. フォルダ構成に合わせて DLL の参照パスを強制的に最適化
+        $projDir = Split-Path -Parent $csproj.FullName
+        $pkgDir = Join-Path $projDir "packages"
+        
+        $content = Get-Content $csproj.FullName -Raw
+        # "..\packages\" などを "packages\" に単純かつ確実に置換
+        $content = $content.Replace("..\packages\", "packages\")
+        $content = $content.Replace("..\..\packages\", "packages\")
+        Set-Content -Path $csproj.FullName -Value $content
 
-        # 3. パッケージの復元
+        # 3. パッケージの復元 (プロジェクトのすぐ隣に展開)
         Write-Host "パッケージを復元しています..."
         nuget restore $pkg.FullName -PackagesDirectory $pkgDir
 
@@ -42,7 +45,6 @@ jobs:
         Write-Host "ビルドを開始します..."
         $msbuildPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\Current\Bin\MSBuild.exe
         
-        # ！！！ここで Platform="AnyCPU" (スペースなし) に修正しました ！！！
         & $msbuildPath $csproj.FullName /p:Configuration=Release /p:Platform="AnyCPU"
 
     - name: Upload Build Artifact

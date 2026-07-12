@@ -15,18 +15,37 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Restore NuGet Packages
-      # .sln の代わりに packages.config を直接指定してパッケージを復元します
-      run: nuget restore UsbInputMapper/packages.config -PackagesDirectory packages
-
-    - name: Build Project
-      # .sln の代わりに .csproj を直接指定してビルドします
+    - name: Auto-Detect and Build
       run: |
+        # 1. プロジェクトとパッケージ設定ファイルを自動検索
+        $csproj = Get-ChildItem -Filter *.csproj -Recurse | Select-Object -First 1
+        $pkg = Get-ChildItem -Filter packages.config -Recurse | Select-Object -First 1
+        
+        if (-not $csproj) { Write-Error "エラー: .csproj ファイルが見つかりません。"; exit 1 }
+        if (-not $pkg) { Write-Error "エラー: packages.config が見つかりません。GitHubにアップロードされているか確認してください。"; exit 1 }
+        
+        Write-Host "プロジェクト発見: $($csproj.FullName)"
+        Write-Host "パッケージ構成発見: $($pkg.FullName)"
+        
+        # 2. フォルダ構成のズレによるエラーを防ぐため、DLLの参照パス(HintPath)を絶対パスに自動修正
+        $pkgDir = Join-Path $env:GITHUB_WORKSPACE "packages"
+        $csprojContent = Get-Content $csproj.FullName
+        $csprojContent = $csprojContent -replace "<HintPath>..\\packages\\", "<HintPath>$pkgDir\"
+        $csprojContent = $csprojContent -replace "<HintPath>packages\\", "<HintPath>$pkgDir\"
+        Set-Content -Path $csproj.FullName -Value $csprojContent
+
+        # 3. パッケージの復元
+        Write-Host "パッケージを復元しています..."
+        nuget restore $pkg.FullName -PackagesDirectory $pkgDir
+
+        # 4. 最新のMSBuildを探してビルド実行
+        Write-Host "ビルドを開始します..."
         $msbuildPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\Current\Bin\MSBuild.exe
-        & $msbuildPath UsbInputMapper/UsbInputMapper.csproj /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8
+        & $msbuildPath $csproj.FullName /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
         name: UsbInputMapper-Release
-        path: UsbInputMapper/bin/Release/
+        # EXEがどのフォルダで生成されても自動で拾い上げる
+        path: "**/bin/Release/"

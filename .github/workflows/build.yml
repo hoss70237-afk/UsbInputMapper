@@ -17,32 +17,40 @@ jobs:
 
     - name: Auto-Detect and Build
       run: |
-        # 1. プロジェクトとパッケージ設定ファイルを自動検索
+        # 1. ファイルを自動検索
         $csproj = Get-ChildItem -Filter *.csproj -Recurse | Select-Object -First 1
         $pkg = Get-ChildItem -Filter packages.config -Recurse | Select-Object -First 1
-        
-        if (-not $csproj) { Write-Error "エラー: .csproj ファイルが見つかりません。"; exit 1 }
-        if (-not $pkg) { Write-Error "エラー: packages.config が見つかりません。"; exit 1 }
-        
-        Write-Host "プロジェクト発見: $($csproj.FullName)"
-        Write-Host "パッケージ構成発見: $($pkg.FullName)"
-        
-        # 2. フォルダ構成に合わせて DLL の参照パスを強制的に最適化
         $projDir = Split-Path -Parent $csproj.FullName
         $pkgDir = Join-Path $projDir "packages"
         
-        $content = Get-Content $csproj.FullName -Raw
-        # "..\packages\" などを "packages\" に単純かつ確実に置換
-        $content = $content.Replace("..\packages\", "packages\")
-        $content = $content.Replace("..\..\packages\", "packages\")
-        Set-Content -Path $csproj.FullName -Value $content
-
-        # 3. パッケージの復元 (プロジェクトのすぐ隣に展開)
-        Write-Host "パッケージを復元しています..."
+        Write-Host "=== パッケージの復元 ==="
         nuget restore $pkg.FullName -PackagesDirectory $pkgDir
-
-        # 4. 最新のMSBuildを探してビルド実行
-        Write-Host "ビルドを開始します..."
+        
+        Write-Host "=== DLL参照パスの強制書き換え ==="
+        # ダウンロードしたパッケージから実際のDLL本体を探し出す
+        $dlls = Get-ChildItem -Path $pkgDir -Filter *.dll -Recurse
+        
+        $vigem = $dlls | Where-Object { $_.Name -eq 'Nefarius.ViGEm.Client.dll' -and $_.FullName -match 'net4' } | Select-Object -First 1
+        if (-not $vigem) { $vigem = $dlls | Where-Object { $_.Name -eq 'Nefarius.ViGEm.Client.dll' } | Select-Object -First 1 }
+        
+        $json = $dlls | Where-Object { $_.Name -eq 'Newtonsoft.Json.dll' -and $_.FullName -match 'net4' } | Select-Object -First 1
+        if (-not $json) { $json = $dlls | Where-Object { $_.Name -eq 'Newtonsoft.Json.dll' } | Select-Object -First 1 }
+        
+        if (-not $vigem -or -not $json) {
+            Write-Error "DLLの取得に失敗しました。NuGetの復元が正常に行われていません。"
+            exit 1
+        }
+        
+        Write-Host "ViGEm 発見: $($vigem.FullName)"
+        Write-Host "Json 発見: $($json.FullName)"
+        
+        # csprojのパス設定を、見つけ出した本物の絶対パスに強制的に書き換える
+        $xml = Get-Content $csproj.FullName -Raw
+        $xml = $xml -replace '<HintPath>.*?Nefarius\.ViGEm\.Client\.dll</HintPath>', "<HintPath>$($vigem.FullName)</HintPath>"
+        $xml = $xml -replace '<HintPath>.*?Newtonsoft\.Json\.dll</HintPath>', "<HintPath>$($json.FullName)</HintPath>"
+        Set-Content -Path $csproj.FullName -Value $xml
+        
+        Write-Host "=== ビルド開始 ==="
         $msbuildPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\Current\Bin\MSBuild.exe
         
         & $msbuildPath $csproj.FullName /p:Configuration=Release /p:Platform="AnyCPU"

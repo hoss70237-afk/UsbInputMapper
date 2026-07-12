@@ -16,14 +16,14 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Restore NuGet Packages
-      # setup-nugetアクションを使わず、標準搭載のnugetを直接使用
-      run: nuget restore UsbInputMapper.sln
+      # .sln の代わりに packages.config を直接指定してパッケージを復元します
+      run: nuget restore UsbInputMapper/packages.config -PackagesDirectory packages
 
-    - name: Build Solution
-      # setup-msbuildアクションを使わず、vswhereを使用して最新のMSBuildを直接探し出して実行
+    - name: Build Project
+      # .sln の代わりに .csproj を直接指定してビルドします
       run: |
         $msbuildPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\Current\Bin\MSBuild.exe
-        & $msbuildPath UsbInputMapper.sln /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8
+        & $msbuildPath UsbInputMapper/UsbInputMapper.csproj /p:Configuration=Release /p:Platform="Any CPU" /p:TargetFrameworkVersion=v4.8
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4

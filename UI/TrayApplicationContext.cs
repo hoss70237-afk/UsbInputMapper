@@ -21,8 +21,7 @@ namespace UsbInputMapper.UI
         private ProfileManager _profileManager;
         private ForegroundAppWatcher _appWatcher;
 
-        // 状態管理
-        private int _currentLayer = 0; // 0=通常, 1〜5=レイヤー
+        private int _currentLayer = 0; 
         private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
         private ConcurrentDictionary<string, bool> _toggleStates = new ConcurrentDictionary<string, bool>();
 
@@ -59,23 +58,20 @@ namespace UsbInputMapper.UI
 
             int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
             
-            // 現在のレイヤーに対応するバインディングを探す（なければ通常のレイヤー0を探す）
             var binding = _profileManager.FindBinding(e.DeviceIdentifier, e.Type, inputCode);
-            if (binding == null) return; // 割り当てなし
+            if (binding == null) return;
 
             string loopKey = $"{e.DeviceIdentifier}_{e.Type}_{inputCode}";
             bool isDown = (e.Type == 1 && e.IsKeyDown) || (e.Type == 0);
 
             if (isDown)
             {
-                // レイヤー切り替えボタンを押した場合
                 if (binding.Action.ActionType == ActionType.LayerShift)
                 {
                     _currentLayer = binding.Action.ArgumentNum;
                     return;
                 }
 
-                // すでにループが回っている場合は二重起動を防ぐ
                 if (_activeLoops.ContainsKey(loopKey)) return;
 
                 var cts = new CancellationTokenSource();
@@ -85,13 +81,11 @@ namespace UsbInputMapper.UI
                 {
                     try
                     {
-                        // 1. 長押し判定
                         if (binding.Condition == TriggerCondition.Hold)
                         {
                             await Task.Delay(binding.ConditionParam, cts.Token);
                             ExecuteAction(binding.Action, true);
                         }
-                        // 2. 連打モード
                         else if (binding.Condition == TriggerCondition.RapidFire)
                         {
                             while (!cts.Token.IsCancellationRequested)
@@ -102,14 +96,13 @@ namespace UsbInputMapper.UI
                                 await Task.Delay(Math.Max(10, binding.ConditionParam), cts.Token);
                             }
                         }
-                        // 3. 通常入力 または トグル
                         else
                         {
                             if (binding.Action.ActionType == ActionType.ToggleHold)
                             {
                                 bool currentState = _toggleStates.GetOrAdd(loopKey, false);
                                 _toggleStates[loopKey] = !currentState;
-                                ExecuteActionToggleTarget(binding.Action, !currentState);
+                                _dispatcher.Dispatch(binding.Action, !currentState);
                             }
                             else
                             {
@@ -117,15 +110,14 @@ namespace UsbInputMapper.UI
                             }
                         }
                     }
-                    catch (TaskCanceledException) { /* 離されたら終了 */ }
+                    catch (TaskCanceledException) { }
                 }, cts.Token);
             }
             else
             {
-                // キーを離した時の処理
                 if (binding.Action.ActionType == ActionType.LayerShift)
                 {
-                    _currentLayer = 0; // レイヤー元に戻す
+                    _currentLayer = 0;
                     return;
                 }
 
@@ -135,7 +127,6 @@ namespace UsbInputMapper.UI
                     cts.Dispose();
                 }
 
-                // トグルモードでなければキーアップを送信
                 if (binding.Action.ActionType != ActionType.ToggleHold)
                 {
                     ExecuteAction(binding.Action, false);
@@ -147,8 +138,6 @@ namespace UsbInputMapper.UI
         {
             if (action.ActionType == ActionType.Macro && isDown)
             {
-                // マクロはディスパッチャー内で別スレッドで処理させるなどの拡張が必要ですが、
-                // ここでは簡単のために一括実行します。
                 Task.Run(() => {
                     foreach (var step in action.MacroSteps)
                     {
@@ -157,23 +146,16 @@ namespace UsbInputMapper.UI
                             ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, ArgumentStr = step.ArgumentStr,
                             MouseX = step.MouseX, MouseY = step.MouseY, IsAbsolutePosition = step.IsAbsolutePosition
                         };
-                        _dispatcher.Dispatch(tempDef);
+                        _dispatcher.Dispatch(tempDef, true);
+                        Thread.Sleep(20); // マクロの1アクションごとの打鍵時間
+                        _dispatcher.Dispatch(tempDef, false);
                     }
                 });
                 return;
             }
             
-            // キーボードダウン・アップの制御はディスパッチャ内で行っているためそのまま流す
-            if (isDown) _dispatcher.Dispatch(action);
-        }
-
-        private void ExecuteActionToggleTarget(ActionDef action, bool isDown)
-        {
-            // トグルの場合は対象のキーを押しっぱなしにする
-            if (action.ActionType == ActionType.Keyboard || action.ActionType == ActionType.ToggleHold)
-            {
-                _dispatcher.SendKeyboardInput((ushort)action.ArgumentNum, isDown);
-            }
+            // ★isDownフラグを正しく中継する
+            _dispatcher.Dispatch(action, isDown);
         }
 
         private void InitializeTrayIcon()

@@ -83,6 +83,12 @@
     <Compile Include="UI\BindingEditorForm.Designer.cs">
       <DependentUpon>BindingEditorForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="UI\ProfileEditorForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\ProfileEditorForm.Designer.cs">
+      <DependentUpon>ProfileEditorForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="Util\StartupRegistrar.cs" />
     <Compile Include="Util\SingleInstance.cs" />
     <Compile Include="Util\PrerequisiteChecker.cs" />

@@ -6,42 +6,40 @@ namespace UsbInputMapper.Profiles
     public enum ActionType
     {
         None,
-        Keyboard,           // スキャンコードでのハードウェア出力
+        Keyboard,
         MouseClick,
-        MouseMove,          // 速度指定や絶対/相対移動
-        MousePosSave,       // 現在の座標を保存
-        MousePosRestore,    // 保存した座標に復元
+        MouseMove,
+        MouseContinuousMove, // ★追加: 押している間/指定時間 連続移動
+        MousePosSave,
+        MousePosRestore,
         XboxController,
         AppLaunch,
-        Macro,              // 複数キー連続・同時押し・複雑な動作
-        LayerShift,         // 押している間別の設定に切り替え
-        ToggleHold          // 1回押すと押しっぱなし、もう1回で離す
+        Macro,
+        LayerShift,
+        ToggleHold
     }
 
     public enum MacroPlaybackMode
     {
-        Sequence,       // 一括再生 (タイムライン通りに全再生)
-        StepByStep      // 押されるたびに1ステップずつ進む
+        Sequence,
+        StepByStep
     }
 
     public class ActionDef
     {
         public ActionType ActionType { get; set; }
         
-        // 単一アクション用パラメータ
-        public int ArgumentNum { get; set; }
+        public int ArgumentNum { get; set; } // キーコード、持続時間(ms)など
         public string ArgumentStr { get; set; }
         public string ArgumentExtraStr { get; set; }
 
-        // マウス移動用
         public int MouseX { get; set; }
         public int MouseY { get; set; }
         public bool IsAbsolutePosition { get; set; }
 
-        // マクロ用パラメータ
         public List<MacroStep> MacroSteps { get; set; }
         public MacroPlaybackMode PlaybackMode { get; set; }
-        public int StepTimeoutMs { get; set; } // ステップ再生時、この時間が経過すると最初に戻る
+        public int StepTimeoutMs { get; set; }
 
         public ActionDef()
         {
@@ -55,12 +53,14 @@ namespace UsbInputMapper.Profiles
             switch (ActionType)
             {
                 case ActionType.Keyboard: return $"KB Key: {ArgumentNum}";
-                case ActionType.AppLaunch: return $"Launch: {ArgumentStr}";
-                case ActionType.XboxController: return $"Xbox Button: {ArgumentNum}";
-                case ActionType.Macro: return $"Macro ({MacroSteps.Count} steps)";
-                case ActionType.MouseMove: return $"Mouse Move: {(IsAbsolutePosition ? "Abs" : "Rel")} {MouseX}, {MouseY}";
-                case ActionType.MousePosSave: return "Save Mouse Pos";
-                case ActionType.MousePosRestore: return "Restore Mouse Pos";
+                case ActionType.AppLaunch: return $"起動: {System.IO.Path.GetFileName(ArgumentStr)}";
+                case ActionType.XboxController: return $"Xbox Btn: {ArgumentNum}";
+                case ActionType.Macro: return $"マクロ ({MacroSteps.Count} steps)";
+                case ActionType.MouseMove: return $"マウス移動 ({(IsAbsolutePosition ? "絶対" : "相対")}) X:{MouseX} Y:{MouseY}";
+                case ActionType.MouseContinuousMove: return $"マウス連続移動 X:{MouseX} Y:{MouseY}";
+                case ActionType.MouseClick: return $"マウスクリック: {ArgumentNum}";
+                case ActionType.LayerShift: return $"レイヤー {ArgumentNum} へシフト";
+                case ActionType.ToggleHold: return $"トグル維持 (KB Key: {ArgumentNum})";
                 default: return ActionType.ToString();
             }
         }

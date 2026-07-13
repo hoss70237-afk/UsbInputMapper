@@ -55,10 +55,7 @@ namespace UsbInputMapper.Profiles
                 string json = JsonConvert.SerializeObject(Profiles, Formatting.Indented);
                 File.WriteAllText(_settingsFilePath, json);
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Save failed: {ex.Message}");
-            }
+            catch { }
         }
 
         public void SwitchToAppProfile(string appPath)
@@ -69,11 +66,10 @@ namespace UsbInputMapper.Profiles
                 return;
             }
 
-            string exeName = Path.GetFileName(appPath);
+            string exeName = Path.GetFileName(appPath).ToLower();
 
             var matched = Profiles.Find(p => !p.IsDefault && 
-                !string.IsNullOrEmpty(p.TargetApplicationPath) && 
-                p.TargetApplicationPath.Equals(exeName, StringComparison.OrdinalIgnoreCase));
+                p.TargetApplicationPaths.Exists(target => target.ToLower() == exeName));
 
             if (matched != null)
             {

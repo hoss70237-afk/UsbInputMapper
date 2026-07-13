@@ -7,10 +7,23 @@ namespace UsbInputMapper.Core
     {
         public const int INPUT_MOUSE = 0;
         public const int INPUT_KEYBOARD = 1;
-        public const int INPUT_HARDWARE = 2;
 
+        // キーボード用フラグ
         public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         public const uint KEYEVENTF_KEYUP = 0x0002;
+        public const uint KEYEVENTF_SCANCODE = 0x0008; // ★PCゲーム向け物理入力用
+
+        // マウス用フラグ
+        public const uint MOUSEEVENTF_MOVE = 0x0001;
+        public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+        public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+        public const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+        public const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+        public const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
+        public const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
+        public const uint MOUSEEVENTF_WHEEL = 0x0800;
+        public const uint MOUSEEVENTF_ABSOLUTE = 0x8000; // ★絶対座標移動用
+        public const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
 
         [StructLayout(LayoutKind.Sequential)]
         public struct MOUSEINPUT
@@ -46,7 +59,7 @@ namespace UsbInputMapper.Core
         {
             [FieldOffset(0)]
             public int type;
-            [FieldOffset(8)] // Size of x64 pointer is 8. Safest offset.
+            [FieldOffset(8)]
             public MOUSEINPUT mi;
             [FieldOffset(8)]
             public KEYBDINPUT ki;
@@ -56,5 +69,18 @@ namespace UsbInputMapper.Core
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+        [DllImport("user32.dll")]
+        public static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetCursorPos(out POINT lpPoint);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct POINT
+        {
+            public int X;
+            public int Y;
+        }
     }
 }

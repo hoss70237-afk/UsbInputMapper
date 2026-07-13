@@ -23,6 +23,16 @@ jobs:
         $projDir = Split-Path -Parent $csproj.FullName
         $pkgDir = Join-Path $projDir "packages"
         
+        Write-Host "=== 存在しないバージョンの自動修正 ==="
+        # 私が誤って指定した 1.21.156 を、確実に存在する 1.17.178 に書き換えます
+        $pkgContent = Get-Content $pkg.FullName -Raw
+        $pkgContent = $pkgContent -replace '1\.21\.156', '1.17.178'
+        Set-Content -Path $pkg.FullName -Value $pkgContent
+        
+        $csprojContent = Get-Content $csproj.FullName -Raw
+        $csprojContent = $csprojContent -replace '1\.21\.156', '1.17.178'
+        Set-Content -Path $csproj.FullName -Value $csprojContent
+
         Write-Host "=== パッケージの復元 ==="
         nuget restore $pkg.FullName -PackagesDirectory $pkgDir
         

@@ -23,7 +23,6 @@ namespace UsbInputMapper.UI
 
             if (existingBinding != null)
             {
-                // 既存のアイテムを編集する場合
                 ResultBinding = existingBinding;
                 txtName.Text = existingBinding.Name;
                 cmbCondition.SelectedIndex = (int)existingBinding.Condition;
@@ -36,7 +35,6 @@ namespace UsbInputMapper.UI
             }
             else
             {
-                // 新規作成の場合
                 ResultBinding = new UsbInputMapper.Profiles.Binding();
                 cmbCondition.SelectedIndex = 0;
                 cmbActionType.SelectedIndex = 1; // Keyboardをデフォルトに
@@ -45,15 +43,15 @@ namespace UsbInputMapper.UI
 
         private void SetupComboBoxes()
         {
-            // 条件ドロップダウン
             cmbCondition.Items.Add("通常入力 (押した時)");
             cmbCondition.Items.Add("長押し (ミリ秒経過で発動)");
             cmbCondition.Items.Add("連打 (押している間ループ)");
 
-            // アクションタイプリスト
+            // アクションタイプリスト (最新の定義に合わせる)
             cmbActionType.Items.Add(ActionType.None);
             cmbActionType.Items.Add(ActionType.Keyboard);
-            cmbActionType.Items.Add(ActionType.Mouse);
+            cmbActionType.Items.Add(ActionType.MouseClick);
+            cmbActionType.Items.Add(ActionType.MouseMove);
             cmbActionType.Items.Add(ActionType.XboxController);
             cmbActionType.Items.Add(ActionType.AppLaunch);
         }
@@ -96,13 +94,21 @@ namespace UsbInputMapper.UI
                     cmbKeyButton.Items.Add(new ComboItem { Text = key.ToString(), Value = (int)key });
                 }
             }
-            else if (type == ActionType.Mouse)
+            else if (type == ActionType.MouseClick)
             {
                 cmbKeyButton.Items.Add(new ComboItem { Text = "左クリック", Value = 1 });
                 cmbKeyButton.Items.Add(new ComboItem { Text = "右クリック", Value = 2 });
                 cmbKeyButton.Items.Add(new ComboItem { Text = "中クリック", Value = 3 });
                 cmbKeyButton.Items.Add(new ComboItem { Text = "ホイール 上", Value = 4 });
                 cmbKeyButton.Items.Add(new ComboItem { Text = "ホイール 下", Value = 5 });
+            }
+            else if (type == ActionType.MouseMove)
+            {
+                // マウス移動の場合の仮UI（本来はX/Y座標入力ボックス等が必要だが、ここでは簡略化して選択肢とする）
+                cmbKeyButton.Items.Add(new ComboItem { Text = "上に移動 (-50)", Value = 1 });
+                cmbKeyButton.Items.Add(new ComboItem { Text = "下に移動 (+50)", Value = 2 });
+                cmbKeyButton.Items.Add(new ComboItem { Text = "左に移動 (-50)", Value = 3 });
+                cmbKeyButton.Items.Add(new ComboItem { Text = "右に移動 (+50)", Value = 4 });
             }
             else if (type == ActionType.XboxController)
             {
@@ -169,6 +175,14 @@ namespace UsbInputMapper.UI
             if (cmbKeyButton.Visible && cmbKeyButton.SelectedItem is ComboItem cItem)
             {
                 ResultBinding.Action.ArgumentNum = cItem.Value;
+
+                // 簡易的なマウス移動の処理変換（1=上, 2=下, 3=左, 4=右）
+                if (ResultBinding.Action.ActionType == ActionType.MouseMove)
+                {
+                    ResultBinding.Action.MouseX = (cItem.Value == 3) ? -50 : (cItem.Value == 4) ? 50 : 0;
+                    ResultBinding.Action.MouseY = (cItem.Value == 1) ? -50 : (cItem.Value == 2) ? 50 : 0;
+                    ResultBinding.Action.IsAbsolutePosition = false;
+                }
             }
 
             ResultBinding.Action.ArgumentStr = txtAppPath.Text;

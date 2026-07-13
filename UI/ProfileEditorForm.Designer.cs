@@ -12,13 +12,12 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Button btnOK;
         private System.Windows.Forms.Button btnCancel;
         private System.Windows.Forms.Label lblStatus;
+        private System.Windows.Forms.Label lblTargetPicker;
+        private System.Windows.Forms.Label lblTargetDesc;
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
-            {
-                components.Dispose();
-            }
+            if (disposing && (components != null)) components.Dispose();
             base.Dispose(disposing);
         }
 
@@ -33,6 +32,8 @@ namespace UsbInputMapper.UI
             this.btnOK = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
             this.lblStatus = new System.Windows.Forms.Label();
+            this.lblTargetPicker = new System.Windows.Forms.Label();
+            this.lblTargetDesc = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // label1
@@ -66,7 +67,7 @@ namespace UsbInputMapper.UI
             this.lstApps.ItemHeight = 12;
             this.lstApps.Location = new System.Drawing.Point(14, 63);
             this.lstApps.Name = "lstApps";
-            this.lstApps.Size = new System.Drawing.Size(257, 100);
+            this.lstApps.Size = new System.Drawing.Size(257, 88);
             this.lstApps.TabIndex = 3;
             // 
             // btnAddApp
@@ -75,7 +76,7 @@ namespace UsbInputMapper.UI
             this.btnAddApp.Name = "btnAddApp";
             this.btnAddApp.Size = new System.Drawing.Size(75, 23);
             this.btnAddApp.TabIndex = 4;
-            this.btnAddApp.Text = "追加";
+            this.btnAddApp.Text = "参照追加";
             this.btnAddApp.UseVisualStyleBackColor = true;
             this.btnAddApp.Click += new System.EventHandler(this.btnAddApp_Click);
             // 
@@ -88,6 +89,29 @@ namespace UsbInputMapper.UI
             this.btnRemoveApp.Text = "削除";
             this.btnRemoveApp.UseVisualStyleBackColor = true;
             this.btnRemoveApp.Click += new System.EventHandler(this.btnRemoveApp_Click);
+            // 
+            // lblTargetPicker
+            // 
+            this.lblTargetPicker.AutoSize = true;
+            this.lblTargetPicker.Font = new System.Drawing.Font("MS UI Gothic", 24F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(128)));
+            this.lblTargetPicker.ForeColor = System.Drawing.Color.DodgerBlue;
+            this.lblTargetPicker.Location = new System.Drawing.Point(293, 122);
+            this.lblTargetPicker.Name = "lblTargetPicker";
+            this.lblTargetPicker.Size = new System.Drawing.Size(47, 33);
+            this.lblTargetPicker.TabIndex = 9;
+            this.lblTargetPicker.Text = "◎";
+            this.lblTargetPicker.Cursor = System.Windows.Forms.Cursors.Hand;
+            // 
+            // lblTargetDesc
+            // 
+            this.lblTargetDesc.AutoSize = true;
+            this.lblTargetDesc.Font = new System.Drawing.Font("MS UI Gothic", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(128)));
+            this.lblTargetDesc.ForeColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.lblTargetDesc.Location = new System.Drawing.Point(12, 154);
+            this.lblTargetDesc.Name = "lblTargetDesc";
+            this.lblTargetDesc.Size = new System.Drawing.Size(262, 11);
+            this.lblTargetDesc.TabIndex = 10;
+            this.lblTargetDesc.Text = "※◎アイコンを起動中のゲーム画面にドラッグすると自動登録";
             // 
             // btnOK
             // 
@@ -112,7 +136,6 @@ namespace UsbInputMapper.UI
             // lblStatus
             // 
             this.lblStatus.AutoSize = true;
-            this.lblStatus.ForeColor = System.Drawing.Color.Red;
             this.lblStatus.Location = new System.Drawing.Point(12, 183);
             this.lblStatus.Name = "lblStatus";
             this.lblStatus.Size = new System.Drawing.Size(0, 12);
@@ -123,6 +146,8 @@ namespace UsbInputMapper.UI
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(364, 211);
+            this.Controls.Add(this.lblTargetDesc);
+            this.Controls.Add(this.lblTargetPicker);
             this.Controls.Add(this.lblStatus);
             this.Controls.Add(this.btnCancel);
             this.Controls.Add(this.btnOK);

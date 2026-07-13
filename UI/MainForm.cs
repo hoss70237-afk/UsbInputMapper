@@ -78,7 +78,8 @@ namespace UsbInputMapper.UI
                     {
                         if (editor.ShowDialog() == DialogResult.OK)
                         {
-                            var b = new Binding
+                            // 修正箇所1: どちらの Binding かをフルネームで明確に指定
+                            var b = new UsbInputMapper.Profiles.Binding
                             {
                                 DeviceIdentifier = evt.DeviceIdentifier,
                                 InputType = evt.Type,
@@ -96,7 +97,8 @@ namespace UsbInputMapper.UI
 
         private void btnDeleteBinding_Click(object sender, EventArgs e)
         {
-            if (lstBindings.SelectedItem is ListViewItem item && item.Tag is Binding b)
+            // 修正箇所2: こちらもフルネームで指定
+            if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b)
             {
                 if (lstProfiles.SelectedItem is Profile p)
                 {
@@ -114,7 +116,6 @@ namespace UsbInputMapper.UI
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            // フォームを閉じるだけで常駐は続ける
             if (e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;

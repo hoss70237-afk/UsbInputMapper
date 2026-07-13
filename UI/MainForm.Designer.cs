@@ -6,7 +6,9 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.ListBox lstProfiles;
         private System.Windows.Forms.ListBox lstBindings;
         private System.Windows.Forms.Button btnAddProfile;
+        private System.Windows.Forms.Button btnEditProfile;
         private System.Windows.Forms.Button btnAddBinding;
+        private System.Windows.Forms.Button btnEditBinding;
         private System.Windows.Forms.Button btnDeleteBinding;
         private System.Windows.Forms.CheckBox chkStartup;
         private System.Windows.Forms.Label lblProfiles;
@@ -26,7 +28,9 @@ namespace UsbInputMapper.UI
             this.lstProfiles = new System.Windows.Forms.ListBox();
             this.lstBindings = new System.Windows.Forms.ListBox();
             this.btnAddProfile = new System.Windows.Forms.Button();
+            this.btnEditProfile = new System.Windows.Forms.Button();
             this.btnAddBinding = new System.Windows.Forms.Button();
+            this.btnEditBinding = new System.Windows.Forms.Button();
             this.btnDeleteBinding = new System.Windows.Forms.Button();
             this.chkStartup = new System.Windows.Forms.CheckBox();
             this.lblProfiles = new System.Windows.Forms.Label();
@@ -39,7 +43,7 @@ namespace UsbInputMapper.UI
             this.lstProfiles.ItemHeight = 12;
             this.lstProfiles.Location = new System.Drawing.Point(12, 24);
             this.lstProfiles.Name = "lstProfiles";
-            this.lstProfiles.Size = new System.Drawing.Size(150, 220);
+            this.lstProfiles.Size = new System.Drawing.Size(150, 196);
             this.lstProfiles.TabIndex = 0;
             this.lstProfiles.SelectedIndexChanged += new System.EventHandler(this.lstProfiles_SelectedIndexChanged);
             // 
@@ -49,43 +53,63 @@ namespace UsbInputMapper.UI
             this.lstBindings.ItemHeight = 12;
             this.lstBindings.Location = new System.Drawing.Point(168, 24);
             this.lstBindings.Name = "lstBindings";
-            this.lstBindings.Size = new System.Drawing.Size(350, 220);
+            this.lstBindings.Size = new System.Drawing.Size(350, 196);
             this.lstBindings.TabIndex = 1;
             // 
             // btnAddProfile
             // 
-            this.btnAddProfile.Location = new System.Drawing.Point(12, 250);
+            this.btnAddProfile.Location = new System.Drawing.Point(12, 226);
             this.btnAddProfile.Name = "btnAddProfile";
-            this.btnAddProfile.Size = new System.Drawing.Size(150, 23);
+            this.btnAddProfile.Size = new System.Drawing.Size(70, 23);
             this.btnAddProfile.TabIndex = 2;
-            this.btnAddProfile.Text = "プロファイル追加";
+            this.btnAddProfile.Text = "追加";
             this.btnAddProfile.UseVisualStyleBackColor = true;
             this.btnAddProfile.Click += new System.EventHandler(this.btnAddProfile_Click);
             // 
+            // btnEditProfile
+            // 
+            this.btnEditProfile.Location = new System.Drawing.Point(88, 226);
+            this.btnEditProfile.Name = "btnEditProfile";
+            this.btnEditProfile.Size = new System.Drawing.Size(74, 23);
+            this.btnEditProfile.TabIndex = 8;
+            this.btnEditProfile.Text = "編集";
+            this.btnEditProfile.UseVisualStyleBackColor = true;
+            this.btnEditProfile.Click += new System.EventHandler(this.btnEditProfile_Click);
+            // 
             // btnAddBinding
             // 
-            this.btnAddBinding.Location = new System.Drawing.Point(168, 250);
+            this.btnAddBinding.Location = new System.Drawing.Point(168, 226);
             this.btnAddBinding.Name = "btnAddBinding";
-            this.btnAddBinding.Size = new System.Drawing.Size(150, 23);
+            this.btnAddBinding.Size = new System.Drawing.Size(100, 23);
             this.btnAddBinding.TabIndex = 3;
-            this.btnAddBinding.Text = "入力待機 (登録)";
+            this.btnAddBinding.Text = "待機(登録)";
             this.btnAddBinding.UseVisualStyleBackColor = true;
             this.btnAddBinding.Click += new System.EventHandler(this.btnAddBinding_Click);
             // 
+            // btnEditBinding
+            // 
+            this.btnEditBinding.Location = new System.Drawing.Point(274, 226);
+            this.btnEditBinding.Name = "btnEditBinding";
+            this.btnEditBinding.Size = new System.Drawing.Size(75, 23);
+            this.btnEditBinding.TabIndex = 9;
+            this.btnEditBinding.Text = "編集";
+            this.btnEditBinding.UseVisualStyleBackColor = true;
+            this.btnEditBinding.Click += new System.EventHandler(this.btnEditBinding_Click);
+            // 
             // btnDeleteBinding
             // 
-            this.btnDeleteBinding.Location = new System.Drawing.Point(324, 250);
+            this.btnDeleteBinding.Location = new System.Drawing.Point(355, 226);
             this.btnDeleteBinding.Name = "btnDeleteBinding";
-            this.btnDeleteBinding.Size = new System.Drawing.Size(100, 23);
+            this.btnDeleteBinding.Size = new System.Drawing.Size(75, 23);
             this.btnDeleteBinding.TabIndex = 4;
-            this.btnDeleteBinding.Text = "登録削除";
+            this.btnDeleteBinding.Text = "削除";
             this.btnDeleteBinding.UseVisualStyleBackColor = true;
             this.btnDeleteBinding.Click += new System.EventHandler(this.btnDeleteBinding_Click);
             // 
             // chkStartup
             // 
             this.chkStartup.AutoSize = true;
-            this.chkStartup.Location = new System.Drawing.Point(430, 254);
+            this.chkStartup.Location = new System.Drawing.Point(436, 230);
             this.chkStartup.Name = "chkStartup";
             this.chkStartup.Size = new System.Drawing.Size(95, 16);
             this.chkStartup.TabIndex = 5;
@@ -115,7 +139,9 @@ namespace UsbInputMapper.UI
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(534, 286);
+            this.ClientSize = new System.Drawing.Size(544, 261);
+            this.Controls.Add(this.btnEditBinding);
+            this.Controls.Add(this.btnEditProfile);
             this.Controls.Add(this.lblBindings);
             this.Controls.Add(this.lblProfiles);
             this.Controls.Add(this.chkStartup);

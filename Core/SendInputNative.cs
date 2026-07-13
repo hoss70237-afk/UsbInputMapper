@@ -5,15 +5,14 @@ namespace UsbInputMapper.Core
 {
     internal static class SendInputNative
     {
-        public const int INPUT_MOUSE = 0;
-        public const int INPUT_KEYBOARD = 1;
+        public const uint INPUT_MOUSE = 0;
+        public const uint INPUT_KEYBOARD = 1;
+        public const uint INPUT_HARDWARE = 2;
 
-        // キーボード用フラグ
         public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         public const uint KEYEVENTF_KEYUP = 0x0002;
-        public const uint KEYEVENTF_SCANCODE = 0x0008; // ★PCゲーム向け物理入力用
+        public const uint KEYEVENTF_SCANCODE = 0x0008;
 
-        // マウス用フラグ
         public const uint MOUSEEVENTF_MOVE = 0x0001;
         public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
         public const uint MOUSEEVENTF_LEFTUP = 0x0004;
@@ -22,7 +21,7 @@ namespace UsbInputMapper.Core
         public const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
         public const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
         public const uint MOUSEEVENTF_WHEEL = 0x0800;
-        public const uint MOUSEEVENTF_ABSOLUTE = 0x8000; // ★絶対座標移動用
+        public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
         public const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
 
         [StructLayout(LayoutKind.Sequential)]
@@ -54,17 +53,20 @@ namespace UsbInputMapper.Core
             public ushort wParamH;
         }
 
+        // 32bit/64bitのメモリ構造の違いを自動吸収する正しいUnion定義
         [StructLayout(LayoutKind.Explicit)]
+        public struct InputUnion
+        {
+            [FieldOffset(0)] public MOUSEINPUT mi;
+            [FieldOffset(0)] public KEYBDINPUT ki;
+            [FieldOffset(0)] public HARDWAREINPUT hi;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
         public struct INPUT
         {
-            [FieldOffset(0)]
-            public int type;
-            [FieldOffset(8)]
-            public MOUSEINPUT mi;
-            [FieldOffset(8)]
-            public KEYBDINPUT ki;
-            [FieldOffset(8)]
-            public HARDWAREINPUT hi;
+            public uint type;
+            public InputUnion u;
         }
 
         [DllImport("user32.dll", SetLastError = true)]

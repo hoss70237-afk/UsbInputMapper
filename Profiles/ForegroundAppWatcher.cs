@@ -1,20 +1,40 @@
 using System;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Timers;
 
 namespace UsbInputMapper.Profiles
 {
     public class ForegroundAppWatcher : IDisposable
     {
+        // --- Windows API 宣言 ---
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
-        public event EventHandler<string> OnForegroundAppChanged;
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint processAccess, bool bInheritHandle, uint processId);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumChildWindows(IntPtr hwndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+        // --- メンバ変数 ---
+        public event EventHandler<string> OnForegroundAppChanged;
         private Timer _timer;
         private string _lastAppPath = string.Empty;
 
@@ -40,26 +60,63 @@ namespace UsbInputMapper.Profiles
             IntPtr hwnd = GetForegroundWindow();
             if (hwnd == IntPtr.Zero) return;
 
+            // UWPアプリ（ApplicationFrameHost）対策
+            // ガワのウィンドウではなく、中身の実際のゲームプロセスのウィンドウを探す
+            StringBuilder className = new StringBuilder(256);
+            GetClassName(hwnd, className, className.Capacity);
+
+            if (className.ToString() == "ApplicationFrameWindow")
+            {
+                IntPtr realHwnd = IntPtr.Zero;
+                EnumChildWindows(hwnd, (childHwnd, lParam) =>
+                {
+                    StringBuilder childClass = new StringBuilder(256);
+                    GetClassName(childHwnd, childClass, childClass.Capacity);
+                    if (childClass.ToString() == "Windows.UI.Core.CoreWindow")
+                    {
+                        realHwnd = childHwnd;
+                        return false; // 列挙終了
+                    }
+                    return true;
+                }, IntPtr.Zero);
+
+                if (realHwnd != IntPtr.Zero)
+                {
+                    hwnd = realHwnd;
+                }
+            }
+
             GetWindowThreadProcessId(hwnd, out uint pid);
             if (pid == 0) return;
 
+            string currentAppPath = GetExecutablePathProcessId(pid);
+            if (!string.IsNullOrEmpty(currentAppPath) && currentAppPath != _lastAppPath)
+            {
+                _lastAppPath = currentAppPath;
+                OnForegroundAppChanged?.Invoke(this, currentAppPath);
+            }
+        }
+
+        // 32bit/64bitの壁や管理者権限の壁を越えてプロセスパスを取得する最強のメソッド
+        private string GetExecutablePathProcessId(uint pid)
+        {
+            IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (hProcess == IntPtr.Zero) return null;
+
             try
             {
-                using (Process proc = Process.GetProcessById((int)pid))
+                StringBuilder sb = new StringBuilder(1024);
+                uint size = (uint)sb.Capacity;
+                if (QueryFullProcessImageName(hProcess, 0, sb, ref size))
                 {
-                    string currentAppPath = proc.MainModule?.FileName;
-                    if (!string.IsNullOrEmpty(currentAppPath) && currentAppPath != _lastAppPath)
-                    {
-                        _lastAppPath = currentAppPath;
-                        OnForegroundAppChanged?.Invoke(this, currentAppPath);
-                    }
+                    return sb.ToString();
                 }
             }
-            catch
+            finally
             {
-                // セキュリティ制限（管理者権限で実行されている他プロセス等）により
-                // MainModuleが取得できない場合は無視する
+                CloseHandle(hProcess);
             }
+            return null;
         }
 
         public void Dispose()

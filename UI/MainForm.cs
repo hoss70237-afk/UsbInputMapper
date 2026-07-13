@@ -24,6 +24,7 @@ namespace UsbInputMapper.UI
 
         private void LoadProfiles()
         {
+            int selected = lstProfiles.SelectedIndex;
             lstProfiles.Items.Clear();
             foreach (var profile in _profileManager.Profiles)
             {
@@ -31,7 +32,7 @@ namespace UsbInputMapper.UI
             }
             if (lstProfiles.Items.Count > 0)
             {
-                lstProfiles.SelectedIndex = 0;
+                lstProfiles.SelectedIndex = (selected >= 0 && selected < lstProfiles.Items.Count) ? selected : 0;
             }
         }
 
@@ -65,6 +66,7 @@ namespace UsbInputMapper.UI
                     _profileManager.Profiles.Add(p);
                     _profileManager.Save();
                     LoadProfiles();
+                    lstProfiles.SelectedIndex = lstProfiles.Items.Count - 1;
                 }
             }
         }
@@ -78,11 +80,54 @@ namespace UsbInputMapper.UI
                     if (editor.ShowDialog() == DialogResult.OK)
                     {
                         _profileManager.Save();
-                        // リストの表示を更新
-                        int idx = lstProfiles.SelectedIndex;
-                        lstProfiles.Items[idx] = lstProfiles.Items[idx];
+                        LoadProfiles();
                     }
                 }
+            }
+        }
+
+        private void btnDuplicateProfile_Click(object sender, EventArgs e)
+        {
+            if (lstProfiles.SelectedItem is Profile currentProfile)
+            {
+                _profileManager.DuplicateProfile(currentProfile);
+                LoadProfiles();
+                lstProfiles.SelectedIndex = lstProfiles.Items.Count - 1;
+            }
+        }
+
+        private void btnDeleteProfile_Click(object sender, EventArgs e)
+        {
+            if (lstProfiles.SelectedItem is Profile p && !p.IsDefault)
+            {
+                if (MessageBox.Show("本当に削除しますか？", "確認", MessageBoxButtons.YesNo) == DialogResult.Yes)
+                {
+                    _profileManager.Profiles.Remove(p);
+                    _profileManager.Save();
+                    LoadProfiles();
+                }
+            }
+        }
+
+        private void btnUpProfile_Click(object sender, EventArgs e)
+        {
+            int idx = lstProfiles.SelectedIndex;
+            if (idx > 0)
+            {
+                _profileManager.MoveProfile(idx, -1);
+                LoadProfiles();
+                lstProfiles.SelectedIndex = idx - 1;
+            }
+        }
+
+        private void btnDownProfile_Click(object sender, EventArgs e)
+        {
+            int idx = lstProfiles.SelectedIndex;
+            if (idx >= 0 && idx < lstProfiles.Items.Count - 1)
+            {
+                _profileManager.MoveProfile(idx, 1);
+                LoadProfiles();
+                lstProfiles.SelectedIndex = idx + 1;
             }
         }
 
@@ -144,6 +189,28 @@ namespace UsbInputMapper.UI
                     _profileManager.Save();
                     RefreshBindings();
                 }
+            }
+        }
+
+        private void btnUpBinding_Click(object sender, EventArgs e)
+        {
+            if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedIndex > 0)
+            {
+                int idx = lstBindings.SelectedIndex;
+                _profileManager.MoveBinding(p, idx, -1);
+                RefreshBindings();
+                lstBindings.SelectedIndex = idx - 1;
+            }
+        }
+
+        private void btnDownBinding_Click(object sender, EventArgs e)
+        {
+            if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedIndex >= 0 && lstBindings.SelectedIndex < lstBindings.Items.Count - 1)
+            {
+                int idx = lstBindings.SelectedIndex;
+                _profileManager.MoveBinding(p, idx, 1);
+                RefreshBindings();
+                lstBindings.SelectedIndex = idx + 1;
             }
         }
 

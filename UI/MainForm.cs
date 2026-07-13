@@ -47,19 +47,46 @@ namespace UsbInputMapper.UI
             {
                 foreach (var b in profile.Bindings)
                 {
-                    string info = $"Dev: {b.DeviceIdentifier} | Type: {b.InputType} | Code: {b.InputCode} => {b.Action}";
+                    string info = $"[{b.Name}] {b.Condition} => {b.Action.ActionType}";
                     lstBindings.Items.Add(new ListViewItem(info) { Tag = b });
                 }
             }
         }
 
+        // --- プロファイル操作 ---
+
         private void btnAddProfile_Click(object sender, EventArgs e)
         {
-            var p = new Profile { Name = "New Profile" };
-            _profileManager.Profiles.Add(p);
-            _profileManager.Save();
-            LoadProfiles();
+            var p = new Profile { Name = "新規プロファイル" };
+            using (var editor = new ProfileEditorForm(p))
+            {
+                if (editor.ShowDialog() == DialogResult.OK)
+                {
+                    _profileManager.Profiles.Add(p);
+                    _profileManager.Save();
+                    LoadProfiles();
+                }
+            }
         }
+
+        private void btnEditProfile_Click(object sender, EventArgs e)
+        {
+            if (lstProfiles.SelectedItem is Profile currentProfile)
+            {
+                using (var editor = new ProfileEditorForm(currentProfile))
+                {
+                    if (editor.ShowDialog() == DialogResult.OK)
+                    {
+                        _profileManager.Save();
+                        // リストの表示を更新
+                        int idx = lstProfiles.SelectedIndex;
+                        lstProfiles.Items[idx] = lstProfiles.Items[idx];
+                    }
+                }
+            }
+        }
+
+        // --- アイテム(Binding)操作 ---
 
         private void btnAddBinding_Click(object sender, EventArgs e)
         {
@@ -78,14 +105,11 @@ namespace UsbInputMapper.UI
                     {
                         if (editor.ShowDialog() == DialogResult.OK)
                         {
-                            // 修正箇所1: どちらの Binding かをフルネームで明確に指定
-                            var b = new UsbInputMapper.Profiles.Binding
-                            {
-                                DeviceIdentifier = evt.DeviceIdentifier,
-                                InputType = evt.Type,
-                                InputCode = inputCode,
-                                Action = editor.ResultAction
-                            };
+                            var b = editor.ResultBinding;
+                            b.DeviceIdentifier = evt.DeviceIdentifier;
+                            b.InputType = evt.Type;
+                            b.InputCode = inputCode;
+                            
                             currentProfile.Bindings.Add(b);
                             _profileManager.Save();
                             RefreshBindings();
@@ -95,9 +119,23 @@ namespace UsbInputMapper.UI
             }
         }
 
+        private void btnEditBinding_Click(object sender, EventArgs e)
+        {
+            if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b)
+            {
+                using (var editor = new BindingEditorForm(b))
+                {
+                    if (editor.ShowDialog() == DialogResult.OK)
+                    {
+                        _profileManager.Save();
+                        RefreshBindings();
+                    }
+                }
+            }
+        }
+
         private void btnDeleteBinding_Click(object sender, EventArgs e)
         {
-            // 修正箇所2: こちらもフルネームで指定
             if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b)
             {
                 if (lstProfiles.SelectedItem is Profile p)

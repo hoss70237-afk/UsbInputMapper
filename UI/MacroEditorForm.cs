@@ -45,8 +45,9 @@ namespace UsbInputMapper.UI
 
         private void btnAdd_Click(object sender, EventArgs e)
         {
-            // 簡易的に BindingEditorForm を流用してステップ内容を作成させる
-            var dummyBinding = new Binding();
+            // 名前被りを防ぐため、フルネームで指定します
+            var dummyBinding = new UsbInputMapper.Profiles.Binding();
+            
             using (var editor = new BindingEditorForm(dummyBinding))
             {
                 if (editor.ShowDialog() == DialogResult.OK)

@@ -124,6 +124,10 @@ namespace UsbInputMapper.UI
             }
 
             if (cmbKeyButton.Items.Count > 0) cmbKeyButton.SelectedIndex = 0;
+            if (ResultBinding != null && ResultBinding.Action != null && ResultBinding.Action.ActionType == type)
+            {
+                SetOutputTarget(type, ResultBinding.Action.ArgumentNum);
+            }
         }
 
         private void SetOutputTarget(ActionType type, int value)

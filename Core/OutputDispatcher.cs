@@ -18,13 +18,12 @@ namespace UsbInputMapper.Core
             _viGEmOutput = viGEmOutput;
         }
 
-        // isDownフラグを受け取り、押す/離すを正確に処理する
         public void Dispatch(ActionDef action, bool isDown)
         {
             switch (action.ActionType)
             {
                 case ActionType.Keyboard:
-                case ActionType.ToggleHold: // トグルもキーボードと同様に処理
+                case ActionType.ToggleHold:
                     SendKeyboardInput((ushort)action.ArgumentNum, isDown);
                     break;
                 case ActionType.MouseClick:
@@ -61,13 +60,11 @@ namespace UsbInputMapper.Core
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_KEYBOARD;
             
-            ushort scanCode = (ushort)SendInputNative.MapVirtualKey(vKey, 0);
+            // 全てのアプリで確実に動く標準方式
+            inputs[0].u.ki.wVk = vKey;
+            inputs[0].u.ki.wScan = 0; 
             
-            // ★ 通常アプリ向けにvKeyも残しつつ、ゲーム向けにスキャンコードも送る最強設定
-            inputs[0].ki.wVk = vKey;
-            inputs[0].ki.wScan = scanCode;
-            
-            uint flags = SendInputNative.KEYEVENTF_SCANCODE;
+            uint flags = 0;
             
             if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46)
             {
@@ -76,7 +73,7 @@ namespace UsbInputMapper.Core
 
             if (!isDown) flags |= SendInputNative.KEYEVENTF_KEYUP;
 
-            inputs[0].ki.dwFlags = flags;
+            inputs[0].u.ki.dwFlags = flags;
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }
 
@@ -85,13 +82,12 @@ namespace UsbInputMapper.Core
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
 
-            if (buttonId == 1) inputs[0].mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_LEFTDOWN : SendInputNative.MOUSEEVENTF_LEFTUP;
-            else if (buttonId == 2) inputs[0].mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_RIGHTDOWN : SendInputNative.MOUSEEVENTF_RIGHTUP;
-            else if (buttonId == 3) inputs[0].mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_MIDDLEDOWN : SendInputNative.MOUSEEVENTF_MIDDLEUP;
-            else if (buttonId == 4 && isDown) { inputs[0].mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].mi.mouseData = 120; }
-            else if (buttonId == 5 && isDown) { inputs[0].mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].mi.mouseData = unchecked((uint)-120); }
+            if (buttonId == 1) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_LEFTDOWN : SendInputNative.MOUSEEVENTF_LEFTUP;
+            else if (buttonId == 2) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_RIGHTDOWN : SendInputNative.MOUSEEVENTF_RIGHTUP;
+            else if (buttonId == 3) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_MIDDLEDOWN : SendInputNative.MOUSEEVENTF_MIDDLEUP;
+            else if (buttonId == 4 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = 120; }
+            else if (buttonId == 5 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = unchecked((uint)-120); }
             
-            // ホイールの場合はアップ処理が不要
             if ((buttonId == 4 || buttonId == 5) && !isDown) return;
 
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
@@ -106,15 +102,15 @@ namespace UsbInputMapper.Core
             {
                 int screenWidth = Screen.PrimaryScreen.Bounds.Width;
                 int screenHeight = Screen.PrimaryScreen.Bounds.Height;
-                inputs[0].mi.dx = (x * 65535) / screenWidth;
-                inputs[0].mi.dy = (y * 65535) / screenHeight;
-                inputs[0].mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE | SendInputNative.MOUSEEVENTF_ABSOLUTE | SendInputNative.MOUSEEVENTF_VIRTUALDESK;
+                inputs[0].u.mi.dx = (x * 65535) / screenWidth;
+                inputs[0].u.mi.dy = (y * 65535) / screenHeight;
+                inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE | SendInputNative.MOUSEEVENTF_ABSOLUTE | SendInputNative.MOUSEEVENTF_VIRTUALDESK;
             }
             else
             {
-                inputs[0].mi.dx = x;
-                inputs[0].mi.dy = y;
-                inputs[0].mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE;
+                inputs[0].u.mi.dx = x;
+                inputs[0].u.mi.dy = y;
+                inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE;
             }
 
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));

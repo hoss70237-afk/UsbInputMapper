@@ -44,8 +44,8 @@
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
-    <Reference Include="Nefarius.ViGEm.Client, Version=1.21.156.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Nefarius.ViGEm.Client.1.21.156\lib\net462\Nefarius.ViGEm.Client.dll</HintPath>
+    <Reference Include="Nefarius.ViGEm.Client, Version=1.17.178.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Nefarius.ViGEm.Client.1.17.178\lib\net462\Nefarius.ViGEm.Client.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -61,6 +61,7 @@
     <Compile Include="Core\PanicKeyWatcher.cs" />
     <Compile Include="Profiles\ActionDef.cs" />
     <Compile Include="Profiles\Binding.cs" />
+    <Compile Include="Profiles\MacroStep.cs" /> <!-- ★ここを追加しました -->
     <Compile Include="Profiles\Profile.cs" />
     <Compile Include="Profiles\ProfileManager.cs" />
     <Compile Include="Profiles\ForegroundAppWatcher.cs" />

@@ -61,7 +61,7 @@
     <Compile Include="Core\PanicKeyWatcher.cs" />
     <Compile Include="Profiles\ActionDef.cs" />
     <Compile Include="Profiles\Binding.cs" />
-    <Compile Include="Profiles\MacroStep.cs" /> <!-- ★ここを追加しました -->
+    <Compile Include="Profiles\MacroStep.cs" />
     <Compile Include="Profiles\Profile.cs" />
     <Compile Include="Profiles\ProfileManager.cs" />
     <Compile Include="Profiles\ForegroundAppWatcher.cs" />
@@ -89,6 +89,13 @@
     </Compile>
     <Compile Include="UI\ProfileEditorForm.Designer.cs">
       <DependentUpon>ProfileEditorForm.cs</DependentUpon>
+    </Compile>
+    <!-- ★ここに MacroEditorForm を追加しました -->
+    <Compile Include="UI\MacroEditorForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\MacroEditorForm.Designer.cs">
+      <DependentUpon>MacroEditorForm.cs</DependentUpon>
     </Compile>
     <Compile Include="Util\StartupRegistrar.cs" />
     <Compile Include="Util\SingleInstance.cs" />

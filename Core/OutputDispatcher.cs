@@ -40,12 +40,36 @@ namespace UsbInputMapper.Core
                     }
                     break;
                 case ActionType.XboxController:
-                    // ArgumentNum as button enum
-                    _viGEmOutput.SetButton((Xbox360Button)action.ArgumentNum, true);
+                    // 修正箇所: 数値を元に適切なXboxのボタンオブジェクトを取得する
+                    Xbox360Button btn = GetXboxButton(action.ArgumentNum);
+                    _viGEmOutput.SetButton(btn, true);
                     System.Threading.Thread.Sleep(20);
-                    _viGEmOutput.SetButton((Xbox360Button)action.ArgumentNum, false);
+                    _viGEmOutput.SetButton(btn, false);
                     break;
-                // 他のタイプは必要に応じて拡張
+            }
+        }
+
+        private Xbox360Button GetXboxButton(int id)
+        {
+            // 設定画面で 1～15 などの数値を入力することで割り当て可能
+            switch(id)
+            {
+                case 1: return Xbox360Button.A;
+                case 2: return Xbox360Button.B;
+                case 3: return Xbox360Button.X;
+                case 4: return Xbox360Button.Y;
+                case 5: return Xbox360Button.LeftShoulder;
+                case 6: return Xbox360Button.RightShoulder;
+                case 7: return Xbox360Button.Back;
+                case 8: return Xbox360Button.Start;
+                case 9: return Xbox360Button.LeftThumb;
+                case 10: return Xbox360Button.RightThumb;
+                case 11: return Xbox360Button.Up;
+                case 12: return Xbox360Button.Down;
+                case 13: return Xbox360Button.Left;
+                case 14: return Xbox360Button.Right;
+                case 15: return Xbox360Button.Guide;
+                default: return Xbox360Button.A;
             }
         }
 

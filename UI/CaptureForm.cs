@@ -30,27 +30,19 @@ namespace UsbInputMapper.UI
 
         public void ProcessInput(InputEvent evt)
         {
-            // メインスレッドでUI操作と状態保存を行う
             if (this.InvokeRequired)
             {
                 this.BeginInvoke(new Action(() => ProcessInput(evt)));
                 return;
             }
 
-            // 何らかのキー・ボタンが押されたものを対象とする
-            if (evt.Type == 1 && evt.IsKeyDown)
+            // キーボードまたはマウスのダウンイベントを取得
+            if (evt.IsKeyDown)
             {
                 CapturedEvent = evt;
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             }
-            else if (evt.Type == 0 && evt.MouseButtonFlags > 0)
-            {
-                CapturedEvent = evt;
-                this.DialogResult = DialogResult.OK;
-                this.Close();
-            }
-            // HIDの場合は条件を別途定義
         }
 
         private void btnCancel_Click(object sender, EventArgs e)

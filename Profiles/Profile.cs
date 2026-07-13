@@ -7,8 +7,8 @@ namespace UsbInputMapper.Profiles
     {
         public string Name { get; set; }
         
-        // 対象の実行ファイル名(例: "notepad.exe")
-        public string TargetApplicationPath { get; set; } 
+        // 複数の実行ファイル名を登録できるように変更 (例: "notepad.exe", "calc.exe")
+        public List<string> TargetApplicationPaths { get; set; } 
         
         public bool IsDefault { get; set; }
         
@@ -16,6 +16,7 @@ namespace UsbInputMapper.Profiles
 
         public Profile()
         {
+            TargetApplicationPaths = new List<string>();
             Bindings = new List<Binding>();
         }
 

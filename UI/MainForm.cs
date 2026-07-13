@@ -48,7 +48,8 @@ namespace UsbInputMapper.UI
             {
                 foreach (var b in profile.Bindings)
                 {
-                    string info = $"[{b.Name}] {b.Condition} => {b.Action.ActionType}";
+                    // ActionDefのToString()を呼ぶことで「KB Key: 65」のように詳細が表示されます
+                    string info = $"[{b.Name}] {b.Condition} => {b.Action.ToString()}";
                     lstBindings.Items.Add(new ListViewItem(info) { Tag = b });
                 }
             }

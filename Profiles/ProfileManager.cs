@@ -58,6 +58,50 @@ namespace UsbInputMapper.Profiles
             catch { }
         }
 
+        // --- プロファイルの並べ替えと複製 ---
+
+        public void DuplicateProfile(Profile source)
+        {
+            // ディープコピーを行うためJSONでシリアライズ・デシリアライズする
+            string json = JsonConvert.SerializeObject(source);
+            var cloned = JsonConvert.DeserializeObject<Profile>(json);
+            
+            cloned.Name = source.Name + " のコピー";
+            cloned.IsDefault = false; // コピーはデフォルトにはならない
+
+            Profiles.Add(cloned);
+            Save();
+        }
+
+        public void MoveProfile(int index, int direction)
+        {
+            // direction: -1 (Up), 1 (Down)
+            if (index < 0 || index >= Profiles.Count) return;
+            int newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= Profiles.Count) return;
+
+            var item = Profiles[index];
+            Profiles.RemoveAt(index);
+            Profiles.Insert(newIndex, item);
+            Save();
+        }
+
+        // --- アイテム(Binding)の並べ替え ---
+
+        public void MoveBinding(Profile profile, int index, int direction)
+        {
+            if (index < 0 || index >= profile.Bindings.Count) return;
+            int newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= profile.Bindings.Count) return;
+
+            var item = profile.Bindings[index];
+            profile.Bindings.RemoveAt(index);
+            profile.Bindings.Insert(newIndex, item);
+            Save();
+        }
+
+        // --- アクティブ切り替えロジック ---
+
         public void SwitchToAppProfile(string appPath)
         {
             if (string.IsNullOrEmpty(appPath))
@@ -68,7 +112,9 @@ namespace UsbInputMapper.Profiles
 
             string exeName = Path.GetFileName(appPath).ToLower();
 
+            // UWPなどの長いパスでも実行ファイル名で正確にマッチングする
             var matched = Profiles.Find(p => !p.IsDefault && 
+                p.TargetApplicationPaths != null &&
                 p.TargetApplicationPaths.Exists(target => target.ToLower() == exeName));
 
             if (matched != null)

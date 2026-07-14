@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Drawing;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -21,7 +22,12 @@ namespace UsbInputMapper.UI
         private ProfileManager _profileManager;
         private ForegroundAppWatcher _appWatcher;
 
+        // 状態管理
         private int _currentLayer = 0; 
+        
+        // 現在物理的に押されているキー/ボタンを追跡する（同時押し判定用）
+        private ConcurrentDictionary<string, bool> _physicalKeysDown = new ConcurrentDictionary<string, bool>();
+        
         private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
         private ConcurrentDictionary<string, bool> _toggleStates = new ConcurrentDictionary<string, bool>();
 
@@ -57,14 +63,19 @@ namespace UsbInputMapper.UI
             }
 
             int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
-            
-            var binding = _profileManager.FindBinding(e.DeviceIdentifier, e.Type, inputCode);
+            string keyId = $"{e.Type}_{inputCode}";
+
+            // 物理キーの状態を更新
+            if (e.IsKeyDown) _physicalKeysDown[keyId] = true;
+            else _physicalKeysDown.TryRemove(keyId, out _);
+
+            // 対象レイヤーと同時押しの条件に合致するバインディングを検索
+            var binding = FindBestMatchingBinding(e.DeviceIdentifier, e.Type, inputCode);
             if (binding == null) return;
 
             string loopKey = $"{e.DeviceIdentifier}_{e.Type}_{inputCode}";
-            bool isDown = (e.Type == 1 && e.IsKeyDown) || (e.Type == 0);
 
-            if (isDown)
+            if (e.IsKeyDown)
             {
                 if (binding.Action.ActionType == ActionType.LayerShift)
                 {
@@ -73,7 +84,6 @@ namespace UsbInputMapper.UI
                 }
 
                 if (_activeLoops.ContainsKey(loopKey)) return;
-
                 var cts = new CancellationTokenSource();
                 _activeLoops[loopKey] = cts;
 
@@ -84,15 +94,15 @@ namespace UsbInputMapper.UI
                         if (binding.Condition == TriggerCondition.Hold)
                         {
                             await Task.Delay(binding.ConditionParam, cts.Token);
-                            ExecuteAction(binding.Action, true);
+                            ExecuteAction(binding.Action, true, cts.Token);
                         }
                         else if (binding.Condition == TriggerCondition.RapidFire)
                         {
                             while (!cts.Token.IsCancellationRequested)
                             {
-                                ExecuteAction(binding.Action, true);
+                                ExecuteAction(binding.Action, true, cts.Token);
                                 await Task.Delay(20);
-                                ExecuteAction(binding.Action, false);
+                                ExecuteAction(binding.Action, false, cts.Token);
                                 await Task.Delay(Math.Max(10, binding.ConditionParam), cts.Token);
                             }
                         }
@@ -106,7 +116,7 @@ namespace UsbInputMapper.UI
                             }
                             else
                             {
-                                ExecuteAction(binding.Action, true);
+                                ExecuteAction(binding.Action, true, cts.Token);
                             }
                         }
                     }
@@ -129,32 +139,79 @@ namespace UsbInputMapper.UI
 
                 if (binding.Action.ActionType != ActionType.ToggleHold)
                 {
-                    ExecuteAction(binding.Action, false);
+                    ExecuteAction(binding.Action, false, CancellationToken.None);
                 }
             }
         }
 
-        private void ExecuteAction(ActionDef action, bool isDown)
+        private UsbInputMapper.Profiles.Binding FindBestMatchingBinding(string deviceId, int inputType, int inputCode)
+        {
+            if (_profileManager.CurrentProfile == null) return null;
+
+            // まず、現在のレイヤーに限定して探す
+            var bindingsInLayer = _profileManager.CurrentProfile.Bindings
+                .Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode)
+                .Where(b => b.TargetLayer == 0 || b.TargetLayer == _currentLayer)
+                .ToList();
+
+            if (bindingsInLayer.Count == 0) return null;
+
+            // コンボ（同時押し）が設定されていて、かつ条件を満たしているものを優先する
+            foreach (var b in bindingsInLayer.OrderByDescending(b => b.SubInputCode > 0 ? 1 : 0))
+            {
+                if (b.SubInputCode > 0)
+                {
+                    string subKeyId = $"{b.SubInputType}_{b.SubInputCode}";
+                    if (_physicalKeysDown.ContainsKey(subKeyId))
+                    {
+                        return b; // 同時押し条件クリア
+                    }
+                }
+                else
+                {
+                    return b; // 単一押し
+                }
+            }
+            return null;
+        }
+
+        private void ExecuteAction(ActionDef action, bool isDown, CancellationToken token)
         {
             if (action.ActionType == ActionType.Macro && isDown)
             {
                 Task.Run(() => {
                     foreach (var step in action.MacroSteps)
                     {
+                        if (token.IsCancellationRequested) break;
+
                         Thread.Sleep(step.DelayMs);
                         var tempDef = new ActionDef { 
                             ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, ArgumentStr = step.ArgumentStr,
                             MouseX = step.MouseX, MouseY = step.MouseY, IsAbsolutePosition = step.IsAbsolutePosition
                         };
                         _dispatcher.Dispatch(tempDef, true);
-                        Thread.Sleep(20); // マクロの1アクションごとの打鍵時間
+                        Thread.Sleep(20);
                         _dispatcher.Dispatch(tempDef, false);
                     }
                 });
                 return;
             }
+            else if (action.ActionType == ActionType.MouseContinuousMove)
+            {
+                if (isDown)
+                {
+                    Task.Run(async () => {
+                        while (!token.IsCancellationRequested)
+                        {
+                            var tempDef = new ActionDef { ActionType = ActionType.MouseMove, MouseX = action.MouseX, MouseY = action.MouseY, IsAbsolutePosition = false };
+                            _dispatcher.Dispatch(tempDef, true);
+                            await Task.Delay(16); // 約60FPSで滑らかに移動
+                        }
+                    });
+                }
+                return;
+            }
             
-            // ★isDownフラグを正しく中継する
             _dispatcher.Dispatch(action, isDown);
         }
 

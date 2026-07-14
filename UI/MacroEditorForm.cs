@@ -13,6 +13,12 @@ namespace UsbInputMapper.UI
             InitializeComponent();
             _action = action;
 
+            cmbPlaybackMode.Items.Clear();
+            cmbPlaybackMode.Items.Add("一括再生 (離しても最後まで)");
+            cmbPlaybackMode.Items.Add("順次再生 (離すと中断)");
+            cmbPlaybackMode.Items.Add("リピート再生 (押している間ループ)");
+            cmbPlaybackMode.Items.Add("ステップ再生 (押す度に1つ進む)");
+
             cmbPlaybackMode.SelectedIndex = (int)_action.PlaybackMode;
             numTimeout.Value = _action.StepTimeoutMs;
 
@@ -45,12 +51,10 @@ namespace UsbInputMapper.UI
 
         private void btnAdd_Click(object sender, EventArgs e)
         {
-            // 名前被りを防ぐため、フルネームで指定します
             var dummyBinding = new UsbInputMapper.Profiles.Binding();
-            
             using (var editor = new BindingEditorForm(dummyBinding))
             {
-                if (editor.ShowDialog() == DialogResult.OK)
+                if (editor.ShowDialog(this) == DialogResult.OK)
                 {
                     var a = editor.ResultBinding.Action;
                     var step = new MacroStep
@@ -81,7 +85,7 @@ namespace UsbInputMapper.UI
 
         private void cmbPlaybackMode_SelectedIndexChanged(object sender, EventArgs e)
         {
-            bool isStepMode = (cmbPlaybackMode.SelectedIndex == 1);
+            bool isStepMode = (cmbPlaybackMode.SelectedIndex == 3); // 3: StepByStep
             lblTimeout.Visible = isStepMode;
             numTimeout.Visible = isStepMode;
         }

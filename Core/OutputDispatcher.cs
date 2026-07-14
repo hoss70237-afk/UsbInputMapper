@@ -24,7 +24,11 @@ namespace UsbInputMapper.Core
             {
                 case ActionType.Keyboard:
                 case ActionType.ToggleHold:
-                    SendKeyboardInput((ushort)action.ArgumentNum, isDown);
+                    // 単一キーまたは複数キーを同時に送る
+                    if (action.MultipleKeys != null && action.MultipleKeys.Count > 0)
+                        SendKeyboardInputs(action.MultipleKeys, isDown);
+                    else
+                        SendKeyboardInputs(new List<int> { action.ArgumentNum }, isDown);
                     break;
                 case ActionType.MouseClick:
                     SendMouseClick(action.ArgumentNum, isDown);
@@ -33,10 +37,7 @@ namespace UsbInputMapper.Core
                     if (isDown) SendMouseMove(action.MouseX, action.MouseY, action.IsAbsolutePosition);
                     break;
                 case ActionType.MousePosSave:
-                    if (isDown && SendInputNative.GetCursorPos(out var pt))
-                    {
-                        _mousePositionStack.Push(pt);
-                    }
+                    if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt);
                     break;
                 case ActionType.MousePosRestore:
                     if (isDown && _mousePositionStack.Count > 0)
@@ -55,41 +56,40 @@ namespace UsbInputMapper.Core
             }
         }
 
-        public void SendKeyboardInput(ushort vKey, bool isDown)
+        public void SendKeyboardInputs(List<int> vKeys, bool isDown)
         {
-            var inputs = new SendInputNative.INPUT[1];
-            inputs[0].type = SendInputNative.INPUT_KEYBOARD;
+            if (vKeys == null || vKeys.Count == 0) return;
+            var inputs = new SendInputNative.INPUT[vKeys.Count];
             
-            // 全てのアプリで確実に動く標準方式
-            inputs[0].u.ki.wVk = vKey;
-            inputs[0].u.ki.wScan = 0; 
-            
-            uint flags = 0;
-            
-            if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46)
+            // アップの時は逆順に離す
+            var keysToProcess = new List<int>(vKeys);
+            if (!isDown) keysToProcess.Reverse();
+
+            for (int i = 0; i < keysToProcess.Count; i++)
             {
-                flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
+                ushort vKey = (ushort)keysToProcess[i];
+                inputs[i].type = SendInputNative.INPUT_KEYBOARD;
+                inputs[i].u.ki.wVk = vKey;
+                inputs[i].u.ki.wScan = 0; 
+                uint flags = 0;
+                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46)
+                    flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
+                if (!isDown) flags |= SendInputNative.KEYEVENTF_KEYUP;
+                inputs[i].u.ki.dwFlags = flags;
             }
-
-            if (!isDown) flags |= SendInputNative.KEYEVENTF_KEYUP;
-
-            inputs[0].u.ki.dwFlags = flags;
-            SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
+            SendInputNative.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }
 
         private void SendMouseClick(int buttonId, bool isDown)
         {
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
-
             if (buttonId == 1) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_LEFTDOWN : SendInputNative.MOUSEEVENTF_LEFTUP;
             else if (buttonId == 2) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_RIGHTDOWN : SendInputNative.MOUSEEVENTF_RIGHTUP;
             else if (buttonId == 3) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_MIDDLEDOWN : SendInputNative.MOUSEEVENTF_MIDDLEUP;
             else if (buttonId == 4 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = 120; }
             else if (buttonId == 5 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = unchecked((uint)-120); }
-            
             if ((buttonId == 4 || buttonId == 5) && !isDown) return;
-
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }
 
@@ -97,7 +97,6 @@ namespace UsbInputMapper.Core
         {
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
-
             if (isAbsolute)
             {
                 int screenWidth = Screen.PrimaryScreen.Bounds.Width;
@@ -112,32 +111,23 @@ namespace UsbInputMapper.Core
                 inputs[0].u.mi.dy = y;
                 inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE;
             }
-
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }
 
         private void LaunchApp(string path, string args)
         {
             if (string.IsNullOrEmpty(path)) return;
-            try
-            {
-                Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = true });
-            }
-            catch { }
+            try { Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = true }); } catch { }
         }
 
         private Xbox360Button GetXboxButton(int id)
         {
             switch(id)
             {
-                case 1: return Xbox360Button.A; case 2: return Xbox360Button.B;
-                case 3: return Xbox360Button.X; case 4: return Xbox360Button.Y;
-                case 5: return Xbox360Button.LeftShoulder; case 6: return Xbox360Button.RightShoulder;
-                case 7: return Xbox360Button.Back; case 8: return Xbox360Button.Start;
-                case 9: return Xbox360Button.LeftThumb; case 10: return Xbox360Button.RightThumb;
-                case 11: return Xbox360Button.Up; case 12: return Xbox360Button.Down;
-                case 13: return Xbox360Button.Left; case 14: return Xbox360Button.Right;
-                case 15: return Xbox360Button.Guide; default: return Xbox360Button.A;
+                case 1: return Xbox360Button.A; case 2: return Xbox360Button.B; case 3: return Xbox360Button.X; case 4: return Xbox360Button.Y;
+                case 5: return Xbox360Button.LeftShoulder; case 6: return Xbox360Button.RightShoulder; case 7: return Xbox360Button.Back; case 8: return Xbox360Button.Start;
+                case 9: return Xbox360Button.LeftThumb; case 10: return Xbox360Button.RightThumb; case 11: return Xbox360Button.Up; case 12: return Xbox360Button.Down;
+                case 13: return Xbox360Button.Left; case 14: return Xbox360Button.Right; case 15: return Xbox360Button.Guide; default: return Xbox360Button.A;
             }
         }
     }

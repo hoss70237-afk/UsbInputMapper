@@ -58,6 +58,7 @@ namespace UsbInputMapper.UI
             cmbCondition.Items.Add("通常入力 (押した時)");
             cmbCondition.Items.Add("長押し (ミリ秒経過で発動)");
             cmbCondition.Items.Add("連打 (押している間ループ)");
+            cmbCondition.Items.Add("離した時 (Key Up)");
 
             cmbActionType.Items.Add(ActionType.None);
             cmbActionType.Items.Add(ActionType.Keyboard);

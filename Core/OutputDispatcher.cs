@@ -10,13 +10,14 @@ namespace UsbInputMapper.Core
 {
     public class OutputDispatcher
     {
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+        [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+
         private readonly ViGEmOutput _viGEmOutput;
         private readonly Stack<SendInputNative.POINT> _mousePositionStack = new Stack<SendInputNative.POINT>();
 
-        public OutputDispatcher(ViGEmOutput viGEmOutput)
-        {
-            _viGEmOutput = viGEmOutput;
-        }
+        public OutputDispatcher(ViGEmOutput viGEmOutput) { _viGEmOutput = viGEmOutput; }
 
         public void Dispatch(ActionDef action, bool isDown)
         {
@@ -24,35 +25,23 @@ namespace UsbInputMapper.Core
             {
                 case ActionType.Keyboard:
                 case ActionType.ToggleHold:
-                    // 単一キーまたは複数キーを同時に送る
-                    if (action.MultipleKeys != null && action.MultipleKeys.Count > 0)
-                        SendKeyboardInputs(action.MultipleKeys, isDown);
-                    else
-                        SendKeyboardInputs(new List<int> { action.ArgumentNum }, isDown);
+                    if (action.MultipleKeys != null && action.MultipleKeys.Count > 0) SendKeyboardInputs(action.MultipleKeys, isDown);
+                    else SendKeyboardInputs(new List<int> { action.ArgumentNum }, isDown);
                     break;
-                case ActionType.MouseClick:
-                    SendMouseClick(action.ArgumentNum, isDown);
-                    break;
-                case ActionType.MouseMove:
-                    if (isDown) SendMouseMove(action.MouseX, action.MouseY, action.IsAbsolutePosition);
-                    break;
-                case ActionType.MousePosSave:
-                    if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt);
-                    break;
+                case ActionType.MouseClick: SendMouseClick(action.ArgumentNum, isDown); break;
+                case ActionType.MouseMoveRelative: if (isDown) SendMouseMove(action.MouseX, action.MouseY, false, false); break;
+                case ActionType.MouseMoveAbsoluteDesk: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, false); break;
+                case ActionType.MouseMoveAbsoluteWin: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, true); break;
+                case ActionType.MousePosSave: if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt); break;
                 case ActionType.MousePosRestore:
                     if (isDown && _mousePositionStack.Count > 0)
                     {
                         var popPt = _mousePositionStack.Pop();
-                        SendMouseMove(popPt.X, popPt.Y, true);
+                        SendMouseMove(popPt.X, popPt.Y, true, false);
                     }
                     break;
-                case ActionType.AppLaunch:
-                    if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr);
-                    break;
-                case ActionType.XboxController:
-                    Xbox360Button btn = GetXboxButton(action.ArgumentNum);
-                    _viGEmOutput.SetButton(btn, isDown);
-                    break;
+                case ActionType.AppLaunch: if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
+                case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
             }
         }
 
@@ -60,20 +49,15 @@ namespace UsbInputMapper.Core
         {
             if (vKeys == null || vKeys.Count == 0) return;
             var inputs = new SendInputNative.INPUT[vKeys.Count];
-            
-            // アップの時は逆順に離す
             var keysToProcess = new List<int>(vKeys);
             if (!isDown) keysToProcess.Reverse();
-
             for (int i = 0; i < keysToProcess.Count; i++)
             {
                 ushort vKey = (ushort)keysToProcess[i];
                 inputs[i].type = SendInputNative.INPUT_KEYBOARD;
                 inputs[i].u.ki.wVk = vKey;
-                inputs[i].u.ki.wScan = 0; 
                 uint flags = 0;
-                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46)
-                    flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
+                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
                 if (!isDown) flags |= SendInputNative.KEYEVENTF_KEYUP;
                 inputs[i].u.ki.dwFlags = flags;
             }
@@ -93,22 +77,28 @@ namespace UsbInputMapper.Core
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }
 
-        private void SendMouseMove(int x, int y, bool isAbsolute)
+        private void SendMouseMove(int x, int y, bool isAbsolute, bool isWindowRelative)
         {
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
             if (isAbsolute)
             {
-                int screenWidth = Screen.PrimaryScreen.Bounds.Width;
-                int screenHeight = Screen.PrimaryScreen.Bounds.Height;
-                inputs[0].u.mi.dx = (x * 65535) / screenWidth;
-                inputs[0].u.mi.dy = (y * 65535) / screenHeight;
+                int targetX = x; int targetY = y;
+                if (isWindowRelative)
+                {
+                    IntPtr hwnd = GetForegroundWindow();
+                    if (hwnd != IntPtr.Zero && GetWindowRect(hwnd, out RECT rect))
+                    {
+                        targetX = rect.Left + x; targetY = rect.Top + y;
+                    }
+                }
+                int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
+                inputs[0].u.mi.dx = (targetX * 65535) / sW; inputs[0].u.mi.dy = (targetY * 65535) / sH;
                 inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE | SendInputNative.MOUSEEVENTF_ABSOLUTE | SendInputNative.MOUSEEVENTF_VIRTUALDESK;
             }
             else
             {
-                inputs[0].u.mi.dx = x;
-                inputs[0].u.mi.dy = y;
+                inputs[0].u.mi.dx = x; inputs[0].u.mi.dy = y;
                 inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE;
             }
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
@@ -116,8 +106,7 @@ namespace UsbInputMapper.Core
 
         private void LaunchApp(string path, string args)
         {
-            if (string.IsNullOrEmpty(path)) return;
-            try { Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = true }); } catch { }
+            if (!string.IsNullOrEmpty(path)) try { Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = true }); } catch { }
         }
 
         private Xbox360Button GetXboxButton(int id)

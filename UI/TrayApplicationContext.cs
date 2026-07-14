@@ -1,61 +1,6 @@
-using System;
-using System.Collections.Concurrent;
-using System.Drawing;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-using UsbInputMapper.Core;
-using UsbInputMapper.Profiles;
-
-namespace UsbInputMapper.UI
-{
-    public class TrayApplicationContext : ApplicationContext
-    {
-        private NotifyIcon _trayIcon;
-        private MainForm _mainForm;
-
-        private RawInputManager _rawInputManager;
-        private ViGEmOutput _viGEmOutput;
-        private OutputDispatcher _dispatcher;
-        private ProfileManager _profileManager;
-        private ForegroundAppWatcher _appWatcher;
-
-        private ConcurrentDictionary<string, bool> _physicalKeysDown = new ConcurrentDictionary<string, bool>();
-        private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
-        private ConcurrentDictionary<string, bool> _toggleStates = new ConcurrentDictionary<string, bool>();
-        private ConcurrentDictionary<string, Tuple<int, long>> _macroStepStates = new ConcurrentDictionary<string, Tuple<int, long>>();
-
-        public TrayApplicationContext()
+private void RawInputManager_OnInputEvent(object sender, InputEvent e)
         {
-            InitializeCore();
-            InitializeTrayIcon();
-        }
-
-        private void InitializeCore()
-        {
-            _profileManager = new ProfileManager();
-            _profileManager.Load();
-
-            _appWatcher = new ForegroundAppWatcher();
-            _appWatcher.OnForegroundAppChanged += (s, appPath) => _profileManager.SwitchToAppProfile(appPath);
-            _appWatcher.Start();
-
-            _viGEmOutput = new ViGEmOutput();
-            _viGEmOutput.Initialize();
-            _dispatcher = new OutputDispatcher(_viGEmOutput);
-
-            _rawInputManager = new RawInputManager();
-            _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
-        }
-
-        private void RawInputManager_OnInputEvent(object sender, InputEvent e)
-        {
-            if (CaptureForm.IsCapturing)
-            {
-                CaptureForm.CurrentInstance?.ProcessInput(e);
-                return;
-            }
+            if (CaptureForm.IsCapturing) { CaptureForm.CurrentInstance?.ProcessInput(e); return; }
 
             int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
             string keyId = $"{e.Type}_{inputCode}";
@@ -63,173 +8,121 @@ namespace UsbInputMapper.UI
             if (e.IsKeyDown) _physicalKeysDown[keyId] = true;
             else _physicalKeysDown.TryRemove(keyId, out _);
 
-            var binding = FindBestMatchingBinding(e.DeviceIdentifier, e.Type, inputCode);
-            if (binding == null) return;
+            // ★修正: 該当するすべてのBindingを取得してループで全実行する
+            var bindings = FindAllMatchingBindings(e.DeviceIdentifier, e.Type, inputCode);
+            if (bindings.Count == 0) return;
 
-            string loopKey = $"{e.DeviceIdentifier}_{e.Type}_{inputCode}";
-
-            if (e.IsKeyDown)
+            foreach (var binding in bindings)
             {
-                if (binding.Condition == TriggerCondition.Release) return;
+                // Bindingごとに一意のループキーを作成（かぶり実行対応）
+                string loopKey = $"{e.DeviceIdentifier}_{e.Type}_{inputCode}_{binding.GetHashCode()}";
 
-                if (_activeLoops.ContainsKey(loopKey)) return;
-                var cts = new CancellationTokenSource();
-                _activeLoops[loopKey] = cts;
-
-                Task.Run(async () =>
+                // ホイール(4,5)は長押しやループの概念がないため、即時ワンショット実行
+                if (e.Type == 0 && (inputCode == 4 || inputCode == 5))
                 {
-                    try
+                    if (e.IsKeyDown)
                     {
-                        if (binding.Condition == TriggerCondition.Hold)
+                        ExecuteAction(binding.Action, true, CancellationToken.None, loopKey);
+                        ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
+                    }
+                    continue; // ホイールはここまで
+                }
+
+                if (e.IsKeyDown)
+                {
+                    if (binding.Condition == TriggerCondition.Release) continue;
+                    if (_activeLoops.ContainsKey(loopKey)) continue;
+
+                    var cts = new CancellationTokenSource();
+                    _activeLoops[loopKey] = cts;
+
+                    Task.Run(async () =>
+                    {
+                        try
                         {
-                            await Task.Delay(binding.ConditionParam, cts.Token);
-                            ExecuteAction(binding.Action, true, cts.Token, loopKey);
-                        }
-                        else if (binding.Condition == TriggerCondition.RapidFire)
-                        {
-                            while (!cts.Token.IsCancellationRequested)
+                            if (binding.Condition == TriggerCondition.Hold)
                             {
+                                await Task.Delay(binding.ConditionParam, cts.Token);
                                 ExecuteAction(binding.Action, true, cts.Token, loopKey);
-                                await Task.Delay(20);
-                                ExecuteAction(binding.Action, false, cts.Token, loopKey);
-                                await Task.Delay(Math.Max(10, binding.ConditionParam), cts.Token);
                             }
-                        }
-                        else
-                        {
-                            if (binding.Action.ActionType == ActionType.ToggleHold)
+                            else if (binding.Condition == TriggerCondition.RapidFire)
                             {
-                                bool currentState = _toggleStates.GetOrAdd(loopKey, false);
-                                _toggleStates[loopKey] = !currentState;
-                                _dispatcher.Dispatch(binding.Action, !currentState);
+                                while (!cts.Token.IsCancellationRequested)
+                                {
+                                    ExecuteAction(binding.Action, true, cts.Token, loopKey);
+                                    await Task.Delay(20);
+                                    ExecuteAction(binding.Action, false, cts.Token, loopKey);
+                                    await Task.Delay(Math.Max(10, binding.ConditionParam), cts.Token);
+                                }
                             }
                             else
                             {
-                                ExecuteAction(binding.Action, true, cts.Token, loopKey);
+                                if (binding.Action.ActionType == ActionType.ToggleHold)
+                                {
+                                    bool currentState = _toggleStates.GetOrAdd(loopKey, false);
+                                    _toggleStates[loopKey] = !currentState;
+                                    _dispatcher.Dispatch(binding.Action, !currentState);
+                                }
+                                else ExecuteAction(binding.Action, true, cts.Token, loopKey);
                             }
                         }
-                    }
-                    catch (TaskCanceledException) { }
-                }, cts.Token);
-            }
-            else
-            {
-                if (_activeLoops.TryRemove(loopKey, out var cts))
-                {
-                    cts.Cancel();
-                    cts.Dispose();
+                        catch (TaskCanceledException) { }
+                    }, cts.Token);
                 }
-
-                if (binding.Condition == TriggerCondition.Release)
+                else
                 {
-                    ExecuteAction(binding.Action, true, CancellationToken.None, loopKey);
-                    Thread.Sleep(20); 
-                    ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
-                }
-                else if (binding.Action.ActionType != ActionType.ToggleHold)
-                {
-                    ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
-                }
-            }
-        }
+                    if (_activeLoops.TryRemove(loopKey, out var cts)) { cts.Cancel(); cts.Dispose(); }
 
-        private UsbInputMapper.Profiles.Binding FindBestMatchingBinding(string deviceId, int inputType, int inputCode)
-        {
-            if (_profileManager.CurrentProfile == null) return null;
-            
-            var bindings = _profileManager.CurrentProfile.Bindings
-                .Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode)
-                .ToList();
-
-            if (bindings.Count == 0) return null;
-
-            // 登録されている全ての同時押し条件(SubTriggers)を満たしているものだけを抽出
-            var matchedBindings = bindings.Where(b => 
-                b.SubTriggers == null || 
-                b.SubTriggers.All(st => _physicalKeysDown.ContainsKey($"{st.Type}_{st.Code}"))
-            ).ToList();
-
-            // より多くの同時押し条件を設定しているアイテムを最優先で発動させる
-            return matchedBindings.OrderByDescending(b => b.SubTriggers?.Count ?? 0).FirstOrDefault();
-        }
-
-        private void ExecuteAction(ActionDef action, bool isDown, CancellationToken token, string loopKey)
-        {
-            if (action.ActionType == ActionType.Macro && action.MacroSteps.Count > 0)
-            {
-                if (!isDown) return; 
-                Task.Run(() => {
-                    var steps = action.MacroSteps;
-                    if (action.PlaybackMode == MacroPlaybackMode.Sequence)
-                        foreach (var step in steps) PlayMacroStep(step);
-                    else if (action.PlaybackMode == MacroPlaybackMode.Hold)
-                        foreach (var step in steps) { if (token.IsCancellationRequested) break; PlayMacroStep(step); }
-                    else if (action.PlaybackMode == MacroPlaybackMode.Repeat)
-                        while (!token.IsCancellationRequested)
-                            foreach (var step in steps) { if (token.IsCancellationRequested) break; PlayMacroStep(step); }
-                    else if (action.PlaybackMode == MacroPlaybackMode.StepByStep)
+                    if (binding.Condition == TriggerCondition.Release)
                     {
-                        int currentIndex = 0; long now = Environment.TickCount;
-                        if (_macroStepStates.TryGetValue(loopKey, out var state) && (now - state.Item2) < action.StepTimeoutMs)
-                            currentIndex = (state.Item1 + 1) % steps.Count;
-                        _macroStepStates[loopKey] = new Tuple<int, long>(currentIndex, now);
-                        PlayMacroStep(steps[currentIndex]);
+                        ExecuteAction(binding.Action, true, CancellationToken.None, loopKey);
+                        Thread.Sleep(20);
+                        ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
                     }
-                });
-                return;
-            }
-            else if (action.ActionType == ActionType.MouseContinuousMove)
-            {
-                if (isDown)
-                {
-                    Task.Run(async () => {
-                        while (!token.IsCancellationRequested)
-                        {
-                            var tempDef = new ActionDef { ActionType = ActionType.MouseMove, MouseX = action.MouseX, MouseY = action.MouseY, IsAbsolutePosition = false };
-                            _dispatcher.Dispatch(tempDef, true);
-                            await Task.Delay(16);
-                        }
-                    });
+                    else if (binding.Action.ActionType != ActionType.ToggleHold)
+                    {
+                        ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
+                    }
                 }
-                return;
             }
-            _dispatcher.Dispatch(action, isDown);
         }
 
-        private void PlayMacroStep(MacroStep step)
+        private List<UsbInputMapper.Profiles.Binding> FindAllMatchingBindings(string deviceId, int inputType, int inputCode)
+        {
+            if (_profileManager.CurrentProfile == null) return new List<UsbInputMapper.Profiles.Binding>();
+            return _profileManager.CurrentProfile.Bindings
+                .Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode)
+                .Where(b => b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey($"{st.Type}_{st.Code}")))
+                .ToList();
+        }
+
+        private void PlayMacroStep(MacroStep step, MacroPlaybackMode currentMode)
         {
             Thread.Sleep(step.DelayMs);
             var tempDef = new ActionDef { 
                 ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr,
-                MouseX = step.MouseX, MouseY = step.MouseY, IsAbsolutePosition = step.IsAbsolutePosition
+                MouseX = step.MouseX, MouseY = step.MouseY
             };
-            _dispatcher.Dispatch(tempDef, true);
-            Thread.Sleep(20); 
-            _dispatcher.Dispatch(tempDef, false);
-        }
 
-        private void InitializeTrayIcon()
-        {
-            _trayIcon = new NotifyIcon { Icon = SystemIcons.Application, Text = "UsbInputMapper", Visible = true };
-            ContextMenuStrip menu = new ContextMenuStrip();
-            menu.Items.Add("設定を開く", null, ShowMainForm);
-            menu.Items.Add("終了", null, ExitApp);
-            _trayIcon.ContextMenuStrip = menu;
-            _trayIcon.DoubleClick += ShowMainForm;
-        }
+            // 競合状態（ステップ再生以外でDown/Upが指定された場合）は強制的にTap扱いにする
+            StepPressState state = step.PressState;
+            if (currentMode != MacroPlaybackMode.StepByStep && (state == StepPressState.Down || state == StepPressState.Up))
+            {
+                state = StepPressState.Tap;
+            }
 
-        private void ShowMainForm(object sender, EventArgs e)
-        {
-            if (_mainForm == null || _mainForm.IsDisposed) _mainForm = new MainForm(_profileManager);
-            _mainForm.Show(); _mainForm.Activate();
+            if (state == StepPressState.Down)
+            {
+                _dispatcher.Dispatch(tempDef, true);
+            }
+            else if (state == StepPressState.Up)
+            {
+                _dispatcher.Dispatch(tempDef, false);
+            }
+            else // Tap
+            {
+                _dispatcher.Dispatch(tempDef, true);
+                Thread.Sleep(20); 
+                _dispatcher.Dispatch(tempDef, false);
+            }
         }
-
-        private void ExitApp(object sender, EventArgs e)
-        {
-            _trayIcon.Visible = false;
-            _rawInputManager?.Dispose();
-            _viGEmOutput?.Dispose();
-            Application.Exit();
-        }
-    }
-}

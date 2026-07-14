@@ -13,16 +13,13 @@ namespace UsbInputMapper.Profiles
     public class Binding
     {
         public string Name { get; set; }
-
         public string DeviceIdentifier { get; set; }
         
-        public int InputType { get; set; } // 0:Mouse, 1:Keyboard
+        // 0:Mouse, 1:Keyboard, 2:HID(独自ボタン)
+        public int InputType { get; set; } 
         public int InputCode { get; set; } 
         
-        // ★追加: どのレイヤーにいる時だけ発動するか (0=通常, 1〜5=各レイヤー, -1=どこでも)
         public int TargetLayer { get; set; }
-
-        // ★追加: 同時押しの条件 (0=なし, その他=一緒に押されている必要があるキーのInputCode)
         public int SubInputType { get; set; }
         public int SubInputCode { get; set; }
 
@@ -34,14 +31,13 @@ namespace UsbInputMapper.Profiles
         public Binding()
         {
             Name = "新規アイテム";
-            TargetLayer = 0; // デフォルトは通常レイヤー
-            SubInputCode = 0; // 同時押しなし
+            TargetLayer = 0;
+            SubInputCode = 0;
             Condition = TriggerCondition.Normal;
             ConditionParam = 0;
             Action = new ActionDef();
         }
 
-        // リスト上で「Aキー」などの分かりやすい文字にするメソッド
         public string GetTriggerString()
         {
             string mainTrigger = GetCodeName(InputType, InputCode);
@@ -53,23 +49,23 @@ namespace UsbInputMapper.Profiles
 
         public static string GetCodeName(int type, int code)
         {
-            if (type == 1) // Keyboard
+            if (type == 1) 
             {
                 return ((Keys)code).ToString();
             }
-            else if (type == 0) // Mouse
+            else if (type == 0) 
             {
                 switch (code)
                 {
-                    case 1: return "左クリック";
-                    case 2: return "右クリック";
-                    case 3: return "中クリック";
-                    case 4: return "ホイール上";
-                    case 5: return "ホイール下";
-                    case 6: return "サイド進む(X1)";
-                    case 7: return "サイド戻る(X2)";
+                    case 1: return "左クリック"; case 2: return "右クリック"; case 3: return "中クリック";
+                    case 4: return "ホイール上"; case 5: return "ホイール下";
+                    case 6: return "サイド進む(X1)"; case 7: return "サイド戻る(X2)";
                     default: return $"MouseBtn:{code}";
                 }
+            }
+            else if (type == 2) // ★追加: HID生データ（特殊ボタン）
+            {
+                return $"特殊ボタン({code})";
             }
             return "Unknown";
         }

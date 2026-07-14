@@ -36,7 +36,7 @@ namespace UsbInputMapper.UI
                 return;
             }
 
-            // キーボードまたはマウスのダウンイベントを取得
+            // キーボード、マウス、特殊HIDボタンのダウンイベントを取得
             if (evt.IsKeyDown)
             {
                 CapturedEvent = evt;

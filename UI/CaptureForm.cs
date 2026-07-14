@@ -25,21 +25,22 @@ namespace UsbInputMapper.UI
         private void CaptureForm_FormClosed(object sender, FormClosedEventArgs e)
         {
             IsCapturing = false;
-            CurrentInstance = null;
+            if (CurrentInstance == this) CurrentInstance = null;
         }
 
-        public void ProcessInput(InputEvent evt)
+        // RawInputManagerから呼ばれるメソッド
+        public void ProcessInput(InputEvent e)
         {
             if (this.InvokeRequired)
             {
-                this.BeginInvoke(new Action(() => ProcessInput(evt)));
+                this.Invoke(new Action(() => ProcessInput(e)));
                 return;
             }
 
-            // キーボード、マウス、特殊HIDボタンのダウンイベントを取得
-            if (evt.IsKeyDown)
+            // 押された瞬間のみをキャプチャし、離された時の信号は無視して確実に入力を捉える
+            if (e.IsKeyDown)
             {
-                CapturedEvent = evt;
+                CapturedEvent = e;
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             }

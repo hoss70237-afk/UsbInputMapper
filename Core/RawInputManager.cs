@@ -19,8 +19,6 @@ namespace UsbInputMapper.Core
 
         private void RegisterInputDevices()
         {
-            // 1種類でも登録に失敗すると他のデバイスの監視まで巻き添えで失敗するのを防ぐため、
-            // 1つずつ個別に安全に登録する
             void TryRegister(ushort page, ushort usage)
             {
                 var rid = new RawInputNative.RAWINPUTDEVICE[1];
@@ -29,16 +27,22 @@ namespace UsbInputMapper.Core
                 rid[0].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY;
                 rid[0].hwndTarget = this.Handle;
 
-                // 失敗した場合は無視して次へ進む
                 RawInputNative.RegisterRawInputDevices(rid, 1, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));
             }
 
-            TryRegister(0x01, 0x02); // マウス
-            TryRegister(0x01, 0x06); // キーボード
-            TryRegister(0x0C, 0x01); // コンシューマーコントロール (メディアキー、多ボタンマウス等)
-            TryRegister(0x01, 0x05); // ゲームパッド
-            TryRegister(0x01, 0x04); // ジョイスティック
-            TryRegister(0x01, 0x00); // その他の特殊HID
+            // 標準的なデバイス
+            TryRegister(0x01, 0x02); // Mouse
+            TryRegister(0x01, 0x06); // Keyboard
+            TryRegister(0x0C, 0x01); // Consumer Control (メディアキー、一部の多ボタン)
+            TryRegister(0x01, 0x05); // Gamepad
+            TryRegister(0x01, 0x04); // Joystick
+            TryRegister(0x01, 0x00); // Generic Desktop (その他の生HID)
+
+            // ゲーミングマウスなどの「ベンダー固有 (Vendor Defined)」の通信を傍受するための拡張
+            TryRegister(0xFF00, 0x01);
+            TryRegister(0xFF00, 0x02);
+            TryRegister(0xFF01, 0x01);
+            TryRegister(0xFF01, 0x02);
         }
 
         protected override void WndProc(ref Message m)
@@ -77,20 +81,18 @@ namespace UsbInputMapper.Core
                     {
                         var ms = (RawInputNative.RAWMOUSE)Marshal.PtrToStructure(pRawData, typeof(RawInputNative.RAWMOUSE));
                         
-                        // 正しいフラグ領域からマウスの全ボタンのクリックを抽出
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0001, 0x0002, 1); // 左クリック
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0004, 0x0008, 2); // 右クリック
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0010, 0x0020, 3); // 中クリック
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0001, 0x0002, 1); // 左
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0004, 0x0008, 2); // 右
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0010, 0x0020, 3); // 中
                         EmitMouseEvent(evt, ms.usButtonFlags, 0x0040, 0x0080, 6); // サイド(進む)
                         EmitMouseEvent(evt, ms.usButtonFlags, 0x0100, 0x0200, 7); // サイド(戻る)
 
-                        if ((ms.usButtonFlags & 0x0400) != 0) // ホイール回転
+                        if ((ms.usButtonFlags & 0x0400) != 0) // ホイール
                         {
                             evt.MouseButtonFlags = (uint)(ms.usButtonData > 0 ? 4 : 5);
                             evt.IsKeyDown = true;
                             OnInputEvent?.Invoke(this, evt);
                             
-                            // ホイールは押された直後に離したことにしてイベントを完了させる
                             InputEvent upEvt = new InputEvent { DeviceIdentifier = evt.DeviceIdentifier, Type = evt.Type, MouseButtonFlags = evt.MouseButtonFlags, IsKeyDown = false };
                             OnInputEvent?.Invoke(this, upEvt);
                         }
@@ -106,30 +108,35 @@ namespace UsbInputMapper.Core
                             IntPtr pHidData = new IntPtr(pRawData.ToInt64() + Marshal.SizeOf(typeof(RawInputNative.RAWHID)));
                             Marshal.Copy(pHidData, rawData, 0, size);
 
-                            if (_lastHidData.TryGetValue(header.hDevice, out byte[] lastData) && lastData.Length == size)
+                            // ★修正: 初回時(lastDataが無い時)は、すべて0の配列と比較することで初回の押し込みを検知する
+                            if (!_lastHidData.TryGetValue(header.hDevice, out byte[] lastData) || lastData.Length != size)
                             {
-                                for (int i = 0; i < size; i++)
+                                lastData = new byte[size];
+                            }
+
+                            for (int i = 0; i < size; i++)
+                            {
+                                if (rawData[i] != lastData[i])
                                 {
-                                    if (rawData[i] != lastData[i])
+                                    byte diff = (byte)(rawData[i] ^ lastData[i]);
+                                    for (int b = 0; b < 8; b++)
                                     {
-                                        byte diff = (byte)(rawData[i] ^ lastData[i]);
-                                        for (int b = 0; b < 8; b++)
+                                        if ((diff & (1 << b)) != 0)
                                         {
-                                            if ((diff & (1 << b)) != 0)
+                                            int customCode = (i << 8) | b;
+                                            bool isDown = (rawData[i] & (1 << b)) != 0;
+                                            InputEvent hidEvt = new InputEvent 
                                             {
-                                                int customCode = (i << 8) | b;
-                                                bool isDown = (rawData[i] & (1 << b)) != 0;
-                                                InputEvent hidEvt = new InputEvent 
-                                                {
-                                                    DeviceIdentifier = evt.DeviceIdentifier, Type = 2,
-                                                    MouseButtonFlags = (uint)customCode, IsKeyDown = isDown, HidData = rawData
-                                                };
-                                                OnInputEvent?.Invoke(this, hidEvt);
-                                            }
+                                                DeviceIdentifier = evt.DeviceIdentifier, Type = 2,
+                                                MouseButtonFlags = (uint)customCode, IsKeyDown = isDown, HidData = rawData
+                                            };
+                                            OnInputEvent?.Invoke(this, hidEvt);
                                         }
                                     }
                                 }
                             }
+                            
+                            // 状態を保存
                             _lastHidData[header.hDevice] = (byte[])rawData.Clone();
                         }
                     }

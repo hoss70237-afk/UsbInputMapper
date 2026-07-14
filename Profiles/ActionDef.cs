@@ -15,22 +15,19 @@ namespace UsbInputMapper.Profiles
         XboxController,
         AppLaunch,
         Macro,
-        LayerShift,
         ToggleHold
     }
 
     public enum MacroPlaybackMode
     {
-        Sequence,   // 1. 一括再生 (1回押すとキーを離しても最後まで再生)
-        Hold,       // 2. 順次再生 (押している間のみ再生し、離すと中断)
-        Repeat,     // 3. リピート (押している間ループ再生)
-        StepByStep  // 4. ステップ (押す度に1つ進む、タイムアウトでリセット)
+        Sequence, Hold, Repeat, StepByStep
     }
 
     public class ActionDef
     {
         public ActionType ActionType { get; set; }
         public int ArgumentNum { get; set; }
+        public List<int> MultipleKeys { get; set; } // ★追加: 同時押しキーボード出力用
         public string ArgumentStr { get; set; }
         public string ArgumentExtraStr { get; set; }
         public int MouseX { get; set; }
@@ -43,6 +40,7 @@ namespace UsbInputMapper.Profiles
 
         public ActionDef()
         {
+            MultipleKeys = new List<int>();
             MacroSteps = new List<MacroStep>();
             PlaybackMode = MacroPlaybackMode.Sequence;
             StepTimeoutMs = 1000;
@@ -52,15 +50,16 @@ namespace UsbInputMapper.Profiles
         {
             switch (ActionType)
             {
-                case ActionType.Keyboard: return $"KB Key: {ArgumentNum}";
+                case ActionType.Keyboard: 
+                    if (MultipleKeys.Count > 1) return "KB 同時押し (" + MultipleKeys.Count + "キー)";
+                    return $"KB Key: {ArgumentNum}";
                 case ActionType.AppLaunch: return $"起動: {System.IO.Path.GetFileName(ArgumentStr)}";
                 case ActionType.XboxController: return $"Xbox Btn: {ArgumentNum}";
                 case ActionType.Macro: return $"マクロ ({MacroSteps.Count} steps, {PlaybackMode})";
-                case ActionType.MouseMove: return $"マウス移動 ({(IsAbsolutePosition ? "絶対" : "相対")}) X:{MouseX} Y:{MouseY}";
+                case ActionType.MouseMove: return $"マウス移動 X:{MouseX} Y:{MouseY}";
                 case ActionType.MouseContinuousMove: return $"マウス連続移動 X:{MouseX} Y:{MouseY}";
                 case ActionType.MouseClick: return $"マウスクリック: {ArgumentNum}";
-                case ActionType.LayerShift: return $"レイヤー {ArgumentNum} へシフト";
-                case ActionType.ToggleHold: return $"トグル維持 (KB Key: {ArgumentNum})";
+                case ActionType.ToggleHold: return $"トグル維持";
                 default: return ActionType.ToString();
             }
         }

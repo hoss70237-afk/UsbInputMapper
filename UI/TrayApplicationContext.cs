@@ -18,18 +18,13 @@ namespace UsbInputMapper.UI
         private RawInputManager _rawInputManager;
         private ViGEmOutput _viGEmOutput;
         private OutputDispatcher _dispatcher;
-
         private ProfileManager _profileManager;
         private ForegroundAppWatcher _appWatcher;
 
-        // --- 状態管理 ---
         private int _currentLayer = 0; 
         private ConcurrentDictionary<string, bool> _physicalKeysDown = new ConcurrentDictionary<string, bool>();
-        
         private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
         private ConcurrentDictionary<string, bool> _toggleStates = new ConcurrentDictionary<string, bool>();
-        
-        // ステップマクロ用の状態管理 (キーID => [現在のステップ番号, 最終更新時刻のTick])
         private ConcurrentDictionary<string, Tuple<int, long>> _macroStepStates = new ConcurrentDictionary<string, Tuple<int, long>>();
 
         public TrayApplicationContext()
@@ -66,7 +61,6 @@ namespace UsbInputMapper.UI
             int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
             string keyId = $"{e.Type}_{inputCode}";
 
-            // 物理キーの状態を更新
             if (e.IsKeyDown) _physicalKeysDown[keyId] = true;
             else _physicalKeysDown.TryRemove(keyId, out _);
 
@@ -77,6 +71,9 @@ namespace UsbInputMapper.UI
 
             if (e.IsKeyDown)
             {
+                // ★追加: 離した時がトリガーの場合は、押した時は何もしない
+                if (binding.Condition == TriggerCondition.Release) return;
+
                 if (binding.Action.ActionType == ActionType.LayerShift)
                 {
                     _currentLayer = binding.Action.ArgumentNum;
@@ -137,7 +134,14 @@ namespace UsbInputMapper.UI
                     cts.Dispose();
                 }
 
-                if (binding.Action.ActionType != ActionType.ToggleHold)
+                // ★追加: 離した時がトリガーの場合、ここでアクションを発動してすぐにOffにする
+                if (binding.Condition == TriggerCondition.Release)
+                {
+                    ExecuteAction(binding.Action, true, CancellationToken.None, loopKey);
+                    Thread.Sleep(20); // ゲーム側が認識できる程度の時間
+                    ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
+                }
+                else if (binding.Action.ActionType != ActionType.ToggleHold)
                 {
                     ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
                 }
@@ -147,14 +151,10 @@ namespace UsbInputMapper.UI
         private UsbInputMapper.Profiles.Binding FindBestMatchingBinding(string deviceId, int inputType, int inputCode)
         {
             if (_profileManager.CurrentProfile == null) return null;
-
             var bindingsInLayer = _profileManager.CurrentProfile.Bindings
                 .Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode)
-                .Where(b => b.TargetLayer == 0 || b.TargetLayer == _currentLayer)
-                .ToList();
-
+                .Where(b => b.TargetLayer == 0 || b.TargetLayer == _currentLayer).ToList();
             if (bindingsInLayer.Count == 0) return null;
-
             foreach (var b in bindingsInLayer.OrderByDescending(b => b.SubInputCode > 0 ? 1 : 0))
             {
                 if (b.SubInputCode > 0)
@@ -167,59 +167,25 @@ namespace UsbInputMapper.UI
             return null;
         }
 
-        // --- 強力なマクロエンジン・連続移動エンジン ---
         private void ExecuteAction(ActionDef action, bool isDown, CancellationToken token, string loopKey)
         {
             if (action.ActionType == ActionType.Macro && action.MacroSteps.Count > 0)
             {
-                if (!isDown) return; // マクロ起動のトリガーはダウンのみ
-
+                if (!isDown) return; 
                 Task.Run(() => {
                     var steps = action.MacroSteps;
-
-                    // 1. 一括再生 (最後まで必ず再生)
                     if (action.PlaybackMode == MacroPlaybackMode.Sequence)
-                    {
-                        foreach (var step in steps)
-                        {
-                            PlayMacroStep(step);
-                        }
-                    }
-                    // 2. 順次再生 (ボタンを離したら中断)
+                        foreach (var step in steps) PlayMacroStep(step);
                     else if (action.PlaybackMode == MacroPlaybackMode.Hold)
-                    {
-                        foreach (var step in steps)
-                        {
-                            if (token.IsCancellationRequested) break;
-                            PlayMacroStep(step);
-                        }
-                    }
-                    // 3. リピート再生 (ボタンを押している間ループ)
+                        foreach (var step in steps) { if (token.IsCancellationRequested) break; PlayMacroStep(step); }
                     else if (action.PlaybackMode == MacroPlaybackMode.Repeat)
-                    {
                         while (!token.IsCancellationRequested)
-                        {
-                            foreach (var step in steps)
-                            {
-                                if (token.IsCancellationRequested) break;
-                                PlayMacroStep(step);
-                            }
-                        }
-                    }
-                    // 4. ステップ再生 (押すたびに1つ進む)
+                            foreach (var step in steps) { if (token.IsCancellationRequested) break; PlayMacroStep(step); }
                     else if (action.PlaybackMode == MacroPlaybackMode.StepByStep)
                     {
-                        int currentIndex = 0;
-                        long now = Environment.TickCount;
-
-                        if (_macroStepStates.TryGetValue(loopKey, out var state))
-                        {
-                            if ((now - state.Item2) < action.StepTimeoutMs)
-                            {
-                                currentIndex = (state.Item1 + 1) % steps.Count;
-                            }
-                        }
-                        
+                        int currentIndex = 0; long now = Environment.TickCount;
+                        if (_macroStepStates.TryGetValue(loopKey, out var state) && (now - state.Item2) < action.StepTimeoutMs)
+                            currentIndex = (state.Item1 + 1) % steps.Count;
                         _macroStepStates[loopKey] = new Tuple<int, long>(currentIndex, now);
                         PlayMacroStep(steps[currentIndex]);
                     }
@@ -235,13 +201,12 @@ namespace UsbInputMapper.UI
                         {
                             var tempDef = new ActionDef { ActionType = ActionType.MouseMove, MouseX = action.MouseX, MouseY = action.MouseY, IsAbsolutePosition = false };
                             _dispatcher.Dispatch(tempDef, true);
-                            await Task.Delay(16); // 約60FPSで滑らかに移動
+                            await Task.Delay(16);
                         }
                     });
                 }
                 return;
             }
-            
             _dispatcher.Dispatch(action, isDown);
         }
 
@@ -252,10 +217,8 @@ namespace UsbInputMapper.UI
                 ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, ArgumentStr = step.ArgumentStr,
                 MouseX = step.MouseX, MouseY = step.MouseY, IsAbsolutePosition = step.IsAbsolutePosition
             };
-            
-            // 押し・離しを再現
             _dispatcher.Dispatch(tempDef, true);
-            Thread.Sleep(20); // ゲームが認識できる最低限の打鍵時間
+            Thread.Sleep(20); 
             _dispatcher.Dispatch(tempDef, false);
         }
 
@@ -272,8 +235,7 @@ namespace UsbInputMapper.UI
         private void ShowMainForm(object sender, EventArgs e)
         {
             if (_mainForm == null || _mainForm.IsDisposed) _mainForm = new MainForm(_profileManager);
-            _mainForm.Show();
-            _mainForm.Activate();
+            _mainForm.Show(); _mainForm.Activate();
         }
 
         private void ExitApp(object sender, EventArgs e)

@@ -63,9 +63,12 @@ namespace UsbInputMapper.Profiles
                     default: return $"MouseBtn:{code}";
                 }
             }
-            else if (type == 2) // ★追加: HID生データ（特殊ボタン）
+            else if (type == 2)
             {
-                return $"特殊ボタン({code})";
+                // バイトのインデックスとビットのインデックスに復元して表示
+                int byteIndex = code >> 8;
+                int bitIndex = code & 0xFF;
+                return $"HID特殊ボタン (Byte {byteIndex}, Bit {bitIndex})";
             }
             return "Unknown";
         }

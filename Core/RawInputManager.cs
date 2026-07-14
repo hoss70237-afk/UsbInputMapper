@@ -9,6 +9,9 @@ namespace UsbInputMapper.Core
     {
         public event EventHandler<InputEvent> OnInputEvent;
         private readonly Dictionary<IntPtr, DeviceInfo> _devices = new Dictionary<IntPtr, DeviceInfo>();
+        
+        // HIDデバイスの前回の生データを保持して変化を検知する
+        private readonly Dictionary<IntPtr, byte[]> _lastHidData = new Dictionary<IntPtr, byte[]>();
 
         public RawInputManager()
         {
@@ -27,7 +30,7 @@ namespace UsbInputMapper.Core
             }
             rid[0].usUsage = 0x02; // Mouse
             rid[1].usUsage = 0x06; // Keyboard
-            rid[2].usUsage = 0x05; // Gamepad
+            rid[2].usUsage = 0x00; // Generic HID (特殊ボタンマウス等の生データを全て拾うためにUsage 0を指定)
 
             RawInputNative.RegisterRawInputDevices(rid, 3, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));
         }
@@ -61,21 +64,18 @@ namespace UsbInputMapper.Core
                         var kb = (RawInputNative.RAWKEYBOARD)Marshal.PtrToStructure(pRawData, typeof(RawInputNative.RAWKEYBOARD));
                         evt.VKey = kb.VKey;
                         evt.IsKeyDown = (kb.Message == 0x0100 || kb.Message == 0x0104);
-                        if (evt.VKey == 255) return; // 無効キー無視
+                        if (evt.VKey == 255) return;
                         OnInputEvent?.Invoke(this, evt);
                     }
                     else if (header.dwType == RawInputNative.RIM_TYPEMOUSE)
                     {
                         var ms = (RawInputNative.RAWMOUSE)Marshal.PtrToStructure(pRawData, typeof(RawInputNative.RAWMOUSE));
-                        
-                        // マウスボタンを正規化された InputCode に変換して発行
-                        EmitMouseEvent(evt, ms.usFlags, 0x0001, 0x0002, 1); // Left
-                        EmitMouseEvent(evt, ms.usFlags, 0x0004, 0x0008, 2); // Right
-                        EmitMouseEvent(evt, ms.usFlags, 0x0010, 0x0020, 3); // Middle
-                        EmitMouseEvent(evt, ms.usFlags, 0x0040, 0x0080, 6); // XBtn1
-                        EmitMouseEvent(evt, ms.usFlags, 0x0100, 0x0200, 7); // XBtn2
+                        EmitMouseEvent(evt, ms.usFlags, 0x0001, 0x0002, 1);
+                        EmitMouseEvent(evt, ms.usFlags, 0x0004, 0x0008, 2);
+                        EmitMouseEvent(evt, ms.usFlags, 0x0010, 0x0020, 3);
+                        EmitMouseEvent(evt, ms.usFlags, 0x0040, 0x0080, 6);
+                        EmitMouseEvent(evt, ms.usFlags, 0x0100, 0x0200, 7);
 
-                        // ホイール (ダウン・アップがないので Down として送る)
                         if ((ms.usFlags & 0x0400) != 0)
                         {
                             short wheelData = (short)ms.ulButtons;
@@ -83,6 +83,36 @@ namespace UsbInputMapper.Core
                             evt.IsKeyDown = true;
                             OnInputEvent?.Invoke(this, evt);
                         }
+                    }
+                    else if (header.dwType == RawInputNative.RIM_TYPEHID)
+                    {
+                        var hid = (RawInputNative.RAWHID)Marshal.PtrToStructure(pRawData, typeof(RawInputNative.RAWHID));
+                        int size = (int)(hid.dwSizeHid * hid.dwCount);
+                        byte[] rawData = new byte[size];
+                        IntPtr pHidData = new IntPtr(pRawData.ToInt64() + Marshal.SizeOf(typeof(RawInputNative.RAWHID)));
+                        Marshal.Copy(pHidData, rawData, 0, size);
+
+                        // 特殊ボタンの変化を検知
+                        if (_lastHidData.TryGetValue(header.hDevice, out byte[] lastData) && lastData.Length == size)
+                        {
+                            for (int i = 0; i < size; i++)
+                            {
+                                if (rawData[i] != lastData[i])
+                                {
+                                    // 変化があったバイトのインデックスと値を組み合わせて一意のInputCodeを作る
+                                    int customCode = (i << 8) | rawData[i];
+                                    
+                                    evt.Type = 2; // Type=2 は特殊HIDボタン
+                                    evt.MouseButtonFlags = (uint)customCode;
+                                    // 値が0に戻ったらキーアップとみなす簡易判定
+                                    evt.IsKeyDown = (rawData[i] != 0);
+                                    
+                                    OnInputEvent?.Invoke(this, evt);
+                                    break; // 同時に複数ボタンが押された場合は先頭を優先
+                                }
+                            }
+                        }
+                        _lastHidData[header.hDevice] = rawData;
                     }
                 }
             }

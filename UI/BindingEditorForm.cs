@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 using UsbInputMapper.Profiles;
 
@@ -24,22 +26,20 @@ namespace UsbInputMapper.UI
             {
                 ResultBinding = existingBinding;
                 txtName.Text = existingBinding.Name;
+                UpdateMainTriggerLabel();
+                
+                if (ResultBinding.SubTriggers != null)
+                {
+                    foreach (var st in ResultBinding.SubTriggers) lstSubTriggers.Items.Add(st);
+                }
+
                 cmbCondition.SelectedIndex = (int)existingBinding.Condition;
                 numConditionParam.Value = existingBinding.ConditionParam;
                 
-                numLayer.Value = existingBinding.TargetLayer;
-                
-                // 同時押し設定の復元（キーボード前提の簡易UI）
-                if (existingBinding.SubInputCode > 0 && existingBinding.SubInputType == 1)
-                {
-                    chkCombo.Checked = true;
-                    SetComboTarget(existingBinding.SubInputCode);
-                }
-                
                 cmbActionType.SelectedItem = existingBinding.Action.ActionType;
-                SetOutputTarget(existingBinding.Action.ActionType, existingBinding.Action.ArgumentNum);
+                SetOutputTarget(existingBinding.Action);
+                
                 txtAppPath.Text = existingBinding.Action.ArgumentStr;
-
                 numMouseX.Value = existingBinding.Action.MouseX;
                 numMouseY.Value = existingBinding.Action.MouseY;
                 chkAbsolute.Checked = existingBinding.Action.IsAbsolutePosition;
@@ -49,7 +49,6 @@ namespace UsbInputMapper.UI
                 ResultBinding = new UsbInputMapper.Profiles.Binding();
                 cmbCondition.SelectedIndex = 0;
                 cmbActionType.SelectedIndex = 1;
-                numLayer.Value = 0;
             }
         }
 
@@ -70,41 +69,58 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(ActionType.XboxController);
             cmbActionType.Items.Add(ActionType.AppLaunch);
             cmbActionType.Items.Add(ActionType.ToggleHold);
-            cmbActionType.Items.Add(ActionType.LayerShift);
             cmbActionType.Items.Add(ActionType.Macro);
-
-            // コンボ用（修飾キー系を中心に）
-            cmbComboKey.Items.Add(new ComboItem { Text = "Ctrl", Value = 162 });
-            cmbComboKey.Items.Add(new ComboItem { Text = "Shift", Value = 160 });
-            cmbComboKey.Items.Add(new ComboItem { Text = "Alt", Value = 164 });
-            foreach (Keys key in Enum.GetValues(typeof(Keys)))
-                cmbComboKey.Items.Add(new ComboItem { Text = key.ToString(), Value = (int)key });
-            
-            cmbComboKey.SelectedIndex = 0;
         }
 
-        private void chkCombo_CheckedChanged(object sender, EventArgs e)
+        private void UpdateMainTriggerLabel()
         {
-            cmbComboKey.Enabled = chkCombo.Checked;
+            lblMainTrigger.Text = $"メイン入力: {UsbInputMapper.Profiles.Binding.GetCodeName(ResultBinding.InputType, ResultBinding.InputCode)}";
         }
 
-        private void SetComboTarget(int value)
+        private void btnReCaptureMain_Click(object sender, EventArgs e)
         {
-            for (int i = 0; i < cmbComboKey.Items.Count; i++)
+            using (var capture = new CaptureForm())
             {
-                if (((ComboItem)cmbComboKey.Items[i]).Value == value)
+                if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedEvent != null)
                 {
-                    cmbComboKey.SelectedIndex = i;
-                    break;
+                    var evt = capture.CapturedEvent;
+                    ResultBinding.DeviceIdentifier = evt.DeviceIdentifier;
+                    ResultBinding.InputType = evt.Type;
+                    ResultBinding.InputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags;
+                    UpdateMainTriggerLabel();
                 }
             }
+        }
+
+        private void btnAddSubTrigger_Click(object sender, EventArgs e)
+        {
+            using (var capture = new CaptureForm())
+            {
+                if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedEvent != null)
+                {
+                    var evt = capture.CapturedEvent;
+                    var key = new TriggerKey
+                    {
+                        DeviceIdentifier = evt.DeviceIdentifier,
+                        Type = evt.Type,
+                        Code = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags
+                    };
+                    lstSubTriggers.Items.Add(key);
+                }
+            }
+        }
+
+        private void btnRemoveSubTrigger_Click(object sender, EventArgs e)
+        {
+            if (lstSubTriggers.SelectedIndex >= 0)
+                lstSubTriggers.Items.RemoveAt(lstSubTriggers.SelectedIndex);
         }
 
         private void cmbCondition_SelectedIndexChanged(object sender, EventArgs e)
         {
             int idx = cmbCondition.SelectedIndex;
-            lblParam.Visible = (idx > 0);
-            numConditionParam.Visible = (idx > 0);
+            lblParam.Visible = (idx == 1 || idx == 2);
+            numConditionParam.Visible = (idx == 1 || idx == 2);
             if (idx == 1) lblParam.Text = "長押し時間 (ms):";
             if (idx == 2) lblParam.Text = "連打間隔 (ms):";
         }
@@ -125,6 +141,8 @@ namespace UsbInputMapper.UI
                 case ActionType.Keyboard:
                 case ActionType.ToggleHold:
                     cmbKeyButton.Visible = true;
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "(None)", Value = 0 });
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "実際に入力 (同時押し対応)...", Value = -1 }); // ★追加
                     foreach (Keys key in Enum.GetValues(typeof(Keys)))
                         cmbKeyButton.Items.Add(new ComboItem { Text = key.ToString(), Value = (int)key });
                     break;
@@ -156,27 +174,57 @@ namespace UsbInputMapper.UI
                 case ActionType.Macro:
                     btnEditMacro.Visible = true;
                     break;
-                case ActionType.LayerShift:
-                    cmbKeyButton.Visible = true;
-                    for (int i = 1; i <= 5; i++)
-                        cmbKeyButton.Items.Add(new ComboItem { Text = $"レイヤー {i} に切り替え", Value = i });
-                    break;
             }
 
             if (cmbKeyButton.Items.Count > 0) cmbKeyButton.SelectedIndex = 0;
             
             if (ResultBinding != null && ResultBinding.Action != null && ResultBinding.Action.ActionType == type)
             {
-                SetOutputTarget(type, ResultBinding.Action.ArgumentNum);
+                SetOutputTarget(ResultBinding.Action);
             }
         }
 
-        private void SetOutputTarget(ActionType type, int value)
+        private void cmbKeyButton_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value == -1) // 実際に入力...
+            {
+                using (var capture = new CaptureForm(CaptureMode.MultiKeyboard))
+                {
+                    if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedKeys.Count > 0)
+                    {
+                        ResultBinding.Action.MultipleKeys = new List<int>(capture.CapturedKeys);
+                        string keysStr = string.Join(" + ", capture.CapturedKeys.Select(k => ((Keys)k).ToString()));
+                        var customItem = new ComboItem { Text = $"[キャプチャ] {keysStr}", Value = -2 };
+                        cmbKeyButton.Items.Insert(0, customItem);
+                        cmbKeyButton.SelectedIndex = 0;
+                    }
+                    else
+                    {
+                        cmbKeyButton.SelectedIndex = 0; // キャンセル時はNoneに戻る
+                    }
+                }
+            }
+        }
+
+        private void SetOutputTarget(ActionDef action)
         {
             if (!cmbKeyButton.Visible) return;
+            
+            if (action.ActionType == ActionType.Keyboard || action.ActionType == ActionType.ToggleHold)
+            {
+                if (action.MultipleKeys != null && action.MultipleKeys.Count > 0)
+                {
+                    string keysStr = string.Join(" + ", action.MultipleKeys.Select(k => ((Keys)k).ToString()));
+                    var customItem = new ComboItem { Text = $"[保存済] {keysStr}", Value = -2 };
+                    cmbKeyButton.Items.Insert(0, customItem);
+                    cmbKeyButton.SelectedIndex = 0;
+                    return;
+                }
+            }
+
             for (int i = 0; i < cmbKeyButton.Items.Count; i++)
             {
-                if (((ComboItem)cmbKeyButton.Items[i]).Value == value)
+                if (((ComboItem)cmbKeyButton.Items[i]).Value == action.ArgumentNum)
                 {
                     cmbKeyButton.SelectedIndex = i;
                     break;
@@ -204,22 +252,12 @@ namespace UsbInputMapper.UI
         {
             if (string.IsNullOrWhiteSpace(txtName.Text))
             {
-                MessageBox.Show("アイテムの名前を入力してください。");
-                return;
+                MessageBox.Show("アイテムの名前を入力してください。"); return;
             }
 
             ResultBinding.Name = txtName.Text;
-            ResultBinding.TargetLayer = (int)numLayer.Value;
-            
-            if (chkCombo.Checked && cmbComboKey.SelectedItem is ComboItem comboItem)
-            {
-                ResultBinding.SubInputType = 1; // 簡易的にKeyboard専用
-                ResultBinding.SubInputCode = comboItem.Value;
-            }
-            else
-            {
-                ResultBinding.SubInputCode = 0;
-            }
+            ResultBinding.SubTriggers.Clear();
+            foreach (TriggerKey t in lstSubTriggers.Items) ResultBinding.SubTriggers.Add(t);
 
             ResultBinding.Condition = (TriggerCondition)cmbCondition.SelectedIndex;
             ResultBinding.ConditionParam = (int)numConditionParam.Value;
@@ -228,7 +266,16 @@ namespace UsbInputMapper.UI
 
             if (cmbKeyButton.Visible && cmbKeyButton.SelectedItem is ComboItem cItem)
             {
-                ResultBinding.Action.ArgumentNum = cItem.Value;
+                if (cItem.Value >= 0)
+                {
+                    ResultBinding.Action.ArgumentNum = cItem.Value;
+                    ResultBinding.Action.MultipleKeys.Clear();
+                    if (cItem.Value > 0 && (ResultBinding.Action.ActionType == ActionType.Keyboard || ResultBinding.Action.ActionType == ActionType.ToggleHold))
+                    {
+                        ResultBinding.Action.MultipleKeys.Add(cItem.Value);
+                    }
+                }
+                // Value < 0 (-2等) の場合は、MultipleKeysに既に保存されているので何もしない
             }
 
             ResultBinding.Action.ArgumentStr = txtAppPath.Text;

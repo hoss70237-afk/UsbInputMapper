@@ -36,7 +36,6 @@ namespace UsbInputMapper.UI
                 cmbCondition.SelectedIndex = (int)existingBinding.Condition;
                 numConditionParam.Value = existingBinding.ConditionParam;
                 
-                // SetOutputTargetより先にActionTypeを選択する
                 SetActionTypeCombo(existingBinding.Action.ActionType);
                 SetOutputTarget(existingBinding.Action);
                 
@@ -63,7 +62,8 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "キーボード入力", Value = (int)ActionType.Keyboard });
             cmbActionType.Items.Add(new ComboItem { Text = "マウスクリック", Value = (int)ActionType.MouseClick });
             cmbActionType.Items.Add(new ComboItem { Text = "マウス移動 (相対: 現在地から指定座標分)", Value = (int)ActionType.MouseMoveRelative });
-            cmbActionType.Items.Add(new ComboItem { Text = "マウス移動 (スピード: 指定方向に移動)", Value = (int)ActionType.MouseContinuousMove });
+            // ★エラー修正: MouseContinuousMove ではなく、定義通りの MouseMoveContinuous を使用
+            cmbActionType.Items.Add(new ComboItem { Text = "マウス移動 (スピード: 指定方向に移動)", Value = (int)ActionType.MouseMoveContinuous });
             cmbActionType.Items.Add(new ComboItem { Text = "マウス移動 (絶対: デスクトップ座標へ)", Value = (int)ActionType.MouseMoveAbsoluteDesk });
             cmbActionType.Items.Add(new ComboItem { Text = "マウス移動 (絶対: ウィンドウ座標へ)", Value = (int)ActionType.MouseMoveAbsoluteWin });
             cmbActionType.Items.Add(new ComboItem { Text = "マウス座標を保存", Value = (int)ActionType.MousePosSave });
@@ -172,7 +172,7 @@ namespace UsbInputMapper.UI
             pnlMouseMove.Visible = false;
             btnEditMacro.Visible = false;
             cmbKeyButton.Items.Clear();
-            cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged; // 変更検知を一時無効化
+            cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged;
 
             switch (type)
             {
@@ -217,7 +217,6 @@ namespace UsbInputMapper.UI
 
             if (cmbKeyButton.Items.Count > 0) cmbKeyButton.SelectedIndex = 0;
             
-            // 既存の設定があればコンボボックスに反映
             if (ResultBinding != null && ResultBinding.Action != null && ResultBinding.Action.ActionType == type)
             {
                 SetOutputTarget(ResultBinding.Action);
@@ -228,7 +227,7 @@ namespace UsbInputMapper.UI
 
         private void cmbKeyButton_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value == -1) // 実際に入力...が選ばれた
+            if (cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value == -1) // 実際に入力...
             {
                 using (var capture = new CaptureForm(CaptureMode.MultiKeyboard))
                 {
@@ -245,7 +244,7 @@ namespace UsbInputMapper.UI
                     }
                     else
                     {
-                        cmbKeyButton.SelectedIndex = 0; // キャンセル時は(None)等に戻る
+                        cmbKeyButton.SelectedIndex = 0;
                     }
                 }
             }
@@ -327,7 +326,6 @@ namespace UsbInputMapper.UI
                         ResultBinding.Action.MultipleKeys.Add(cItem.Value);
                     }
                 }
-                // Value < 0 (-2等) の場合は、MultipleKeysに既に保存されているため何もしない
             }
 
             ResultBinding.Action.ArgumentStr = txtAppPath.Text;

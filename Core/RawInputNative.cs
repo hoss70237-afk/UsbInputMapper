@@ -15,9 +15,6 @@ namespace UsbInputMapper.Core
         public const int RID_INPUT = 0x10000003;
         public const int RID_HEADER = 0x10000005;
 
-        public const uint RIDI_DEVICENAME = 0x20000007;
-        public const uint RIDI_DEVICEINFO = 0x2000000b;
-
         public const int RIM_TYPEMOUSE = 0;
         public const int RIM_TYPEKEYBOARD = 1;
         public const int RIM_TYPEHID = 2;
@@ -40,14 +37,25 @@ namespace UsbInputMapper.Core
             public IntPtr wParam;
         }
 
-        [StructLayout(LayoutKind.Sequential)]
+        // 修正: 共用体メモリを正確にマッピングし、ボタンのフラグとホイールデータを正しく抽出できるようにした
+        [StructLayout(LayoutKind.Explicit)]
         public struct RAWMOUSE
         {
+            [FieldOffset(0)]
             public ushort usFlags;
+            [FieldOffset(4)]
             public uint ulButtons;
+            [FieldOffset(4)]
+            public ushort usButtonFlags;
+            [FieldOffset(6)]
+            public short usButtonData;
+            [FieldOffset(8)]
             public uint ulRawButtons;
+            [FieldOffset(12)]
             public int lLastX;
+            [FieldOffset(16)]
             public int lLastY;
+            [FieldOffset(20)]
             public uint ulExtraInformation;
         }
 
@@ -67,65 +75,6 @@ namespace UsbInputMapper.Core
         {
             public uint dwSizeHid;
             public uint dwCount;
-            // The raw data follows this struct. We read it manually.
-        }
-
-        [StructLayout(LayoutKind.Explicit)]
-        public struct RAWINPUT
-        {
-            [FieldOffset(0)]
-            public RAWINPUTHEADER header;
-            [FieldOffset(24)] // x64 size for header is 24, x86 is 16. Using Explicit requires careful handling or reading via Marshal.
-            public RAWMOUSE mouse;
-            [FieldOffset(24)]
-            public RAWKEYBOARD keyboard;
-            [FieldOffset(24)]
-            public RAWHID hid;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct RID_DEVICE_INFO_MOUSE
-        {
-            public uint dwId;
-            public uint dwNumberOfButtons;
-            public uint dwSampleRate;
-            public bool fHasHorizontalWheel;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct RID_DEVICE_INFO_KEYBOARD
-        {
-            public uint dwType;
-            public uint dwSubType;
-            public uint dwKeyboardMode;
-            public uint dwNumberOfFunctionKeys;
-            public uint dwNumberOfIndicators;
-            public uint dwNumberOfKeysTotal;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        public struct RID_DEVICE_INFO_HID
-        {
-            public uint dwVendorId;
-            public uint dwProductId;
-            public uint dwVersionNumber;
-            public ushort usUsagePage;
-            public ushort usUsage;
-        }
-
-        [StructLayout(LayoutKind.Explicit)]
-        public struct RID_DEVICE_INFO
-        {
-            [FieldOffset(0)]
-            public uint cbSize;
-            [FieldOffset(4)]
-            public uint dwType;
-            [FieldOffset(8)]
-            public RID_DEVICE_INFO_MOUSE mouse;
-            [FieldOffset(8)]
-            public RID_DEVICE_INFO_KEYBOARD keyboard;
-            [FieldOffset(8)]
-            public RID_DEVICE_INFO_HID hid;
         }
 
         [DllImport("user32.dll", SetLastError = true)]

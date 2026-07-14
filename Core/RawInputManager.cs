@@ -81,20 +81,18 @@ namespace UsbInputMapper.Core
                     {
                         var ms = (RawInputNative.RAWMOUSE)Marshal.PtrToStructure(pRawData, typeof(RawInputNative.RAWMOUSE));
                         
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0001, 0x0002, 1); // 左
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0004, 0x0008, 2); // 右
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0010, 0x0020, 3); // 中
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0040, 0x0080, 6); // サイド(進む)
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0100, 0x0200, 7); // サイド(戻る)
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0001, 0x0002, 1); 
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0004, 0x0008, 2); 
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0010, 0x0020, 3); 
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0040, 0x0080, 6); 
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0100, 0x0200, 7); 
 
                         if ((ms.usButtonFlags & 0x0400) != 0) // ホイール
                         {
                             evt.MouseButtonFlags = (uint)(ms.usButtonData > 0 ? 4 : 5);
                             evt.IsKeyDown = true;
                             OnInputEvent?.Invoke(this, evt);
-                            
-                            InputEvent upEvt = new InputEvent { DeviceIdentifier = evt.DeviceIdentifier, Type = evt.Type, MouseButtonFlags = evt.MouseButtonFlags, IsKeyDown = false };
-                            OnInputEvent?.Invoke(this, upEvt);
+                            // ★修正: ホイールの擬似的なKeyUp送信を削除し、不安定挙動を解消
                         }
                     }
                     else if (header.dwType == RawInputNative.RIM_TYPEHID)

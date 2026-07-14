@@ -21,7 +21,6 @@ namespace UsbInputMapper.UI
         private ProfileManager _profileManager;
         private ForegroundAppWatcher _appWatcher;
 
-        private int _currentLayer = 0; 
         private ConcurrentDictionary<string, bool> _physicalKeysDown = new ConcurrentDictionary<string, bool>();
         private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
         private ConcurrentDictionary<string, bool> _toggleStates = new ConcurrentDictionary<string, bool>();
@@ -71,14 +70,7 @@ namespace UsbInputMapper.UI
 
             if (e.IsKeyDown)
             {
-                // ★追加: 離した時がトリガーの場合は、押した時は何もしない
                 if (binding.Condition == TriggerCondition.Release) return;
-
-                if (binding.Action.ActionType == ActionType.LayerShift)
-                {
-                    _currentLayer = binding.Action.ArgumentNum;
-                    return;
-                }
 
                 if (_activeLoops.ContainsKey(loopKey)) return;
                 var cts = new CancellationTokenSource();
@@ -122,23 +114,16 @@ namespace UsbInputMapper.UI
             }
             else
             {
-                if (binding.Action.ActionType == ActionType.LayerShift)
-                {
-                    _currentLayer = 0;
-                    return;
-                }
-
                 if (_activeLoops.TryRemove(loopKey, out var cts))
                 {
                     cts.Cancel();
                     cts.Dispose();
                 }
 
-                // ★追加: 離した時がトリガーの場合、ここでアクションを発動してすぐにOffにする
                 if (binding.Condition == TriggerCondition.Release)
                 {
                     ExecuteAction(binding.Action, true, CancellationToken.None, loopKey);
-                    Thread.Sleep(20); // ゲーム側が認識できる程度の時間
+                    Thread.Sleep(20); 
                     ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
                 }
                 else if (binding.Action.ActionType != ActionType.ToggleHold)
@@ -151,20 +136,21 @@ namespace UsbInputMapper.UI
         private UsbInputMapper.Profiles.Binding FindBestMatchingBinding(string deviceId, int inputType, int inputCode)
         {
             if (_profileManager.CurrentProfile == null) return null;
-            var bindingsInLayer = _profileManager.CurrentProfile.Bindings
+            
+            var bindings = _profileManager.CurrentProfile.Bindings
                 .Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode)
-                .Where(b => b.TargetLayer == 0 || b.TargetLayer == _currentLayer).ToList();
-            if (bindingsInLayer.Count == 0) return null;
-            foreach (var b in bindingsInLayer.OrderByDescending(b => b.SubInputCode > 0 ? 1 : 0))
-            {
-                if (b.SubInputCode > 0)
-                {
-                    string subKeyId = $"{b.SubInputType}_{b.SubInputCode}";
-                    if (_physicalKeysDown.ContainsKey(subKeyId)) return b;
-                }
-                else return b;
-            }
-            return null;
+                .ToList();
+
+            if (bindings.Count == 0) return null;
+
+            // 登録されている全ての同時押し条件(SubTriggers)を満たしているものだけを抽出
+            var matchedBindings = bindings.Where(b => 
+                b.SubTriggers == null || 
+                b.SubTriggers.All(st => _physicalKeysDown.ContainsKey($"{st.Type}_{st.Code}"))
+            ).ToList();
+
+            // より多くの同時押し条件を設定しているアイテムを最優先で発動させる
+            return matchedBindings.OrderByDescending(b => b.SubTriggers?.Count ?? 0).FirstOrDefault();
         }
 
         private void ExecuteAction(ActionDef action, bool isDown, CancellationToken token, string loopKey)
@@ -214,7 +200,7 @@ namespace UsbInputMapper.UI
         {
             Thread.Sleep(step.DelayMs);
             var tempDef = new ActionDef { 
-                ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, ArgumentStr = step.ArgumentStr,
+                ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr,
                 MouseX = step.MouseX, MouseY = step.MouseY, IsAbsolutePosition = step.IsAbsolutePosition
             };
             _dispatcher.Dispatch(tempDef, true);

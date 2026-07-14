@@ -144,8 +144,11 @@ namespace UsbInputMapper.UI
                 {
                     var evt = capture.CapturedEvent;
                     int inputCode = 0;
-                    if (evt.Type == 1) inputCode = evt.VKey;
-                    else if (evt.Type == 0) inputCode = (int)evt.MouseButtonFlags;
+                    
+                    if (evt.Type == 1) 
+                        inputCode = evt.VKey;
+                    else if (evt.Type == 0 || evt.Type == 2) // ★Type == 2 (HID)の場合も値を取得するよう修正
+                        inputCode = (int)evt.MouseButtonFlags; 
 
                     using (var editor = new BindingEditorForm())
                     {

@@ -1,14 +1,17 @@
 using System;
+using System.Collections.Generic;
 using System.Windows.Forms;
 
 namespace UsbInputMapper.Profiles
 {
-    public enum TriggerCondition
+    public enum TriggerCondition { Normal, Hold, RapidFire, Release }
+
+    public class TriggerKey
     {
-        Normal,
-        Hold,
-        RapidFire,
-        Release // ★追加: ボタンを離した時に発動
+        public string DeviceIdentifier { get; set; }
+        public int Type { get; set; }
+        public int Code { get; set; }
+        public override string ToString() => Binding.GetCodeName(Type, Code);
     }
 
     public class Binding
@@ -17,9 +20,9 @@ namespace UsbInputMapper.Profiles
         public string DeviceIdentifier { get; set; }
         public int InputType { get; set; } 
         public int InputCode { get; set; } 
-        public int TargetLayer { get; set; }
-        public int SubInputType { get; set; }
-        public int SubInputCode { get; set; }
+        
+        public List<TriggerKey> SubTriggers { get; set; } // ★追加: 同時押しの条件リスト
+        
         public TriggerCondition Condition { get; set; }
         public int ConditionParam { get; set; }
         public ActionDef Action { get; set; }
@@ -27,8 +30,7 @@ namespace UsbInputMapper.Profiles
         public Binding()
         {
             Name = "新規アイテム";
-            TargetLayer = 0;
-            SubInputCode = 0;
+            SubTriggers = new List<TriggerKey>();
             Condition = TriggerCondition.Normal;
             ConditionParam = 0;
             Action = new ActionDef();
@@ -37,9 +39,12 @@ namespace UsbInputMapper.Profiles
         public string GetTriggerString()
         {
             string mainTrigger = GetCodeName(InputType, InputCode);
-            string subTrigger = SubInputCode > 0 ? $" + {GetCodeName(SubInputType, SubInputCode)}" : "";
-            string layerStr = TargetLayer > 0 ? $"[Layer{TargetLayer}] " : "";
-            return $"{layerStr}{mainTrigger}{subTrigger}";
+            string sub = "";
+            if (SubTriggers != null && SubTriggers.Count > 0)
+            {
+                foreach (var t in SubTriggers) sub += t.ToString() + " + ";
+            }
+            return $"{sub}{mainTrigger}";
         }
 
         public static string GetCodeName(int type, int code)
@@ -55,10 +60,7 @@ namespace UsbInputMapper.Profiles
                     default: return $"MouseBtn:{code}";
                 }
             }
-            else if (type == 2)
-            {
-                return $"HID特殊ボタン (Byte {code >> 8}, Bit {code & 0xFF})";
-            }
+            else if (type == 2) return $"HID特殊ボタン(B:{code >> 8} b:{code & 0xFF})";
             return "Unknown";
         }
     }

@@ -19,20 +19,26 @@ namespace UsbInputMapper.Core
 
         private void RegisterInputDevices()
         {
-            var rid = new RawInputNative.RAWINPUTDEVICE[6];
-            for (int i = 0; i < 6; i++)
+            // 1種類でも登録に失敗すると他のデバイスの監視まで巻き添えで失敗するのを防ぐため、
+            // 1つずつ個別に安全に登録する
+            void TryRegister(ushort page, ushort usage)
             {
-                rid[i].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY;
-                rid[i].hwndTarget = this.Handle;
-            }
-            rid[0].usUsagePage = 0x01; rid[0].usUsage = 0x02; // Mouse
-            rid[1].usUsagePage = 0x01; rid[1].usUsage = 0x06; // Keyboard
-            rid[2].usUsagePage = 0x0C; rid[2].usUsage = 0x01; // Consumer
-            rid[3].usUsagePage = 0x01; rid[3].usUsage = 0x05; // Gamepad
-            rid[4].usUsagePage = 0x01; rid[4].usUsage = 0x04; // Joystick
-            rid[5].usUsagePage = 0x01; rid[5].usUsage = 0x00; // Generic HID
+                var rid = new RawInputNative.RAWINPUTDEVICE[1];
+                rid[0].usUsagePage = page;
+                rid[0].usUsage = usage;
+                rid[0].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY;
+                rid[0].hwndTarget = this.Handle;
 
-            RawInputNative.RegisterRawInputDevices(rid, (uint)rid.Length, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));
+                // 失敗した場合は無視して次へ進む
+                RawInputNative.RegisterRawInputDevices(rid, 1, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));
+            }
+
+            TryRegister(0x01, 0x02); // マウス
+            TryRegister(0x01, 0x06); // キーボード
+            TryRegister(0x0C, 0x01); // コンシューマーコントロール (メディアキー、多ボタンマウス等)
+            TryRegister(0x01, 0x05); // ゲームパッド
+            TryRegister(0x01, 0x04); // ジョイスティック
+            TryRegister(0x01, 0x00); // その他の特殊HID
         }
 
         protected override void WndProc(ref Message m)
@@ -71,19 +77,20 @@ namespace UsbInputMapper.Core
                     {
                         var ms = (RawInputNative.RAWMOUSE)Marshal.PtrToStructure(pRawData, typeof(RawInputNative.RAWMOUSE));
                         
-                        // 修正: usButtonFlags を用いて判定する
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0001, 0x0002, 1); // 左
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0004, 0x0008, 2); // 右
-                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0010, 0x0020, 3); // 中
+                        // 正しいフラグ領域からマウスの全ボタンのクリックを抽出
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0001, 0x0002, 1); // 左クリック
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0004, 0x0008, 2); // 右クリック
+                        EmitMouseEvent(evt, ms.usButtonFlags, 0x0010, 0x0020, 3); // 中クリック
                         EmitMouseEvent(evt, ms.usButtonFlags, 0x0040, 0x0080, 6); // サイド(進む)
                         EmitMouseEvent(evt, ms.usButtonFlags, 0x0100, 0x0200, 7); // サイド(戻る)
 
-                        if ((ms.usButtonFlags & 0x0400) != 0) // ホイール
+                        if ((ms.usButtonFlags & 0x0400) != 0) // ホイール回転
                         {
                             evt.MouseButtonFlags = (uint)(ms.usButtonData > 0 ? 4 : 5);
                             evt.IsKeyDown = true;
                             OnInputEvent?.Invoke(this, evt);
-                            // ホイールはダウンのみ検知されるので、すぐにアップも発行して擬似的に処理を終える
+                            
+                            // ホイールは押された直後に離したことにしてイベントを完了させる
                             InputEvent upEvt = new InputEvent { DeviceIdentifier = evt.DeviceIdentifier, Type = evt.Type, MouseButtonFlags = evt.MouseButtonFlags, IsKeyDown = false };
                             OnInputEvent?.Invoke(this, upEvt);
                         }

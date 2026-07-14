@@ -42,6 +42,20 @@ namespace UsbInputMapper.UI
 
         private void InitializeComponent()
         {
+            this.cmbManualSubTrigger = new System.Windows.Forms.ComboBox();
+            this.btnManualAddSub = new System.Windows.Forms.Button();
+            
+            this.cmbManualSubTrigger.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.cmbManualSubTrigger.Location = new System.Drawing.Point(90, 102);
+            this.cmbManualSubTrigger.Size = new System.Drawing.Size(110, 20);
+            
+            this.btnManualAddSub.Location = new System.Drawing.Point(205, 102);
+            this.btnManualAddSub.Size = new System.Drawing.Size(45, 23);
+            this.btnManualAddSub.Text = "手動";
+            this.btnManualAddSub.Click += new System.EventHandler(this.btnManualAddSub_Click);
+            
+            this.Controls.Add(this.cmbManualSubTrigger);
+            this.Controls.Add(this.btnManualAddSub);
             this.label0 = new System.Windows.Forms.Label();
             this.txtName = new System.Windows.Forms.TextBox();
             

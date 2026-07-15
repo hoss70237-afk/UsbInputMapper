@@ -21,11 +21,13 @@ namespace UsbInputMapper.Profiles
         public int InputType { get; set; } 
         public int InputCode { get; set; } 
         
-        public List<TriggerKey> SubTriggers { get; set; } // ★追加: 同時押しの条件リスト
+        public List<TriggerKey> SubTriggers { get; set; }
         
         public TriggerCondition Condition { get; set; }
         public int ConditionParam { get; set; }
         public ActionDef Action { get; set; }
+        
+        public bool BlockOriginalInput { get; set; } // ★追加: フックによるブロック
 
         public Binding()
         {
@@ -34,6 +36,7 @@ namespace UsbInputMapper.Profiles
             Condition = TriggerCondition.Normal;
             ConditionParam = 0;
             Action = new ActionDef();
+            BlockOriginalInput = false;
         }
 
         public string GetTriggerString()

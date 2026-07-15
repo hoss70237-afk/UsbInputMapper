@@ -10,6 +10,8 @@ namespace UsbInputMapper.Profiles
         private readonly string _settingsFilePath;
         public List<Profile> Profiles { get; private set; }
         public Profile CurrentProfile { get; private set; }
+        public Profile TemporaryProfile { get; set; } // ★追加
+        public Profile CurrentActiveProfile => TemporaryProfile ?? CurrentProfile; // ★追加
 
         public event EventHandler OnProfileChanged;
 
@@ -17,10 +19,7 @@ namespace UsbInputMapper.Profiles
         {
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             string appFolder = Path.Combine(appData, "UsbInputMapper");
-            if (!Directory.Exists(appFolder))
-            {
-                Directory.CreateDirectory(appFolder);
-            }
+            if (!Directory.Exists(appFolder)) Directory.CreateDirectory(appFolder);
             _settingsFilePath = Path.Combine(appFolder, "profiles.json");
             Profiles = new List<Profile>();
         }
@@ -34,17 +33,10 @@ namespace UsbInputMapper.Profiles
                     string json = File.ReadAllText(_settingsFilePath);
                     Profiles = JsonConvert.DeserializeObject<List<Profile>>(json) ?? new List<Profile>();
                 }
-                catch
-                {
-                    Profiles = new List<Profile>();
-                }
+                catch { Profiles = new List<Profile>(); }
             }
 
-            if (Profiles.Count == 0)
-            {
-                Profiles.Add(new Profile { Name = "Default", IsDefault = true });
-            }
-
+            if (Profiles.Count == 0) Profiles.Add(new Profile { Name = "Default", IsDefault = true });
             CurrentProfile = Profiles.Find(p => p.IsDefault) ?? Profiles[0];
         }
 
@@ -58,24 +50,18 @@ namespace UsbInputMapper.Profiles
             catch { }
         }
 
-        // --- プロファイルの並べ替えと複製 ---
-
         public void DuplicateProfile(Profile source)
         {
-            // ディープコピーを行うためJSONでシリアライズ・デシリアライズする
             string json = JsonConvert.SerializeObject(source);
             var cloned = JsonConvert.DeserializeObject<Profile>(json);
-            
             cloned.Name = source.Name + " のコピー";
-            cloned.IsDefault = false; // コピーはデフォルトにはならない
-
+            cloned.IsDefault = false;
             Profiles.Add(cloned);
             Save();
         }
 
         public void MoveProfile(int index, int direction)
         {
-            // direction: -1 (Up), 1 (Down)
             if (index < 0 || index >= Profiles.Count) return;
             int newIndex = index + direction;
             if (newIndex < 0 || newIndex >= Profiles.Count) return;
@@ -85,8 +71,6 @@ namespace UsbInputMapper.Profiles
             Profiles.Insert(newIndex, item);
             Save();
         }
-
-        // --- アイテム(Binding)の並べ替え ---
 
         public void MoveBinding(Profile profile, int index, int direction)
         {
@@ -100,22 +84,13 @@ namespace UsbInputMapper.Profiles
             Save();
         }
 
-        // --- アクティブ切り替えロジック ---
-
         public void SwitchToAppProfile(string appPath)
         {
-            if (string.IsNullOrEmpty(appPath))
-            {
-                SwitchToDefault();
-                return;
-            }
+            TemporaryProfile = null; // ★アプリ切り替えで一時プロファイルをリセット
+            if (string.IsNullOrEmpty(appPath)) { SwitchToDefault(); return; }
 
             string exeName = Path.GetFileName(appPath).ToLower();
-
-            // UWPなどの長いパスでも実行ファイル名で正確にマッチングする
-            var matched = Profiles.Find(p => !p.IsDefault && 
-                p.TargetApplicationPaths != null &&
-                p.TargetApplicationPaths.Exists(target => target.ToLower() == exeName));
+            var matched = Profiles.Find(p => !p.IsDefault && p.TargetApplicationPaths != null && p.TargetApplicationPaths.Exists(target => target.ToLower() == exeName));
 
             if (matched != null)
             {
@@ -125,14 +100,12 @@ namespace UsbInputMapper.Profiles
                     OnProfileChanged?.Invoke(this, EventArgs.Empty);
                 }
             }
-            else
-            {
-                SwitchToDefault();
-            }
+            else { SwitchToDefault(); }
         }
 
         public void SwitchToDefault()
         {
+            TemporaryProfile = null;
             var def = Profiles.Find(p => p.IsDefault) ?? Profiles[0];
             if (CurrentProfile != def)
             {
@@ -140,15 +113,10 @@ namespace UsbInputMapper.Profiles
                 OnProfileChanged?.Invoke(this, EventArgs.Empty);
             }
         }
-
-        public Binding FindBinding(string deviceId, int inputType, int inputCode)
+        
+        public void NotifyProfileSwitchedManually()
         {
-            if (CurrentProfile == null) return null;
-
-            return CurrentProfile.Bindings.Find(b => 
-                b.DeviceIdentifier == deviceId && 
-                b.InputType == inputType && 
-                b.InputCode == inputCode);
+            OnProfileChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }

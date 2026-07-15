@@ -80,8 +80,9 @@ namespace UsbInputMapper.Core
         public bool IsCoordinateCapturing { get; private set; }
         
         private Action<POINT, bool> _coordinateCaptureCallback;
-        private bool _blockNextLeftUp = false;
-        private bool _blockNextRightUp = false;
+        private bool _waitingForUp = false;
+        private bool _waitingForRightUp = false;
+        private POINT _capturePoint;
 
         public event EventHandler<HookInputEvent> OnRecordedInput;
 
@@ -90,6 +91,8 @@ namespace UsbInputMapper.Core
             public int Type { get; set; }
             public int Code { get; set; }
             public bool IsDown { get; set; }
+            public int X { get; set; } // マウス記録用
+            public int Y { get; set; }
             public long Timestamp { get; set; }
         }
 
@@ -127,8 +130,8 @@ namespace UsbInputMapper.Core
         {
             _coordinateCaptureCallback = onCaptured;
             IsCoordinateCapturing = true;
-            _blockNextLeftUp = false;
-            _blockNextRightUp = false;
+            _waitingForUp = false;
+            _waitingForRightUp = false;
         }
 
         public void StopCoordinateCapture()
@@ -149,7 +152,6 @@ namespace UsbInputMapper.Core
 
                 if (IsRecording)
                 {
-                    // 記録中はインジェクトフラグ（ソフトキーボード等）でも取得する
                     OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = Environment.TickCount });
                 }
 
@@ -196,39 +198,33 @@ namespace UsbInputMapper.Core
                     code = xButton == 1 ? 6 : 7;
                 }
 
+                // 座標取得時はDownとUpを確実にペアでブロックすることで押しっぱなしを防ぐ
                 if (IsCoordinateCapturing)
                 {
                     if (msg == WM_LBUTTONDOWN)
                     {
-                        _blockNextLeftUp = true;
-                        IsCoordinateCapturing = false;
-                        _coordinateCaptureCallback?.Invoke(ms.pt, false);
+                        _capturePoint = ms.pt;
+                        _waitingForUp = true;
                         return (IntPtr)1; // 左クリックダウンをブロック
+                    }
+                    else if (msg == WM_LBUTTONUP && _waitingForUp)
+                    {
+                        _waitingForUp = false;
+                        IsCoordinateCapturing = false;
+                        _coordinateCaptureCallback?.Invoke(_capturePoint, false); // 通常完了
+                        return (IntPtr)1; // 左クリックアップをブロック
                     }
                     else if (msg == WM_RBUTTONDOWN)
                     {
-                        _blockNextRightUp = true;
-                        IsCoordinateCapturing = false;
-                        _coordinateCaptureCallback?.Invoke(ms.pt, true); // true: キャンセル
+                        _waitingForRightUp = true;
                         return (IntPtr)1; // 右クリックダウンをブロック
                     }
-                    else if (msg == WM_LBUTTONUP || msg == WM_RBUTTONUP)
+                    else if (msg == WM_RBUTTONUP && _waitingForRightUp)
                     {
-                        return (IntPtr)1; // 他のUpもブロック
-                    }
-                }
-                else
-                {
-                    // キャプチャ完了直後の不要なUp入力をブロックしてクリック状態フリーズを防ぐ
-                    if (msg == WM_LBUTTONUP && _blockNextLeftUp)
-                    {
-                        _blockNextLeftUp = false;
-                        return (IntPtr)1;
-                    }
-                    if (msg == WM_RBUTTONUP && _blockNextRightUp)
-                    {
-                        _blockNextRightUp = false;
-                        return (IntPtr)1;
+                        _waitingForRightUp = false;
+                        IsCoordinateCapturing = false;
+                        _coordinateCaptureCallback?.Invoke(ms.pt, true); // true = キャンセル
+                        return (IntPtr)1; // 右クリックアップをブロック
                     }
                 }
 
@@ -236,7 +232,7 @@ namespace UsbInputMapper.Core
                 {
                     if (IsRecording)
                     {
-                        OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, Timestamp = Environment.TickCount });
+                        OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = Environment.TickCount });
                     }
 
                     string key = $"0_{code}";

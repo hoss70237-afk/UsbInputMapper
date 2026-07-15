@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic; // 追記
+using System.Linq; // 追記
 using System.Windows.Forms;
 using UsbInputMapper.Profiles;
 using UsbInputMapper.Util;
@@ -9,6 +11,7 @@ namespace UsbInputMapper.UI
     public partial class MainForm : Form
     {
         private readonly ProfileManager _profileManager;
+        private List<string> _profileNames => _profileManager.Profiles.Select(p => p.Name).ToList(); // ★プロファイル名のリスト
 
         public MainForm(ProfileManager profileManager)
         {
@@ -44,8 +47,7 @@ namespace UsbInputMapper.UI
             }
         }
 
-        // --- プロファイル操作 ---
-        private void btnAddProfile_Click(object sender, EventArgs e) { /* 既存のまま（省略防止のため実装） */
+        private void btnAddProfile_Click(object sender, EventArgs e) {
             var p = new Profile { Name = "新規プロファイル" };
             using (var editor = new ProfileEditorForm(p)) {
                 if (editor.ShowDialog() == DialogResult.OK) { _profileManager.Profiles.Add(p); _profileManager.Save(); LoadProfiles(); lstProfiles.SelectedIndex = lstProfiles.Items.Count - 1; }
@@ -75,7 +77,6 @@ namespace UsbInputMapper.UI
             if (idx >= 0 && idx < lstProfiles.Items.Count - 1) { _profileManager.MoveProfile(idx, 1); LoadProfiles(); lstProfiles.SelectedIndex = idx + 1; }
         }
 
-        // --- アイテム(Binding)操作 ---
         private void btnAddBinding_Click(object sender, EventArgs e)
         {
             if (!(lstProfiles.SelectedItem is Profile currentProfile)) return;
@@ -85,7 +86,7 @@ namespace UsbInputMapper.UI
                 {
                     var evt = capture.CapturedEvent;
                     int inputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags; 
-                    using (var editor = new BindingEditorForm())
+                    using (var editor = new BindingEditorForm(null, _profileNames))
                     {
                         var b = editor.ResultBinding;
                         b.DeviceIdentifier = evt.DeviceIdentifier;
@@ -107,7 +108,7 @@ namespace UsbInputMapper.UI
         {
             if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b)
             {
-                using (var editor = new BindingEditorForm(b))
+                using (var editor = new BindingEditorForm(b, _profileNames))
                 {
                     if (editor.ShowDialog(this) == DialogResult.OK)
                     {
@@ -118,7 +119,6 @@ namespace UsbInputMapper.UI
             }
         }
 
-        // ★追加: アイテム複製機能
         private void btnDuplicateBinding_Click(object sender, EventArgs e)
         {
             if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b)

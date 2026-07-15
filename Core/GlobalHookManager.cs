@@ -78,7 +78,10 @@ namespace UsbInputMapper.Core
 
         public bool IsRecording { get; set; }
         public bool IsCoordinateCapturing { get; private set; }
-        private Action<POINT> _coordinateCaptureCallback;
+        
+        private Action<POINT, bool> _coordinateCaptureCallback;
+        private bool _blockNextLeftUp = false;
+        private bool _blockNextRightUp = false;
 
         public event EventHandler<HookInputEvent> OnRecordedInput;
 
@@ -120,10 +123,12 @@ namespace UsbInputMapper.Core
             return false;
         }
 
-        public void StartCoordinateCapture(Action<POINT> onCaptured)
+        public void StartCoordinateCapture(Action<POINT, bool> onCaptured)
         {
             _coordinateCaptureCallback = onCaptured;
             IsCoordinateCapturing = true;
+            _blockNextLeftUp = false;
+            _blockNextRightUp = false;
         }
 
         public void StopCoordinateCapture()
@@ -142,14 +147,14 @@ namespace UsbInputMapper.Core
                 bool isDown = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
                 int vkCode = (int)kb.vkCode;
 
+                if (IsRecording)
+                {
+                    // 記録中はインジェクトフラグ（ソフトキーボード等）でも取得する
+                    OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = Environment.TickCount });
+                }
+
                 if (!isInjected)
                 {
-                    if (IsRecording)
-                    {
-                        // 記録するだけでシステム入力をブロックしない
-                        OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = Environment.TickCount });
-                    }
-
                     string key = $"1_{vkCode}";
                     if (_blockList.Contains(key))
                     {
@@ -191,25 +196,46 @@ namespace UsbInputMapper.Core
                     code = xButton == 1 ? 6 : 7;
                 }
 
+                if (IsCoordinateCapturing)
+                {
+                    if (msg == WM_LBUTTONDOWN)
+                    {
+                        _blockNextLeftUp = true;
+                        IsCoordinateCapturing = false;
+                        _coordinateCaptureCallback?.Invoke(ms.pt, false);
+                        return (IntPtr)1; // 左クリックダウンをブロック
+                    }
+                    else if (msg == WM_RBUTTONDOWN)
+                    {
+                        _blockNextRightUp = true;
+                        IsCoordinateCapturing = false;
+                        _coordinateCaptureCallback?.Invoke(ms.pt, true); // true: キャンセル
+                        return (IntPtr)1; // 右クリックダウンをブロック
+                    }
+                    else if (msg == WM_LBUTTONUP || msg == WM_RBUTTONUP)
+                    {
+                        return (IntPtr)1; // 他のUpもブロック
+                    }
+                }
+                else
+                {
+                    // キャプチャ完了直後の不要なUp入力をブロックしてクリック状態フリーズを防ぐ
+                    if (msg == WM_LBUTTONUP && _blockNextLeftUp)
+                    {
+                        _blockNextLeftUp = false;
+                        return (IntPtr)1;
+                    }
+                    if (msg == WM_RBUTTONUP && _blockNextRightUp)
+                    {
+                        _blockNextRightUp = false;
+                        return (IntPtr)1;
+                    }
+                }
+
                 if (!isInjected && code != -1)
                 {
-                    // 座標取得モードの時だけマウスクリックをブロックする
-                    if (IsCoordinateCapturing)
-                    {
-                        if (msg == WM_LBUTTONDOWN)
-                        {
-                            _coordinateCaptureCallback?.Invoke(ms.pt);
-                            return (IntPtr)1;
-                        }
-                        else if (msg == WM_LBUTTONUP)
-                        {
-                            return (IntPtr)1;
-                        }
-                    }
-
                     if (IsRecording)
                     {
-                        // 記録するだけでシステム入力をブロックしない
                         OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, Timestamp = Environment.TickCount });
                     }
 

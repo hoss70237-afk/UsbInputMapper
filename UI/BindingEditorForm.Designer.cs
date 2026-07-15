@@ -134,12 +134,14 @@ namespace UsbInputMapper.UI
             this.txtAppPath.Location = new System.Drawing.Point(90, 257); this.txtAppPath.Size = new System.Drawing.Size(200, 19); this.txtAppPath.Visible = false;
             this.btnBrowseApp.Location = new System.Drawing.Point(296, 255); this.btnBrowseApp.Size = new System.Drawing.Size(34, 23); this.btnBrowseApp.Text = "..."; this.btnBrowseApp.Visible = false; this.btnBrowseApp.Click += new System.EventHandler(this.btnBrowseApp_Click);
             
-            this.pnlMouseMove.Location = new System.Drawing.Point(90, 255); this.pnlMouseMove.Size = new System.Drawing.Size(240, 30); this.pnlMouseMove.Visible = false;
+            this.pnlMouseMove.Location = new System.Drawing.Point(90, 255); this.pnlMouseMove.Size = new System.Drawing.Size(360, 30); this.pnlMouseMove.Visible = false;
             this.lblMouseX.AutoSize = true; this.lblMouseX.Location = new System.Drawing.Point(0, 5); this.lblMouseX.Text = "X:";
             this.numMouseX.Location = new System.Drawing.Point(15, 3); this.numMouseX.Minimum = new decimal(new int[] { 9999, 0, 0, -2147483648 }); this.numMouseX.Maximum = new decimal(new int[] { 9999, 0, 0, 0 }); this.numMouseX.Size = new System.Drawing.Size(55, 19);
             this.lblMouseY.AutoSize = true; this.lblMouseY.Location = new System.Drawing.Point(75, 5); this.lblMouseY.Text = "Y:";
             this.numMouseY.Location = new System.Drawing.Point(90, 3); this.numMouseY.Minimum = new decimal(new int[] { 9999, 0, 0, -2147483648 }); this.numMouseY.Maximum = new decimal(new int[] { 9999, 0, 0, 0 }); this.numMouseY.Size = new System.Drawing.Size(55, 19);
-            this.btnCaptureCoord.Location = new System.Drawing.Point(155, 1); this.btnCaptureCoord.Size = new System.Drawing.Size(80, 23); this.btnCaptureCoord.Text = "座標取得"; this.btnCaptureCoord.Click += new System.EventHandler(this.btnCaptureCoord_Click);
+            
+            // 幅を広げ、テキストに「右クリックでキャンセル」の案内を追加
+            this.btnCaptureCoord.Location = new System.Drawing.Point(155, 1); this.btnCaptureCoord.Size = new System.Drawing.Size(195, 23); this.btnCaptureCoord.Text = "座標取得(右クリックでキャンセル)"; this.btnCaptureCoord.Click += new System.EventHandler(this.btnCaptureCoord_Click);
             this.pnlMouseMove.Controls.Add(this.lblMouseX); this.pnlMouseMove.Controls.Add(this.numMouseX);
             this.pnlMouseMove.Controls.Add(this.lblMouseY); this.pnlMouseMove.Controls.Add(this.numMouseY);
             this.pnlMouseMove.Controls.Add(this.btnCaptureCoord);
@@ -149,10 +151,11 @@ namespace UsbInputMapper.UI
             
             this.btnEditMacro.Location = new System.Drawing.Point(90, 255); this.btnEditMacro.Size = new System.Drawing.Size(240, 23); this.btnEditMacro.Text = "マクロエディタを開く"; this.btnEditMacro.Visible = false; this.btnEditMacro.Click += new System.EventHandler(this.btnEditMacro_Click);
             
-            this.btnOK.Location = new System.Drawing.Point(174, 300); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "OK"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
-            this.btnCancel.Location = new System.Drawing.Point(255, 300); this.btnCancel.Size = new System.Drawing.Size(75, 23); this.btnCancel.Text = "キャンセル"; this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
+            this.btnOK.Location = new System.Drawing.Point(264, 300); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "OK"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
+            this.btnCancel.Location = new System.Drawing.Point(345, 300); this.btnCancel.Size = new System.Drawing.Size(75, 23); this.btnCancel.Text = "キャンセル"; this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
             
-            this.ClientSize = new System.Drawing.Size(370, 340);
+            // UI全体の幅を少し広げてはみ出しを防ぐ
+            this.ClientSize = new System.Drawing.Size(460, 340);
             this.Controls.Add(this.chkBlockOriginalInput);
             this.Controls.Add(this.lblMainTrigger); this.Controls.Add(this.btnReCaptureMain);
             this.Controls.Add(this.lblSubTriggers); this.Controls.Add(this.lstSubTriggers);

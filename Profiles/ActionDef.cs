@@ -8,16 +8,17 @@ namespace UsbInputMapper.Profiles
         None,
         Keyboard,
         MouseClick,
-        MouseMoveRelative,      // 相対移動
-        MouseMoveContinuous,    // スピード移動
-        MouseMoveAbsoluteDesk,  // 絶対位置(デスクトップ)
-        MouseMoveAbsoluteWin,   // 絶対位置(ウィンドウ)
+        MouseMoveRelative,
+        MouseMoveContinuous,
+        MouseMoveAbsoluteDesk,
+        MouseMoveAbsoluteWin,
         MousePosSave,
         MousePosRestore,
         XboxController,
         AppLaunch,
         Macro,
-        ToggleHold
+        ToggleHold,
+        ProfileSwitch
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }

@@ -21,24 +21,29 @@ namespace UsbInputMapper.UI
             _action = action;
             _profileNames = profileNames ?? new List<string>();
 
+            // 1. まずすべての ComboBox に Items を追加する
             cmbPlaybackMode.Items.Clear();
             cmbPlaybackMode.Items.Add("一括再生 (離しても最後まで)");
             cmbPlaybackMode.Items.Add("順次再生 (離すと中断)");
             cmbPlaybackMode.Items.Add("リピート再生 (押している間ループ)");
             cmbPlaybackMode.Items.Add("ステップ再生 (押す度に1つ進む)");
 
-            cmbPlaybackMode.SelectedIndex = (int)_action.PlaybackMode;
-            numTimeout.Value = _action.StepTimeoutMs;
-
             cmbPressState.Items.Clear();
             cmbPressState.Items.Add("タップ (押してすぐ離す)");
             cmbPressState.Items.Add("押す (Down)");
             cmbPressState.Items.Add("離す (Up)");
-            cmbPressState.SelectedIndex = 0;
-            
+
+            cmbRecordMode.Items.Clear();
             cmbRecordMode.Items.Add("入力のみ記録 (固定50msディレイ)");
             cmbRecordMode.Items.Add("実際の経過時間を記録");
+
+            // 2. Items の追加が終わってから SelectedIndex を設定する
+            cmbPressState.SelectedIndex = 0;
             cmbRecordMode.SelectedIndex = 0;
+            numTimeout.Value = _action.StepTimeoutMs;
+
+            // これによりイベントが発火しても、他のComboBoxの準備ができているためエラーになりません
+            cmbPlaybackMode.SelectedIndex = (int)_action.PlaybackMode;
 
             RefreshMacroList();
             UpdateControlsByMode();
@@ -196,7 +201,7 @@ namespace UsbInputMapper.UI
             lblTimeout.Visible = isStepMode; 
             numTimeout.Visible = isStepMode;
             cmbPressState.Enabled = isStepMode;
-            if (!isStepMode) cmbPressState.SelectedIndex = 0;
+            if (!isStepMode && cmbPressState.Items.Count > 0) cmbPressState.SelectedIndex = 0;
         }
 
         private void chkRecord_CheckedChanged(object sender, EventArgs e)

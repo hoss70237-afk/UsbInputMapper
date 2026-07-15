@@ -146,8 +146,8 @@ namespace UsbInputMapper.Core
                 {
                     if (IsRecording)
                     {
+                        // 記録するだけでシステム入力をブロックしない
                         OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = Environment.TickCount });
-                        return (IntPtr)1; // 録画中はブロック
                     }
 
                     string key = $"1_{vkCode}";
@@ -193,6 +193,7 @@ namespace UsbInputMapper.Core
 
                 if (!isInjected && code != -1)
                 {
+                    // 座標取得モードの時だけマウスクリックをブロックする
                     if (IsCoordinateCapturing)
                     {
                         if (msg == WM_LBUTTONDOWN)
@@ -208,15 +209,15 @@ namespace UsbInputMapper.Core
 
                     if (IsRecording)
                     {
+                        // 記録するだけでシステム入力をブロックしない
                         OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, Timestamp = Environment.TickCount });
-                        return (IntPtr)1; 
                     }
 
                     string key = $"0_{code}";
                     if (_blockList.Contains(key))
                     {
                         _recentBlocked[key] = Environment.TickCount;
-                        return (IntPtr)1;
+                        return (IntPtr)1; // 本来の入力をブロック
                     }
                 }
             }

@@ -333,13 +333,14 @@ namespace UsbInputMapper.UI
             bool isWindow = (type == ActionType.MouseMoveAbsoluteWin);
 
             GlobalHookManager.POINT startPt = new GlobalHookManager.POINT();
+            
+            // 画面上の他の領域をクリックしやすくするために自身のウィンドウを非表示にする
             this.Hide();
 
             GlobalHookManager.Instance.StartCoordinateCapture((pt, canceled) => {
                 if (canceled)
                 {
                     this.BeginInvoke(new Action(() => {
-                        GlobalHookManager.Instance.StopCoordinateCapture();
                         this.Show();
                     }));
                     return;
@@ -353,7 +354,6 @@ namespace UsbInputMapper.UI
                         if (canceled2)
                         {
                             this.BeginInvoke(new Action(() => {
-                                GlobalHookManager.Instance.StopCoordinateCapture();
                                 this.Show();
                             }));
                             return;
@@ -361,7 +361,6 @@ namespace UsbInputMapper.UI
                         this.BeginInvoke(new Action(() => {
                             numMouseX.Value = pt2.x - startPt.x;
                             numMouseY.Value = pt2.y - startPt.y;
-                            GlobalHookManager.Instance.StopCoordinateCapture();
                             this.Show();
                         }));
                     });
@@ -383,7 +382,6 @@ namespace UsbInputMapper.UI
                     this.BeginInvoke(new Action(() => {
                         numMouseX.Value = targetX;
                         numMouseY.Value = targetY;
-                        GlobalHookManager.Instance.StopCoordinateCapture();
                         this.Show();
                     }));
                 }

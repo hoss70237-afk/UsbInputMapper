@@ -332,23 +332,39 @@ namespace UsbInputMapper.UI
             bool isRelative = (type == ActionType.MouseMoveRelative);
             bool isWindow = (type == ActionType.MouseMoveAbsoluteWin);
 
-            int clickCount = 0;
             GlobalHookManager.POINT startPt = new GlobalHookManager.POINT();
-            
             this.Hide();
 
-            GlobalHookManager.Instance.StartCoordinateCapture(pt => {
+            GlobalHookManager.Instance.StartCoordinateCapture((pt, canceled) => {
+                if (canceled)
+                {
+                    this.BeginInvoke(new Action(() => {
+                        GlobalHookManager.Instance.StopCoordinateCapture();
+                        this.Show();
+                    }));
+                    return;
+                }
+
                 if (isRelative)
                 {
-                    if (clickCount == 0) { startPt = pt; clickCount++; }
-                    else if (clickCount == 1) {
+                    startPt = pt; 
+                    // 2回目のクリックを待つ
+                    GlobalHookManager.Instance.StartCoordinateCapture((pt2, canceled2) => {
+                        if (canceled2)
+                        {
+                            this.BeginInvoke(new Action(() => {
+                                GlobalHookManager.Instance.StopCoordinateCapture();
+                                this.Show();
+                            }));
+                            return;
+                        }
                         this.BeginInvoke(new Action(() => {
-                            numMouseX.Value = pt.x - startPt.x;
-                            numMouseY.Value = pt.y - startPt.y;
+                            numMouseX.Value = pt2.x - startPt.x;
+                            numMouseY.Value = pt2.y - startPt.y;
                             GlobalHookManager.Instance.StopCoordinateCapture();
                             this.Show();
                         }));
-                    }
+                    });
                 }
                 else
                 {

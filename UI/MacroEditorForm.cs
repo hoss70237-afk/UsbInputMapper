@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using UsbInputMapper.Core;
 using UsbInputMapper.Profiles;
@@ -9,11 +11,14 @@ namespace UsbInputMapper.UI
 {
     public partial class MacroEditorForm : Form
     {
+        [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(Point p);
+        [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
+        [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out OutputDispatcher.RECT lpRect);
+
         private readonly ActionDef _action;
         private List<string> _profileNames;
 
         private long _lastRecordTime = 0;
-        private MacroStep _lastMouseClickStep = null;
 
         public MacroEditorForm(ActionDef action, List<string> profileNames = null)
         {
@@ -21,7 +26,6 @@ namespace UsbInputMapper.UI
             _action = action;
             _profileNames = profileNames ?? new List<string>();
 
-            // 1. まずすべての ComboBox に Items を追加する
             cmbPlaybackMode.Items.Clear();
             cmbPlaybackMode.Items.Add("一括再生 (離しても最後まで)");
             cmbPlaybackMode.Items.Add("順次再生 (離すと中断)");
@@ -37,12 +41,10 @@ namespace UsbInputMapper.UI
             cmbRecordMode.Items.Add("入力のみ記録 (固定50msディレイ)");
             cmbRecordMode.Items.Add("実際の経過時間を記録");
 
-            // 2. Items の追加が終わってから SelectedIndex を設定する
             cmbPressState.SelectedIndex = 0;
             cmbRecordMode.SelectedIndex = 0;
             numTimeout.Value = _action.StepTimeoutMs;
 
-            // これによりイベントが発火しても、他のComboBoxの準備ができているためエラーになりません
             cmbPlaybackMode.SelectedIndex = (int)_action.PlaybackMode;
 
             RefreshMacroList();
@@ -217,7 +219,6 @@ namespace UsbInputMapper.UI
             {
                 chkRecord.Text = "レコーディング停止";
                 _lastRecordTime = Environment.TickCount;
-                _lastMouseClickStep = null;
                 GlobalHookManager.Instance.OnRecordedInput += Hook_OnRecordedInput;
                 GlobalHookManager.Instance.IsRecording = true;
             }
@@ -226,6 +227,32 @@ namespace UsbInputMapper.UI
                 chkRecord.Text = "レコーディング開始";
                 GlobalHookManager.Instance.IsRecording = false;
                 GlobalHookManager.Instance.OnRecordedInput -= Hook_OnRecordedInput;
+                
+                // レコーディング停止ボタン自体をクリックした際のマウスクリックを記録から破棄
+                RemoveLastMouseClickAndMove();
+                RefreshMacroList();
+            }
+        }
+
+        // ソフトキーボードおよび停止ボタン押下対策：末尾の1セットのクリック操作（移動+クリック）を破棄する
+        private void RemoveLastMouseClickAndMove()
+        {
+            for (int i = _action.MacroSteps.Count - 1; i >= 0; i--)
+            {
+                var step = _action.MacroSteps[i];
+                if (step.ActionType == ActionType.MouseClick)
+                {
+                    _action.MacroSteps.RemoveAt(i);
+                }
+                else if (step.ActionType == ActionType.MouseMoveAbsoluteWin)
+                {
+                    _action.MacroSteps.RemoveAt(i);
+                    break; // 1セット分の移動とクリックを消したら終了
+                }
+                else
+                {
+                    break; // キーボード入力など関係ないステップに到達したら終了
+                }
             }
         }
 
@@ -245,40 +272,60 @@ namespace UsbInputMapper.UI
                 if (delay < 0) delay = 0;
             }
 
-            // ★50ms以内のキーボード入力検知によるマウスクリック破棄 (ソフトキーボード対策)
-            if (e.Type == 1 && _lastMouseClickStep != null && (now - _lastRecordTime) <= 50)
+            // ソフトキーボード入力判定：前回入力（大抵はタッチによるマウスクリック）から50ms以内のキーボード入力
+            if (e.Type == 1 && (now - _lastRecordTime) <= 50)
             {
-                _action.MacroSteps.Remove(_lastMouseClickStep);
+                RemoveLastMouseClickAndMove();
                 RefreshMacroList();
-                _lastMouseClickStep = null;
-                delay = (cmbRecordMode.SelectedIndex == 1) ? 0 : 50;
+                delay = (cmbRecordMode.SelectedIndex == 1) ? 0 : 50; // ディレイをリセット
             }
 
-            var step = new MacroStep { DelayMs = delay, PressState = e.IsDown ? StepPressState.Down : StepPressState.Up };
-            if (cmbPlaybackMode.SelectedIndex != 3) step.PressState = StepPressState.Tap; // Stepモード以外は強制タップ
-
-            if (e.Type == 1)
+            if (e.Type == 1) // Keyboard
             {
-                step.ActionType = ActionType.Keyboard;
-                step.ArgumentNum = e.Code;
-                _lastMouseClickStep = null;
+                if (cmbPlaybackMode.SelectedIndex != 3 && !e.IsDown)
+                {
+                    _lastRecordTime = now;
+                    return; // Stepモード以外はUpを省く
+                }
+
+                var step = new MacroStep { DelayMs = delay, PressState = e.IsDown ? StepPressState.Down : StepPressState.Up, ActionType = ActionType.Keyboard, ArgumentNum = e.Code };
+                if (cmbPlaybackMode.SelectedIndex != 3) step.PressState = StepPressState.Tap;
+                _action.MacroSteps.Add(step);
             }
-            else
+            else // Mouse
             {
-                step.ActionType = ActionType.MouseClick;
-                step.ArgumentNum = e.Code;
-                if (e.IsDown) _lastMouseClickStep = step;
-                else _lastMouseClickStep = null;
+                if (e.IsDown)
+                {
+                    // ウィンドウ基準の座標に変換
+                    int targetX = e.X;
+                    int targetY = e.Y;
+                    IntPtr hwnd = WindowFromPoint(new Point(e.X, e.Y));
+                    IntPtr root = GetAncestor(hwnd, 2); // GA_ROOT
+                    if (root != IntPtr.Zero && GetWindowRect(root, out OutputDispatcher.RECT rect))
+                    {
+                        targetX = e.X - rect.Left;
+                        targetY = e.Y - rect.Top;
+                    }
+
+                    // まず座標移動ステップを追加
+                    var moveStep = new MacroStep { DelayMs = delay, PressState = StepPressState.Tap, ActionType = ActionType.MouseMoveAbsoluteWin, MouseX = targetX, MouseY = targetY };
+                    _action.MacroSteps.Add(moveStep);
+                    
+                    // 次にクリックステップを追加（同時とするためディレイは0）
+                    var clickStep = new MacroStep { DelayMs = 0, PressState = StepPressState.Down, ActionType = ActionType.MouseClick, ArgumentNum = e.Code };
+                    if (cmbPlaybackMode.SelectedIndex != 3) clickStep.PressState = StepPressState.Tap;
+                    _action.MacroSteps.Add(clickStep);
+                }
+                else
+                {
+                    if (cmbPlaybackMode.SelectedIndex == 3) // Stepモードの時だけUpを記録
+                    {
+                        var clickStep = new MacroStep { DelayMs = delay, PressState = StepPressState.Up, ActionType = ActionType.MouseClick, ArgumentNum = e.Code };
+                        _action.MacroSteps.Add(clickStep);
+                    }
+                }
             }
 
-            // StepMode以外の場合、DownとUpが別々に来てもTapで済ませるため、Upの記録を省く(簡易化)
-            if (cmbPlaybackMode.SelectedIndex != 3 && !e.IsDown)
-            {
-                _lastRecordTime = now;
-                return;
-            }
-
-            _action.MacroSteps.Add(step);
             _lastRecordTime = now;
             RefreshMacroList();
             lstSteps.SelectedIndex = lstSteps.Items.Count - 1;

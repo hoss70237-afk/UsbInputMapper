@@ -21,6 +21,7 @@ namespace UsbInputMapper.UI
         private OutputDispatcher _dispatcher;
         private ProfileManager _profileManager;
         private ForegroundAppWatcher _appWatcher;
+        private GlobalHookManager _globalHookManager;
 
         private ConcurrentDictionary<string, bool> _physicalKeysDown = new ConcurrentDictionary<string, bool>();
         private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
@@ -37,6 +38,7 @@ namespace UsbInputMapper.UI
         {
             _profileManager = new ProfileManager();
             _profileManager.Load();
+            _profileManager.OnProfileChanged += (s, e) => UpdateHookBlockList();
 
             _appWatcher = new ForegroundAppWatcher();
             _appWatcher.OnForegroundAppChanged += (s, appPath) => _profileManager.SwitchToAppProfile(appPath);
@@ -46,13 +48,29 @@ namespace UsbInputMapper.UI
             _viGEmOutput.Initialize();
             _dispatcher = new OutputDispatcher(_viGEmOutput);
 
+            _globalHookManager = new GlobalHookManager();
+            UpdateHookBlockList();
+
             _rawInputManager = new RawInputManager();
             _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
         }
 
+        private void UpdateHookBlockList()
+        {
+            var blockList = new HashSet<string>();
+            var profile = _profileManager.CurrentActiveProfile;
+            if (profile != null)
+            {
+                foreach (var b in profile.Bindings)
+                {
+                    if (b.BlockOriginalInput) blockList.Add($"{b.InputType}_{b.InputCode}");
+                }
+            }
+            _globalHookManager.SetBlockList(blockList);
+        }
+
         private void RawInputManager_OnInputEvent(object sender, InputEvent e)
         {
-            // キャプチャ画面が開いている場合は入力をそちらに渡して終了
             if (CaptureForm.IsCapturing)
             {
                 CaptureForm.CurrentInstance?.ProcessInput(e);
@@ -62,20 +80,25 @@ namespace UsbInputMapper.UI
             int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
             string keyId = $"{e.Type}_{inputCode}";
 
-            // 物理的な押下状態を記録（同時押しの判定に使う）
             if (e.IsKeyDown) _physicalKeysDown[keyId] = true;
             else _physicalKeysDown.TryRemove(keyId, out _);
 
-            // 該当するすべてのアイテムを取得（ボタン被りがあった場合もすべて実行する）
             var bindings = FindAllMatchingBindings(e.DeviceIdentifier, e.Type, inputCode);
-            if (bindings.Count == 0) return;
+            if (bindings.Count == 0)
+            {
+                // ★対象外デバイスの入力がフックでブロックされていた場合、それを実入力として再送（パススルー）する
+                if (_globalHookManager.WasRecentlyBlocked(e.Type, inputCode))
+                {
+                    if (e.Type == 1) _dispatcher.SendKeyboardInputs(new List<int> { inputCode }, e.IsKeyDown);
+                    else if (e.Type == 0) _dispatcher.SendMouseClick(inputCode, e.IsKeyDown);
+                }
+                return;
+            }
 
             foreach (var binding in bindings)
             {
-                // アイテムごとに一意のループ管理キーを作成
                 string loopKey = $"{e.DeviceIdentifier}_{e.Type}_{inputCode}_{binding.GetHashCode()}";
 
-                // ホイール入力（4:上, 5:下）は長押しや離す概念がないため、即座に押して離す
                 if (e.Type == 0 && (inputCode == 4 || inputCode == 5))
                 {
                     if (e.IsKeyDown)
@@ -83,14 +106,12 @@ namespace UsbInputMapper.UI
                         ExecuteAction(binding.Action, true, CancellationToken.None, loopKey);
                         ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
                     }
-                    continue; // ホイールの処理はここまで
+                    continue;
                 }
 
                 if (e.IsKeyDown)
                 {
-                    // 離した時に発動する設定なら、押した時は何もしない
                     if (binding.Condition == TriggerCondition.Release) continue;
-
                     if (_activeLoops.ContainsKey(loopKey)) continue;
 
                     var cts = new CancellationTokenSource();
@@ -134,14 +155,12 @@ namespace UsbInputMapper.UI
                 }
                 else
                 {
-                    // ボタンが離されたらループをキャンセル
                     if (_activeLoops.TryRemove(loopKey, out var cts))
                     {
                         cts.Cancel();
                         cts.Dispose();
                     }
 
-                    // 離した時に発動する設定の場合、ここで1回だけ実行する
                     if (binding.Condition == TriggerCondition.Release)
                     {
                         ExecuteAction(binding.Action, true, CancellationToken.None, loopKey);
@@ -158,16 +177,14 @@ namespace UsbInputMapper.UI
 
         private List<UsbInputMapper.Profiles.Binding> FindAllMatchingBindings(string deviceId, int inputType, int inputCode)
         {
-            if (_profileManager.CurrentProfile == null) return new List<UsbInputMapper.Profiles.Binding>();
+            if (_profileManager.CurrentActiveProfile == null) return new List<UsbInputMapper.Profiles.Binding>();
             
-            // まずデバイスと入力コードが一致するものを取得
-            var bindings = _profileManager.CurrentProfile.Bindings
+            var bindings = _profileManager.CurrentActiveProfile.Bindings
                 .Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode)
                 .ToList();
 
             if (bindings.Count == 0) return bindings;
 
-            // 同時押し条件(SubTriggers)が設定されている場合、現在それらがすべて押されているか判定
             return bindings.Where(b => 
                 b.SubTriggers == null || 
                 b.SubTriggers.All(st => _physicalKeysDown.ContainsKey($"{st.Type}_{st.Code}"))
@@ -176,6 +193,36 @@ namespace UsbInputMapper.UI
 
         private void ExecuteAction(ActionDef action, bool isDown, CancellationToken token, string loopKey)
         {
+            if (action.ActionType == ActionType.ProfileSwitch)
+            {
+                if (isDown)
+                {
+                    var targetProf = _profileManager.Profiles.FirstOrDefault(p => p.Name == action.ArgumentStr);
+                    if (targetProf != null)
+                    {
+                        if (action.ArgumentNum == 0) // Toggle
+                        {
+                            _profileManager.TemporaryProfile = (_profileManager.TemporaryProfile == targetProf) ? null : targetProf;
+                            _profileManager.NotifyProfileSwitchedManually();
+                        }
+                        else // Hold
+                        {
+                            _profileManager.TemporaryProfile = targetProf;
+                            _profileManager.NotifyProfileSwitchedManually();
+                        }
+                    }
+                }
+                else
+                {
+                    if (action.ArgumentNum == 1) // Hold -> Release
+                    {
+                        _profileManager.TemporaryProfile = null;
+                        _profileManager.NotifyProfileSwitchedManually();
+                    }
+                }
+                return;
+            }
+
             if (action.ActionType == ActionType.Macro && action.MacroSteps.Count > 0)
             {
                 if (!isDown) return; 
@@ -218,10 +265,9 @@ namespace UsbInputMapper.UI
                     Task.Run(async () => {
                         while (!token.IsCancellationRequested)
                         {
-                            // 連続スピード移動は相対移動として細かく送信し続ける
                             var tempDef = new ActionDef { ActionType = ActionType.MouseMoveRelative, MouseX = action.MouseX, MouseY = action.MouseY };
                             _dispatcher.Dispatch(tempDef, true);
-                            await Task.Delay(16); // 約60fps
+                            await Task.Delay(16);
                         }
                     });
                 }
@@ -243,22 +289,15 @@ namespace UsbInputMapper.UI
                 MouseY = step.MouseY
             };
 
-            // 競合防止: ステップ再生モード以外で「押す(Down)」や「離す(Up)」が指定されていた場合は強制的に「タップ(Tap)」として扱う
             StepPressState state = step.PressState;
             if (currentMode != MacroPlaybackMode.StepByStep && (state == StepPressState.Down || state == StepPressState.Up))
             {
                 state = StepPressState.Tap;
             }
 
-            if (state == StepPressState.Down)
-            {
-                _dispatcher.Dispatch(tempDef, true);
-            }
-            else if (state == StepPressState.Up)
-            {
-                _dispatcher.Dispatch(tempDef, false);
-            }
-            else // Tap
+            if (state == StepPressState.Down) _dispatcher.Dispatch(tempDef, true);
+            else if (state == StepPressState.Up) _dispatcher.Dispatch(tempDef, false);
+            else
             {
                 _dispatcher.Dispatch(tempDef, true);
                 Thread.Sleep(20); 
@@ -286,6 +325,7 @@ namespace UsbInputMapper.UI
         private void ExitApp(object sender, EventArgs e)
         {
             _trayIcon.Visible = false;
+            _globalHookManager?.Dispose();
             _rawInputManager?.Dispose();
             _viGEmOutput?.Dispose();
             Application.Exit();

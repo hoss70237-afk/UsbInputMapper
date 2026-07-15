@@ -52,6 +52,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Core\RawInputNative.cs" />
     <Compile Include="Core\RawInputManager.cs" />
+    <Compile Include="Core\GlobalHookManager.cs" />
     <Compile Include="Core\DeviceInfo.cs" />
     <Compile Include="Core\InputEvent.cs" />
     <Compile Include="Core\InputStateMachine.cs" />
@@ -90,7 +91,6 @@
     <Compile Include="UI\ProfileEditorForm.Designer.cs">
       <DependentUpon>ProfileEditorForm.cs</DependentUpon>
     </Compile>
-    <!-- ★ここに MacroEditorForm を追加しました -->
     <Compile Include="UI\MacroEditorForm.cs">
       <SubType>Form</SubType>
     </Compile>

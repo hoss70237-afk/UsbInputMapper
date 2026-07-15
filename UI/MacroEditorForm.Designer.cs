@@ -12,7 +12,6 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.NumericUpDown numDelay;
         
-        // ★追加: 押す/離す の選択コンボボックス
         private System.Windows.Forms.Label lblPressState;
         private System.Windows.Forms.ComboBox cmbPressState;
         
@@ -21,6 +20,10 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Label lblTimeout;
         private System.Windows.Forms.NumericUpDown numTimeout;
         private System.Windows.Forms.Button btnOK;
+        
+        // ★追加: レコーディング用
+        private System.Windows.Forms.CheckBox chkRecord;
+        private System.Windows.Forms.ComboBox cmbRecordMode;
 
         protected override void Dispose(bool disposing)
         {
@@ -48,6 +51,10 @@ namespace UsbInputMapper.UI
             this.lblTimeout = new System.Windows.Forms.Label();
             this.numTimeout = new System.Windows.Forms.NumericUpDown();
             this.btnOK = new System.Windows.Forms.Button();
+            
+            this.chkRecord = new System.Windows.Forms.CheckBox();
+            this.cmbRecordMode = new System.Windows.Forms.ComboBox();
+            
             ((System.ComponentModel.ISupportInitialize)(this.numDelay)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numTimeout)).BeginInit();
             this.SuspendLayout();
@@ -66,23 +73,28 @@ namespace UsbInputMapper.UI
             this.btnUpStep.Location = new System.Drawing.Point(280, 190); this.btnUpStep.Size = new System.Drawing.Size(80, 23); this.btnUpStep.Text = "▲ 上へ"; this.btnUpStep.Click += new System.EventHandler(this.btnUpStep_Click);
             this.btnDownStep.Location = new System.Drawing.Point(280, 220); this.btnDownStep.Size = new System.Drawing.Size(80, 23); this.btnDownStep.Text = "▼ 下へ"; this.btnDownStep.Click += new System.EventHandler(this.btnDownStep_Click);
             
-            this.label2.AutoSize = true; this.label2.Location = new System.Drawing.Point(12, 275); this.label2.Text = "再生モード:";
-            this.cmbPlaybackMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbPlaybackMode.Location = new System.Drawing.Point(80, 272); this.cmbPlaybackMode.Size = new System.Drawing.Size(190, 20); this.cmbPlaybackMode.SelectedIndexChanged += new System.EventHandler(this.cmbPlaybackMode_SelectedIndexChanged);
+            this.chkRecord.Appearance = System.Windows.Forms.Appearance.Button; this.chkRecord.Location = new System.Drawing.Point(12, 260); this.chkRecord.Size = new System.Drawing.Size(120, 24); this.chkRecord.Text = "レコーディング開始"; this.chkRecord.TextAlign = System.Drawing.ContentAlignment.MiddleCenter; this.chkRecord.CheckedChanged += new System.EventHandler(this.chkRecord_CheckedChanged);
+            this.cmbRecordMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbRecordMode.Location = new System.Drawing.Point(135, 262); this.cmbRecordMode.Size = new System.Drawing.Size(225, 20);
             
-            this.lblTimeout.AutoSize = true; this.lblTimeout.Location = new System.Drawing.Point(12, 305); this.lblTimeout.Text = "タイムアウト:"; this.lblTimeout.Visible = false;
-            this.numTimeout.Location = new System.Drawing.Point(80, 303); this.numTimeout.Maximum = new decimal(new int[] { 60000, 0, 0, 0 }); this.numTimeout.Size = new System.Drawing.Size(80, 19); this.numTimeout.Visible = false;
+            this.label2.AutoSize = true; this.label2.Location = new System.Drawing.Point(12, 293); this.label2.Text = "再生モード:";
+            this.cmbPlaybackMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbPlaybackMode.Location = new System.Drawing.Point(80, 290); this.cmbPlaybackMode.Size = new System.Drawing.Size(190, 20); this.cmbPlaybackMode.SelectedIndexChanged += new System.EventHandler(this.cmbPlaybackMode_SelectedIndexChanged);
             
-            this.btnOK.Location = new System.Drawing.Point(285, 300); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "完了"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
+            this.lblTimeout.AutoSize = true; this.lblTimeout.Location = new System.Drawing.Point(12, 323); this.lblTimeout.Text = "タイムアウト:"; this.lblTimeout.Visible = false;
+            this.numTimeout.Location = new System.Drawing.Point(80, 321); this.numTimeout.Maximum = new decimal(new int[] { 60000, 0, 0, 0 }); this.numTimeout.Size = new System.Drawing.Size(80, 19); this.numTimeout.Visible = false;
             
-            this.ClientSize = new System.Drawing.Size(374, 340);
+            this.btnOK.Location = new System.Drawing.Point(285, 318); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "完了"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
+            
+            this.ClientSize = new System.Drawing.Size(374, 355);
             this.Controls.Add(this.btnOK); this.Controls.Add(this.numTimeout); this.Controls.Add(this.lblTimeout);
             this.Controls.Add(this.cmbPlaybackMode); this.Controls.Add(this.label2);
+            this.Controls.Add(this.cmbRecordMode); this.Controls.Add(this.chkRecord);
             this.Controls.Add(this.btnDownStep); this.Controls.Add(this.btnUpStep); this.Controls.Add(this.btnEditStep); this.Controls.Add(this.btnRemove); this.Controls.Add(this.btnAdd); 
             this.Controls.Add(this.cmbPressState); this.Controls.Add(this.lblPressState);
             this.Controls.Add(this.numDelay); this.Controls.Add(this.label1); this.Controls.Add(this.lstSteps);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "マクロエディタ";
+            this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.MacroEditorForm_FormClosed);
             ((System.ComponentModel.ISupportInitialize)(this.numDelay)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.numTimeout)).EndInit();
             this.ResumeLayout(false); this.PerformLayout();

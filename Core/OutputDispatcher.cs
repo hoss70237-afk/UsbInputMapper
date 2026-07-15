@@ -73,8 +73,9 @@ namespace UsbInputMapper.Core
             else if (buttonId == 3) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_MIDDLEDOWN : SendInputNative.MOUSEEVENTF_MIDDLEUP;
             else if (buttonId == 4 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = 120; }
             else if (buttonId == 5 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = unchecked((uint)-120); }
-            else if (buttonId == 6) { inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_RIGHTDOWN : SendInputNative.MOUSEEVENTF_RIGHTUP; inputs[0].u.mi.mouseData = 0x0001; inputs[0].type = SendInputNative.INPUT_MOUSE; inputs[0].u.mi.dwFlags = isDown ? 0x0080 : 0x0100; } // XBUTTON1
-            else if (buttonId == 7) { inputs[0].u.mi.dwFlags = isDown ? 0x0080 : 0x0100; inputs[0].u.mi.mouseData = 0x0002; } // XBUTTON2
+            else if (buttonId == 6) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0001; } // XBUTTON1
+            else if (buttonId == 7) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0002; } // XBUTTON2
+            
             if ((buttonId == 4 || buttonId == 5) && !isDown) return;
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }

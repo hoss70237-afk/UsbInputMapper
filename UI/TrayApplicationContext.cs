@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Drawing; // ★コンパイルエラー原因: System.Drawing の不足を修正
+using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +25,12 @@ namespace UsbInputMapper.UI
         private ForegroundAppWatcher _appWatcher;
         private GlobalHookManager _globalHookManager;
 
+        // 連打・ホールド・同時押しの状態管理
+        private ConcurrentDictionary<string, bool> _physicalKeysDown = new ConcurrentDictionary<string, bool>();
+        private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
+        private ConcurrentDictionary<string, bool> _toggleStates = new ConcurrentDictionary<string, bool>();
+        private ConcurrentDictionary<string, Tuple<int, long>> _macroStepStates = new ConcurrentDictionary<string, Tuple<int, long>>();
+
         public TrayApplicationContext()
         {
             InitializeCore();
@@ -35,65 +41,221 @@ namespace UsbInputMapper.UI
         {
             _profileManager = new ProfileManager();
             _profileManager.Load();
+            _profileManager.OnProfileChanged += (s, e) => UpdateHookBlockList();
 
             _appWatcher = new ForegroundAppWatcher();
             _appWatcher.OnForegroundAppChanged += (s, appPath) => _profileManager.SwitchToAppProfile(appPath);
             _appWatcher.Start();
 
-            // 仮想コントローラーは起動時に1回だけ接続し、切断しない（放置状態）
             _viGEmOutput = new ViGEmOutput();
             _viGEmOutput.Initialize();
             _dispatcher = new OutputDispatcher(_viGEmOutput);
 
             _globalHookManager = new GlobalHookManager();
+            UpdateHookBlockList();
 
             _rawInputManager = new RawInputManager();
             _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
 
-            // DirectInputManagerの初期化
             _diManager = new DirectInputManager();
             _diManager.OnInputEvent += DiManager_OnInputEvent;
         }
 
-        private void DiManager_OnInputEvent(object sender, DirectInputEvent e)
+        private void UpdateHookBlockList()
         {
-            if (CaptureForm.IsCapturing) return;
-
+            var blockList = new HashSet<string>();
             var profile = _profileManager.CurrentActiveProfile;
-            if (profile == null) return;
-
-            var bindings = profile.Bindings.Where(b => b.DeviceIdentifier == e.DeviceIdentifier && b.InputType == e.Type && b.InputCode == e.Code).ToList();
-
-            foreach (var b in bindings)
+            if (profile != null)
             {
-                // XInput出力がOFFのプロファイルではスルーする
-                if (!profile.EnableXInput && 
-                   (b.Action.ActionType == ActionType.XboxController || b.Action.ActionType == ActionType.XboxAxis || b.Action.ActionType == ActionType.XboxTrigger))
+                foreach (var b in profile.Bindings)
+                {
+                    if (b.BlockOriginalInput) blockList.Add($"{b.InputType}_{b.InputCode}");
+                }
+            }
+            _globalHookManager.SetBlockList(blockList);
+        }
+
+        // --- RawInput (Keyboard/Mouse) 処理の完全復元 ---
+        private void RawInputManager_OnInputEvent(object sender, InputEvent e)
+        {
+            if (CaptureForm.IsCapturing)
+            {
+                CaptureForm.CurrentInstance?.ProcessInput(e);
+                return;
+            }
+
+            int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
+            string keyId = $"{e.Type}_{inputCode}";
+
+            if (e.IsKeyDown) _physicalKeysDown[keyId] = true;
+            else _physicalKeysDown.TryRemove(keyId, out _);
+
+            var bindings = FindAllMatchingBindings(e.DeviceIdentifier, e.Type, inputCode);
+            if (bindings.Count == 0)
+            {
+                // ★対象外デバイスの入力がブロックされていた場合、それを実入力として再送（パススルー）
+                if (_globalHookManager.WasRecentlyBlocked(e.Type, inputCode))
+                {
+                    if (e.Type == 1) _dispatcher.SendKeyboardInputs(new List<int> { inputCode }, e.IsKeyDown);
+                    else if (e.Type == 0) _dispatcher.SendMouseClick(inputCode, e.IsKeyDown);
+                }
+                return;
+            }
+
+            foreach (var binding in bindings)
+            {
+                // XInput出力がOFFのプロファイルでは、Xboxコントローラー系の出力をスルーする
+                var profile = _profileManager.CurrentActiveProfile;
+                if (profile != null && !profile.EnableXInput &&
+                   (binding.Action.ActionType == ActionType.XboxController || binding.Action.ActionType == ActionType.XboxAxis || binding.Action.ActionType == ActionType.XboxTrigger))
                 {
                     continue; 
                 }
 
-                if (e.Type == 11) // アナログ軸 (0-65535)
+                ProcessBindingExecution(binding, e.DeviceIdentifier, e.Type, inputCode, e.IsKeyDown);
+            }
+        }
+
+        // --- DirectInput (Gamepad) 処理 ---
+        private void DiManager_OnInputEvent(object sender, DirectInputEvent e)
+        {
+            if (CaptureForm.IsCapturing) return; // CaptureFormはRawInput用なのでスルー
+
+            string keyId = $"{e.Type}_{e.Code}";
+
+            // ボタンの場合は同時押し判定用に状態を記録
+            if (e.Type == 10) 
+            {
+                if (e.IsDown) _physicalKeysDown[keyId] = true;
+                else _physicalKeysDown.TryRemove(keyId, out _);
+            }
+
+            var bindings = FindAllMatchingBindings(e.DeviceIdentifier, e.Type, e.Code);
+
+            foreach (var binding in bindings)
+            {
+                var profile = _profileManager.CurrentActiveProfile;
+                if (profile != null && !profile.EnableXInput &&
+                   (binding.Action.ActionType == ActionType.XboxController || binding.Action.ActionType == ActionType.XboxAxis || binding.Action.ActionType == ActionType.XboxTrigger))
                 {
-                    ProcessAnalogAxis(b, e.Value);
+                    continue; 
+                }
+
+                if (e.Type == 11) // アナログ軸
+                {
+                    ProcessAnalogAxis(binding, e.Value);
                 }
                 else if (e.Type == 10) // ボタン
                 {
-                    if (b.Action.ActionType == ActionType.XboxController)
-                    {
-                        _viGEmOutput.SetButton(GetXboxButton(b.Action.ArgumentNum), e.IsDown);
-                    }
+                    ProcessBindingExecution(binding, e.DeviceIdentifier, e.Type, e.Code, e.IsDown);
                 }
             }
         }
 
+        // --- 共通バインディング検索 ---
+        private List<UsbInputMapper.Profiles.Binding> FindAllMatchingBindings(string deviceId, int inputType, int inputCode)
+        {
+            if (_profileManager.CurrentActiveProfile == null) return new List<UsbInputMapper.Profiles.Binding>();
+            
+            var bindings = _profileManager.CurrentActiveProfile.Bindings
+                .Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode)
+                .ToList();
+
+            if (bindings.Count == 0) return bindings;
+
+            return bindings.Where(b => 
+                b.SubTriggers == null || 
+                b.SubTriggers.All(st => _physicalKeysDown.ContainsKey($"{st.Type}_{st.Code}"))
+            ).ToList();
+        }
+
+        // --- ホールド・連打・マクロ等の制御ロジック (完全復元) ---
+        private void ProcessBindingExecution(UsbInputMapper.Profiles.Binding binding, string deviceId, int type, int inputCode, bool isDown)
+        {
+            string loopKey = $"{deviceId}_{type}_{inputCode}_{binding.GetHashCode()}";
+
+            // マウスホイールの特殊処理
+            if (type == 0 && (inputCode == 4 || inputCode == 5))
+            {
+                if (isDown)
+                {
+                    ExecuteAction(binding.Action, true, CancellationToken.None, loopKey);
+                    ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
+                }
+                return;
+            }
+
+            if (isDown)
+            {
+                if (binding.Condition == TriggerCondition.Release) return;
+                if (_activeLoops.ContainsKey(loopKey)) return;
+
+                var cts = new CancellationTokenSource();
+                _activeLoops[loopKey] = cts;
+
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        if (binding.Condition == TriggerCondition.Hold)
+                        {
+                            await Task.Delay(binding.ConditionParam, cts.Token);
+                            ExecuteAction(binding.Action, true, cts.Token, loopKey);
+                        }
+                        else if (binding.Condition == TriggerCondition.RapidFire)
+                        {
+                            while (!cts.Token.IsCancellationRequested)
+                            {
+                                ExecuteAction(binding.Action, true, cts.Token, loopKey);
+                                await Task.Delay(20);
+                                ExecuteAction(binding.Action, false, cts.Token, loopKey);
+                                await Task.Delay(Math.Max(10, binding.ConditionParam), cts.Token);
+                            }
+                        }
+                        else
+                        {
+                            if (binding.Action.ActionType == ActionType.ToggleHold)
+                            {
+                                bool currentState = _toggleStates.GetOrAdd(loopKey, false);
+                                _toggleStates[loopKey] = !currentState;
+                                _dispatcher.Dispatch(binding.Action, !currentState);
+                            }
+                            else
+                            {
+                                ExecuteAction(binding.Action, true, cts.Token, loopKey);
+                            }
+                        }
+                    }
+                    catch (TaskCanceledException) { }
+                }, cts.Token);
+            }
+            else
+            {
+                if (_activeLoops.TryRemove(loopKey, out var cts))
+                {
+                    cts.Cancel();
+                    cts.Dispose();
+                }
+
+                if (binding.Condition == TriggerCondition.Release)
+                {
+                    ExecuteAction(binding.Action, true, CancellationToken.None, loopKey);
+                    Thread.Sleep(20);
+                    ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
+                }
+                else if (binding.Action.ActionType != ActionType.ToggleHold)
+                {
+                    ExecuteAction(binding.Action, false, CancellationToken.None, loopKey);
+                }
+            }
+        }
+
+        // --- アナログ入力の計算処理 ---
         private void ProcessAnalogAxis(UsbInputMapper.Profiles.Binding binding, int rawValue)
         {
-            // DirectInput 0〜65535 を % に変換 (-1.0 〜 1.0)
             double normalized = (rawValue - 32767.5) / 32767.5;
             if (binding.InvertAxis) normalized *= -1;
 
-            // デッドゾーン処理 (0〜50%)
             double deadZone = binding.DeadZone / 100.0;
             if (Math.Abs(normalized) < deadZone)
             {
@@ -101,7 +263,6 @@ namespace UsbInputMapper.UI
             }
             else
             {
-                // デッドゾーンを超えた分を再スケーリング
                 double sign = Math.Sign(normalized);
                 normalized = sign * ((Math.Abs(normalized) - deadZone) / (1.0 - deadZone));
             }
@@ -113,7 +274,7 @@ namespace UsbInputMapper.UI
                 switch(binding.Action.ArgumentNum)
                 {
                     case 1: axis = Xbox360Axis.LeftThumbX; break;
-                    case 2: axis = Xbox360Axis.LeftThumbY; outValue = (short)-outValue; break; // Yは反転が基本
+                    case 2: axis = Xbox360Axis.LeftThumbY; outValue = (short)-outValue; break; 
                     case 3: axis = Xbox360Axis.RightThumbX; break;
                     case 4: axis = Xbox360Axis.RightThumbY; outValue = (short)-outValue; break;
                 }
@@ -121,7 +282,6 @@ namespace UsbInputMapper.UI
             }
             else if (binding.Action.ActionType == ActionType.XboxTrigger)
             {
-                // トリガーは 0.0〜1.0 にして 0〜255 にマッピング
                 double trigNorm = (normalized + 1.0) / 2.0; 
                 byte outValue = (byte)(trigNorm * 255);
                 Xbox360Slider slider = binding.Action.ArgumentNum == 1 ? Xbox360Slider.LeftTrigger : Xbox360Slider.RightTrigger;
@@ -129,20 +289,119 @@ namespace UsbInputMapper.UI
             }
         }
 
-        private Xbox360Button GetXboxButton(int id)
+        // --- 実行処理とマクロ再生 (完全復元) ---
+        private void ExecuteAction(ActionDef action, bool isDown, CancellationToken token, string loopKey)
         {
-            switch(id)
+            if (action.ActionType == ActionType.ProfileSwitch)
             {
-                case 1: return Xbox360Button.A; case 2: return Xbox360Button.B; case 3: return Xbox360Button.X; case 4: return Xbox360Button.Y;
-                case 5: return Xbox360Button.LeftShoulder; case 6: return Xbox360Button.RightShoulder; case 7: return Xbox360Button.Back; case 8: return Xbox360Button.Start;
-                case 9: return Xbox360Button.LeftThumb; case 10: return Xbox360Button.RightThumb; case 11: return Xbox360Button.Up; case 12: return Xbox360Button.Down;
-                case 13: return Xbox360Button.Left; case 14: return Xbox360Button.Right; case 15: return Xbox360Button.Guide; default: return Xbox360Button.A;
+                if (isDown)
+                {
+                    var targetProf = _profileManager.Profiles.FirstOrDefault(p => p.Name == action.ArgumentStr);
+                    if (targetProf != null)
+                    {
+                        if (action.ArgumentNum == 0) // Toggle
+                        {
+                            _profileManager.TemporaryProfile = (_profileManager.TemporaryProfile == targetProf) ? null : targetProf;
+                            _profileManager.NotifyProfileSwitchedManually();
+                        }
+                        else // Hold
+                        {
+                            _profileManager.TemporaryProfile = targetProf;
+                            _profileManager.NotifyProfileSwitchedManually();
+                        }
+                    }
+                }
+                else
+                {
+                    if (action.ArgumentNum == 1) // Hold -> Release
+                    {
+                        _profileManager.TemporaryProfile = null;
+                        _profileManager.NotifyProfileSwitchedManually();
+                    }
+                }
+                return;
             }
+
+            if (action.ActionType == ActionType.Macro && action.MacroSteps.Count > 0)
+            {
+                if (!isDown) return; 
+                Task.Run(() => {
+                    var steps = action.MacroSteps;
+                    
+                    if (action.PlaybackMode == MacroPlaybackMode.Sequence)
+                    {
+                        foreach (var step in steps) PlayMacroStep(step, action.PlaybackMode);
+                    }
+                    else if (action.PlaybackMode == MacroPlaybackMode.Hold)
+                    {
+                        foreach (var step in steps) { if (token.IsCancellationRequested) break; PlayMacroStep(step, action.PlaybackMode); }
+                    }
+                    else if (action.PlaybackMode == MacroPlaybackMode.Repeat)
+                    {
+                        while (!token.IsCancellationRequested)
+                        {
+                            foreach (var step in steps) { if (token.IsCancellationRequested) break; PlayMacroStep(step, action.PlaybackMode); }
+                        }
+                    }
+                    else if (action.PlaybackMode == MacroPlaybackMode.StepByStep)
+                    {
+                        int currentIndex = 0; 
+                        long now = Environment.TickCount;
+                        if (_macroStepStates.TryGetValue(loopKey, out var state) && (now - state.Item2) < action.StepTimeoutMs)
+                        {
+                            currentIndex = (state.Item1 + 1) % steps.Count;
+                        }
+                        _macroStepStates[loopKey] = new Tuple<int, long>(currentIndex, now);
+                        PlayMacroStep(steps[currentIndex], action.PlaybackMode);
+                    }
+                });
+                return;
+            }
+            else if (action.ActionType == ActionType.MouseMoveContinuous)
+            {
+                if (isDown)
+                {
+                    Task.Run(async () => {
+                        while (!token.IsCancellationRequested)
+                        {
+                            var tempDef = new ActionDef { ActionType = ActionType.MouseMoveRelative, MouseX = action.MouseX, MouseY = action.MouseY };
+                            _dispatcher.Dispatch(tempDef, true);
+                            await Task.Delay(16);
+                        }
+                    });
+                }
+                return;
+            }
+            
+            _dispatcher.Dispatch(action, isDown);
         }
 
-        private void RawInputManager_OnInputEvent(object sender, InputEvent e)
+        private void PlayMacroStep(MacroStep step, MacroPlaybackMode currentMode)
         {
-            // キーボードやマウスは現時点では省略せず、そのまま放置
+            Thread.Sleep(step.DelayMs);
+            var tempDef = new ActionDef { 
+                ActionType = step.ActionType, 
+                ArgumentNum = step.ArgumentNum, 
+                MultipleKeys = step.MultipleKeys, 
+                ArgumentStr = step.ArgumentStr,
+                MouseX = step.MouseX, 
+                MouseY = step.MouseY
+            };
+
+            StepPressState state = step.PressState;
+            if (currentMode != MacroPlaybackMode.StepByStep && (state == StepPressState.Down || state == StepPressState.Up))
+            {
+                state = StepPressState.Tap;
+            }
+
+            if (state == StepPressState.Down) _dispatcher.Dispatch(tempDef, true);
+            else if (state == StepPressState.Up) _dispatcher.Dispatch(tempDef, false);
+            else
+            {
+                _dispatcher.Dispatch(tempDef, true);
+                Thread.Sleep(20); 
+                _dispatcher.Dispatch(tempDef, false);
+            }
         }
 
         private void InitializeTrayIcon()

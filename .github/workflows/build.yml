@@ -46,18 +46,28 @@ jobs:
         $json = $dlls | Where-Object { $_.Name -eq 'Newtonsoft.Json.dll' -and $_.FullName -match 'net4' } | Select-Object -First 1
         if (-not $json) { $json = $dlls | Where-Object { $_.Name -eq 'Newtonsoft.Json.dll' } | Select-Object -First 1 }
         
-        if (-not $vigem -or -not $json) {
+        $sharpdx = $dlls | Where-Object { $_.Name -eq 'SharpDX.dll' -and $_.FullName -match 'net4' } | Select-Object -First 1
+        if (-not $sharpdx) { $sharpdx = $dlls | Where-Object { $_.Name -eq 'SharpDX.dll' } | Select-Object -First 1 }
+        
+        $sharpdxd = $dlls | Where-Object { $_.Name -eq 'SharpDX.DirectInput.dll' -and $_.FullName -match 'net4' } | Select-Object -First 1
+        if (-not $sharpdxd) { $sharpdxd = $dlls | Where-Object { $_.Name -eq 'SharpDX.DirectInput.dll' } | Select-Object -First 1 }
+        
+        if (-not $vigem -or -not $json -or -not $sharpdx -or -not $sharpdxd) {
             Write-Error "DLLの取得に失敗しました。NuGetの復元が正常に行われていません。"
             exit 1
         }
         
         Write-Host "ViGEm 発見: $($vigem.FullName)"
         Write-Host "Json 発見: $($json.FullName)"
+        Write-Host "SharpDX 発見: $($sharpdx.FullName)"
+        Write-Host "SharpDX.DirectInput 発見: $($sharpdxd.FullName)"
         
         # csprojのパス設定を、見つけ出した本物の絶対パスに強制的に書き換える
         $xml = Get-Content $csproj.FullName -Raw
         $xml = $xml -replace '<HintPath>.*?Nefarius\.ViGEm\.Client\.dll</HintPath>', "<HintPath>$($vigem.FullName)</HintPath>"
         $xml = $xml -replace '<HintPath>.*?Newtonsoft\.Json\.dll</HintPath>', "<HintPath>$($json.FullName)</HintPath>"
+        $xml = $xml -replace '<HintPath>.*?SharpDX\.dll</HintPath>', "<HintPath>$($sharpdx.FullName)</HintPath>"
+        $xml = $xml -replace '<HintPath>.*?SharpDX\.DirectInput\.dll</HintPath>', "<HintPath>$($sharpdxd.FullName)</HintPath>"
         Set-Content -Path $csproj.FullName -Value $xml
         
         Write-Host "=== ビルド開始 ==="

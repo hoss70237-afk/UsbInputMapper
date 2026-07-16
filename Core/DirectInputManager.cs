@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using SharpDX; // ★追加: SharpDXException を処理するために必要
 using SharpDX.DirectInput;
 
 namespace UsbInputMapper.Core
@@ -123,8 +124,8 @@ namespace UsbInputMapper.Core
                         }
                         catch (SharpDXException e)
                         {
-                            // ★修正: ウィンドウフォーカスが外れた際などに発生する InputLost を検知し、再取得する処理を追加
-                            if (e.ResultCode == ResultCode.NotAcquired || e.ResultCode == ResultCode.InputLost)
+                            // ウィンドウフォーカスが外れた際などに発生する InputLost を検知し、再取得する
+                            if (e.ResultCode == SharpDX.DirectInput.ResultCode.NotAcquired || e.ResultCode == SharpDX.DirectInput.ResultCode.InputLost)
                             {
                                 try { d.Joystick.Acquire(); } catch { }
                             }

@@ -46,6 +46,7 @@ namespace UsbInputMapper.UI
                 cmbCondition.SelectedIndex = (int)existingBinding.Condition;
                 numConditionParam.Value = existingBinding.ConditionParam;
                 
+                // ★設定を壊さず確実に反映させる
                 SetActionTypeCombo(existingBinding.Action.ActionType);
                 SetOutputTarget(existingBinding.Action);
                 
@@ -84,6 +85,9 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "マウス座標を保存", Value = (int)ActionType.MousePosSave });
             cmbActionType.Items.Add(new ComboItem { Text = "マウス座標を復元", Value = (int)ActionType.MousePosRestore });
             cmbActionType.Items.Add(new ComboItem { Text = "Xboxコントローラー入力", Value = (int)ActionType.XboxController });
+            // ★修正: 前回抜けていたアナログ入力用のコンボボックス項目を追加
+            cmbActionType.Items.Add(new ComboItem { Text = "Xboxアナログスティック", Value = (int)ActionType.XboxAxis });
+            cmbActionType.Items.Add(new ComboItem { Text = "Xboxアナログトリガー", Value = (int)ActionType.XboxTrigger });
             cmbActionType.Items.Add(new ComboItem { Text = "アプリケーション起動", Value = (int)ActionType.AppLaunch });
             cmbActionType.Items.Add(new ComboItem { Text = "トグル維持", Value = (int)ActionType.ToggleHold });
             cmbActionType.Items.Add(new ComboItem { Text = "マクロ実行", Value = (int)ActionType.Macro });
@@ -225,12 +229,25 @@ namespace UsbInputMapper.UI
                     for (int i = 0; i < xboxBtns.Length; i++)
                         cmbKeyButton.Items.Add(new ComboItem { Text = xboxBtns[i], Value = i + 1 });
                     break;
+                // ★修正: アナログスティックやトリガーの設定UIを復元
+                case ActionType.XboxAxis:
+                    cmbKeyButton.Visible = true;
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "左スティック X軸", Value = 1 });
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "左スティック Y軸", Value = 2 });
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "右スティック X軸", Value = 3 });
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "右スティック Y軸", Value = 4 });
+                    break;
+                case ActionType.XboxTrigger:
+                    cmbKeyButton.Visible = true;
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "左トリガー (LT)", Value = 1 });
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "右トリガー (RT)", Value = 2 });
+                    break;
                 case ActionType.MouseMoveRelative:
                 case ActionType.MouseMoveContinuous:
                 case ActionType.MouseMoveAbsoluteDesk:
                 case ActionType.MouseMoveAbsoluteWin:
                     pnlMouseMove.Visible = true;
-                    btnCaptureCoord.Visible = (type != ActionType.MouseMoveContinuous); // 連続移動は座標取得無効
+                    btnCaptureCoord.Visible = (type != ActionType.MouseMoveContinuous); 
                     break;
                 case ActionType.AppLaunch:
                     txtAppPath.Visible = true;
@@ -334,24 +351,14 @@ namespace UsbInputMapper.UI
 
             GlobalHookManager.POINT startPt = new GlobalHookManager.POINT();
             
-            // ユーザーの要望により、ウィンドウを非表示にする(Hide)挙動を削除
-            // this.Hide();
-
             GlobalHookManager.Instance.StartCoordinateCapture((pt, canceled) => {
-                if (canceled)
-                {
-                    return;
-                }
+                if (canceled) return;
 
                 if (isRelative)
                 {
                     startPt = pt; 
-                    // 2回目のクリックを待つ
                     GlobalHookManager.Instance.StartCoordinateCapture((pt2, canceled2) => {
-                        if (canceled2)
-                        {
-                            return;
-                        }
+                        if (canceled2) return;
                         this.BeginInvoke(new Action(() => {
                             numMouseX.Value = pt2.x - startPt.x;
                             numMouseY.Value = pt2.y - startPt.y;
@@ -365,7 +372,7 @@ namespace UsbInputMapper.UI
                     if (isWindow)
                     {
                         IntPtr hwnd = WindowFromPoint(new Point(pt.x, pt.y));
-                        IntPtr root = GetAncestor(hwnd, 2); // GA_ROOT
+                        IntPtr root = GetAncestor(hwnd, 2); 
                         if (root != IntPtr.Zero && GetWindowRect(root, out OutputDispatcher.RECT rect))
                         {
                             targetX = pt.x - rect.Left;

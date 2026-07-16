@@ -15,6 +15,8 @@ namespace UsbInputMapper.Profiles
         MousePosSave,
         MousePosRestore,
         XboxController,
+        XboxAxis,     // ★アナログスティック用追加 (ArgumentNum: 1=LX, 2=LY, 3=RX, 4=RY)
+        XboxTrigger,  // ★アナログトリガー用追加 (ArgumentNum: 1=LT, 2=RT)
         AppLaunch,
         Macro,
         ToggleHold,

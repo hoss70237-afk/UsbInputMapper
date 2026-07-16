@@ -9,11 +9,7 @@ namespace UsbInputMapper.Core
     {
         private ViGEmClient _client;
         private IXbox360Controller _controller;
-        private bool _isInitialized = false;
-
-        public ViGEmOutput()
-        {
-        }
+        public bool IsInitialized { get; private set; }
 
         public void Initialize()
         {
@@ -22,23 +18,32 @@ namespace UsbInputMapper.Core
                 _client = new ViGEmClient();
                 _controller = _client.CreateXbox360Controller();
                 _controller.Connect();
-                _isInitialized = true;
+                IsInitialized = true;
             }
-            catch
-            {
-                _isInitialized = false;
-            }
+            catch { IsInitialized = false; }
         }
 
         public void SetButton(Xbox360Button button, bool isPressed)
         {
-            if (!_isInitialized) return;
+            if (!IsInitialized) return;
             _controller.SetButtonState(button, isPressed);
+        }
+
+        public void SetAxis(Xbox360Axis axis, short value)
+        {
+            if (!IsInitialized) return;
+            _controller.SetAxisValue(axis, value);
+        }
+
+        public void SetSlider(Xbox360Slider slider, byte value)
+        {
+            if (!IsInitialized) return;
+            _controller.SetSliderValue(slider, value);
         }
 
         public void Dispose()
         {
-            if (_isInitialized)
+            if (IsInitialized)
             {
                 _controller?.Disconnect();
                 _client?.Dispose();

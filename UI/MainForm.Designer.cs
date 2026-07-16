@@ -14,7 +14,7 @@ namespace UsbInputMapper.UI
         
         private System.Windows.Forms.Button btnAddBinding;
         private System.Windows.Forms.Button btnEditBinding;
-        private System.Windows.Forms.Button btnDuplicateBinding; // ★追加
+        private System.Windows.Forms.Button btnDuplicateBinding; 
         private System.Windows.Forms.Button btnDeleteBinding;
         private System.Windows.Forms.Button btnUpBinding;
         private System.Windows.Forms.Button btnDownBinding;
@@ -22,6 +22,10 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.CheckBox chkStartup;
         private System.Windows.Forms.Label lblProfiles;
         private System.Windows.Forms.Label lblBindings;
+
+        // ★新規追加UI
+        private System.Windows.Forms.CheckBox chkEnableXInput;
+        private System.Windows.Forms.Button btnSetupWizard;
 
         protected override void Dispose(bool disposing)
         {
@@ -50,10 +54,14 @@ namespace UsbInputMapper.UI
             this.chkStartup = new System.Windows.Forms.CheckBox();
             this.lblProfiles = new System.Windows.Forms.Label();
             this.lblBindings = new System.Windows.Forms.Label();
+
+            this.chkEnableXInput = new System.Windows.Forms.CheckBox();
+            this.btnSetupWizard = new System.Windows.Forms.Button();
+
             this.SuspendLayout();
             
             this.lstProfiles.FormattingEnabled = true; this.lstProfiles.ItemHeight = 12; this.lstProfiles.Location = new System.Drawing.Point(12, 24); this.lstProfiles.Size = new System.Drawing.Size(220, 220); this.lstProfiles.SelectedIndexChanged += new System.EventHandler(this.lstProfiles_SelectedIndexChanged);
-            this.lstBindings.FormattingEnabled = true; this.lstBindings.ItemHeight = 12; this.lstBindings.Location = new System.Drawing.Point(245, 24); this.lstBindings.Size = new System.Drawing.Size(420, 220);
+            this.lstBindings.FormattingEnabled = true; this.lstBindings.ItemHeight = 12; this.lstBindings.Location = new System.Drawing.Point(245, 48); this.lstBindings.Size = new System.Drawing.Size(420, 196); // ★Yを下げてウィザードボタンのスペースを確保
             
             this.btnAddProfile.Location = new System.Drawing.Point(12, 250); this.btnAddProfile.Size = new System.Drawing.Size(50, 23); this.btnAddProfile.Text = "追加"; this.btnAddProfile.Click += new System.EventHandler(this.btnAddProfile_Click);
             this.btnEditProfile.Location = new System.Drawing.Point(68, 250); this.btnEditProfile.Size = new System.Drawing.Size(50, 23); this.btnEditProfile.Text = "編集"; this.btnEditProfile.Click += new System.EventHandler(this.btnEditProfile_Click);
@@ -65,7 +73,6 @@ namespace UsbInputMapper.UI
             this.btnAddBinding.Location = new System.Drawing.Point(245, 250); this.btnAddBinding.Size = new System.Drawing.Size(75, 23); this.btnAddBinding.Text = "待機(追加)"; this.btnAddBinding.Click += new System.EventHandler(this.btnAddBinding_Click);
             this.btnEditBinding.Location = new System.Drawing.Point(326, 250); this.btnEditBinding.Size = new System.Drawing.Size(60, 23); this.btnEditBinding.Text = "編集"; this.btnEditBinding.Click += new System.EventHandler(this.btnEditBinding_Click);
             
-            // ★追加: 複製ボタン
             this.btnDuplicateBinding.Location = new System.Drawing.Point(392, 250); this.btnDuplicateBinding.Size = new System.Drawing.Size(60, 23); this.btnDuplicateBinding.Text = "複製"; this.btnDuplicateBinding.Click += new System.EventHandler(this.btnDuplicateBinding_Click);
             
             this.btnDeleteBinding.Location = new System.Drawing.Point(458, 250); this.btnDeleteBinding.Size = new System.Drawing.Size(60, 23); this.btnDeleteBinding.Text = "削除"; this.btnDeleteBinding.Click += new System.EventHandler(this.btnDeleteBinding_Click);
@@ -75,8 +82,14 @@ namespace UsbInputMapper.UI
             this.chkStartup.AutoSize = true; this.chkStartup.Location = new System.Drawing.Point(549, 283); this.chkStartup.Text = "Windows起動時に実行"; this.chkStartup.CheckedChanged += new System.EventHandler(this.chkStartup_CheckedChanged);
             this.lblProfiles.AutoSize = true; this.lblProfiles.Location = new System.Drawing.Point(12, 9); this.lblProfiles.Text = "プロファイル:";
             this.lblBindings.AutoSize = true; this.lblBindings.Location = new System.Drawing.Point(243, 9); this.lblBindings.Text = "入力一覧:";
-            
+
+            // ★新規追加UIの設定
+            this.chkEnableXInput.AutoSize = true; this.chkEnableXInput.Location = new System.Drawing.Point(245, 26); this.chkEnableXInput.Text = "このプロファイルでXInput(Xbox)出力を有効にする"; this.chkEnableXInput.CheckedChanged += new System.EventHandler(this.chkEnableXInput_CheckedChanged);
+            this.btnSetupWizard.Location = new System.Drawing.Point(524, 22); this.btnSetupWizard.Size = new System.Drawing.Size(141, 23); this.btnSetupWizard.Text = "一括セットアップウィザード"; this.btnSetupWizard.Click += new System.EventHandler(this.btnSetupWizard_Click);
+
             this.ClientSize = new System.Drawing.Size(680, 320);
+            this.Controls.Add(this.btnSetupWizard);
+            this.Controls.Add(this.chkEnableXInput);
             this.Controls.Add(this.btnDownBinding); this.Controls.Add(this.btnUpBinding); this.Controls.Add(this.btnDeleteBinding);
             this.Controls.Add(this.btnDuplicateBinding); this.Controls.Add(this.btnEditBinding); this.Controls.Add(this.btnAddBinding);
             this.Controls.Add(this.btnDownProfile); this.Controls.Add(this.btnUpProfile); this.Controls.Add(this.btnDeleteProfile);
@@ -85,7 +98,7 @@ namespace UsbInputMapper.UI
             this.Controls.Add(this.lstBindings); this.Controls.Add(this.lstProfiles);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.MaximizeBox = false;
-            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen; // ★中央表示
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "UsbInputMapper - 設定";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
             this.ResumeLayout(false); this.PerformLayout();

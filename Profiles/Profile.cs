@@ -6,11 +6,12 @@ namespace UsbInputMapper.Profiles
     public class Profile
     {
         public string Name { get; set; }
-        
-        // 複数の実行ファイル名を登録できるように変更 (例: "notepad.exe", "calc.exe")
         public List<string> TargetApplicationPaths { get; set; } 
-        
         public bool IsDefault { get; set; }
+        
+        // ★追加: プロファイルごとのXInput有効・無効フラグ
+        // 仮想コントローラー自体は切断せず、出力だけをスルーする。
+        public bool EnableXInput { get; set; } = false;
         
         public List<Binding> Bindings { get; set; }
 

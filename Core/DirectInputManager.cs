@@ -11,7 +11,7 @@ namespace UsbInputMapper.Core
         public string DeviceIdentifier { get; set; }
         public int Type { get; set; } // 10: DInput Button, 11: DInput Axis
         public int Code { get; set; } // Button Index or Axis Index (0:X, 1:Y, 2:Z, 3:Rx, 4:Ry, 5:Rz, 6:Slider0, 7:Slider1)
-        public int Value { get; set; } // Axis Value (0-65535) or 1/0 for Buttons
+        public int Value { get; set; } 
         public bool IsDown => Value > 0; 
     }
 
@@ -26,7 +26,6 @@ namespace UsbInputMapper.Core
         {
             public Joystick Joystick { get; set; }
             public string Identifier { get; set; }
-            public JoystickState LastState { get; set; }
         }
 
         private List<DeviceState> _devices = new List<DeviceState>();
@@ -47,7 +46,9 @@ namespace UsbInputMapper.Core
                 foreach (var d in _devices) d.Joystick.Dispose();
                 _devices.Clear();
 
-                foreach (var instance in _directInput.GetDevices(DeviceClass.GameControl, DeviceEnumerationFlags.AttachedOnly))
+                var instances = _directInput.GetDevices(DeviceClass.GameControl, DeviceEnumerationFlags.AttachedOnly).ToList();
+                
+                foreach (var instance in instances)
                 {
                     try
                     {
@@ -58,8 +59,7 @@ namespace UsbInputMapper.Core
                         _devices.Add(new DeviceState 
                         { 
                             Joystick = joystick, 
-                            Identifier = instance.InstanceGuid.ToString(), 
-                            LastState = new JoystickState() 
+                            Identifier = instance.InstanceGuid.ToString()
                         });
                     }
                     catch { }
@@ -121,10 +121,18 @@ namespace UsbInputMapper.Core
                                 }
                             }
                         }
+                        catch (SharpDXException e)
+                        {
+                            // ★修正: ウィンドウフォーカスが外れた際などに発生する InputLost を検知し、再取得する処理を追加
+                            if (e.ResultCode == ResultCode.NotAcquired || e.ResultCode == ResultCode.InputLost)
+                            {
+                                try { d.Joystick.Acquire(); } catch { }
+                            }
+                        }
                         catch { }
                     }
                 }
-                Thread.Sleep(1); // 1msの低遅延ループ。ゴミを作らない設計。
+                Thread.Sleep(1); 
             }
         }
 

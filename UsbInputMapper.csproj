@@ -41,11 +41,17 @@
     <Reference Include="System.Management" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
-    <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+    <Reference Include="Newtonsoft.Json">
       <HintPath>..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
-    <Reference Include="Nefarius.ViGEm.Client, Version=1.17.178.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\Nefarius.ViGEm.Client.1.17.178\lib\net462\Nefarius.ViGEm.Client.dll</HintPath>
+    <Reference Include="Nefarius.ViGEm.Client">
+      <HintPath>..\packages\Nefarius.ViGEm.Client.1.21.156\lib\net462\Nefarius.ViGEm.Client.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpDX">
+      <HintPath>..\packages\SharpDX.4.2.0\lib\net45\SharpDX.dll</HintPath>
+    </Reference>
+    <Reference Include="SharpDX.DirectInput">
+      <HintPath>..\packages\SharpDX.DirectInput.4.2.0\lib\net45\SharpDX.DirectInput.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
@@ -60,6 +66,7 @@
     <Compile Include="Core\ViGEmOutput.cs" />
     <Compile Include="Core\OutputDispatcher.cs" />
     <Compile Include="Core\PanicKeyWatcher.cs" />
+    <Compile Include="Core\DirectInputManager.cs" />
     <Compile Include="Profiles\ActionDef.cs" />
     <Compile Include="Profiles\Binding.cs" />
     <Compile Include="Profiles\MacroStep.cs" />
@@ -96,6 +103,12 @@
     </Compile>
     <Compile Include="UI\MacroEditorForm.Designer.cs">
       <DependentUpon>MacroEditorForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="UI\ControllerSetupForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="UI\ControllerSetupForm.Designer.cs">
+      <DependentUpon>ControllerSetupForm.cs</DependentUpon>
     </Compile>
     <Compile Include="Util\StartupRegistrar.cs" />
     <Compile Include="Util\SingleInstance.cs" />

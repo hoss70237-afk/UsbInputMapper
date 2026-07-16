@@ -18,7 +18,7 @@ namespace UsbInputMapper.Profiles
     {
         public string Name { get; set; }
         public string DeviceIdentifier { get; set; }
-        public int InputType { get; set; } 
+        public int InputType { get; set; } // 10:DInputBtn, 11:DInputAxis
         public int InputCode { get; set; } 
         
         public List<TriggerKey> SubTriggers { get; set; }
@@ -27,7 +27,11 @@ namespace UsbInputMapper.Profiles
         public int ConditionParam { get; set; }
         public ActionDef Action { get; set; }
         
-        public bool BlockOriginalInput { get; set; } // ★追加: フックによるブロック
+        public bool BlockOriginalInput { get; set; }
+        
+        // ★追加: アナログ入力の詳細設定
+        public int DeadZone { get; set; } = 10;  // 0-50%
+        public bool InvertAxis { get; set; } = false;
 
         public Binding()
         {
@@ -44,26 +48,17 @@ namespace UsbInputMapper.Profiles
             string mainTrigger = GetCodeName(InputType, InputCode);
             string sub = "";
             if (SubTriggers != null && SubTriggers.Count > 0)
-            {
                 foreach (var t in SubTriggers) sub += t.ToString() + " + ";
-            }
             return $"{sub}{mainTrigger}";
         }
 
         public static string GetCodeName(int type, int code)
         {
             if (type == 1) return ((Keys)code).ToString();
-            else if (type == 0) 
-            {
-                switch (code)
-                {
-                    case 1: return "左クリック"; case 2: return "右クリック"; case 3: return "中クリック";
-                    case 4: return "ホイール上"; case 5: return "ホイール下";
-                    case 6: return "サイド(奥)"; case 7: return "サイド(手前)";
-                    default: return $"MouseBtn:{code}";
-                }
-            }
-            else if (type == 2) return $"HID特殊ボタン(B:{code >> 8} b:{code & 0xFF})";
+            else if (type == 0) return $"MouseBtn:{code}";
+            else if (type == 2) return $"HID:{code}";
+            else if (type == 10) return $"DI_Btn:{code}";
+            else if (type == 11) return $"DI_Axis:{code}";
             return "Unknown";
         }
     }

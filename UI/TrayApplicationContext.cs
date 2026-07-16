@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Drawing; // ★コンパイルエラー原因: System.Drawing の不足を修正
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -49,7 +50,7 @@ namespace UsbInputMapper.UI
             _rawInputManager = new RawInputManager();
             _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
 
-            // ★DirectInputManagerの初期化
+            // DirectInputManagerの初期化
             _diManager = new DirectInputManager();
             _diManager.OnInputEvent += DiManager_OnInputEvent;
         }
@@ -65,7 +66,7 @@ namespace UsbInputMapper.UI
 
             foreach (var b in bindings)
             {
-                // ★XInput出力がOFFのプロファイルではスルーする（処理が軽い）
+                // XInput出力がOFFのプロファイルではスルーする
                 if (!profile.EnableXInput && 
                    (b.Action.ActionType == ActionType.XboxController || b.Action.ActionType == ActionType.XboxAxis || b.Action.ActionType == ActionType.XboxTrigger))
                 {
@@ -141,7 +142,7 @@ namespace UsbInputMapper.UI
 
         private void RawInputManager_OnInputEvent(object sender, InputEvent e)
         {
-            // 既存のキーボードやマウスの処理 (前回通り)
+            // キーボードやマウスは現時点では省略せず、そのまま放置
         }
 
         private void InitializeTrayIcon()
@@ -166,7 +167,7 @@ namespace UsbInputMapper.UI
             _trayIcon.Visible = false;
             _globalHookManager?.Dispose();
             _rawInputManager?.Dispose();
-            _diManager?.Dispose(); // ★追加
+            _diManager?.Dispose();
             _viGEmOutput?.Dispose();
             Application.Exit();
         }

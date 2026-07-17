@@ -25,7 +25,6 @@ namespace UsbInputMapper.UI
         private ForegroundAppWatcher _appWatcher;
         private GlobalHookManager _globalHookManager;
 
-        // ★文字列生成を排除するための構造体キーを定義
         private struct TriggerKeyHash : IEquatable<TriggerKeyHash>
         {
             public int Type;
@@ -57,8 +56,6 @@ namespace UsbInputMapper.UI
         private ConcurrentDictionary<TriggerKeyHash, bool> _physicalKeysDown = new ConcurrentDictionary<TriggerKeyHash, bool>();
         private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
         private Dictionary<PovKey, int> _lastPovStates = new Dictionary<PovKey, int>();
-
-        // ★イベント毎のLINQ検索を避けるための高速ルックアップキャッシュ
         private Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
         public TrayApplicationContext()
@@ -72,10 +69,8 @@ namespace UsbInputMapper.UI
             _profileManager = new ProfileManager();
             _profileManager.Load();
             
-            // ★プロファイル切替時や設定保存時にキャッシュを再構築
             _profileManager.OnProfileChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
             _profileManager.OnSettingsChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
-            UpdateBindingCache();
 
             _appWatcher = new ForegroundAppWatcher();
             _appWatcher.OnForegroundAppChanged += (s, appPath) => _profileManager.SwitchToAppProfile(appPath);
@@ -93,6 +88,9 @@ namespace UsbInputMapper.UI
 
             _diManager = new DirectInputManager();
             _diManager.OnInputEvent += DiManager_OnInputEvent;
+
+            // ★マネージャー初期化後にキャッシュと軸イベントフラグを構築する
+            UpdateBindingCache();
         }
 
         private void UpdateHookBlockList()
@@ -107,7 +105,6 @@ namespace UsbInputMapper.UI
             _globalHookManager.SetBlockList(blockList);
         }
 
-        // ★重いLINQ検索を排除するための事前構築メソッド
         private void UpdateBindingCache()
         {
             _bindingCache.Clear();
@@ -136,7 +133,6 @@ namespace UsbInputMapper.UI
                         _bindingCache[key] = list;
                     }
                     
-                    // プロファイル側に同一デバイス・タイプ・コードのバインディングが存在しなければベースを追加
                     bool existsInProfile = profile.Bindings.Any(pb => pb.DeviceIdentifier == b.DeviceIdentifier && pb.InputType == b.InputType && pb.InputCode == b.InputCode);
                     if (!existsInProfile)
                     {
@@ -144,9 +140,14 @@ namespace UsbInputMapper.UI
                     }
                 }
             }
+
+            // ★追加: 現在のプロファイルに軸（Type=11）のバインディングが存在するかどうかをDirectInputManagerに伝える
+            if (_diManager != null)
+            {
+                _diManager.HasAxisBindings = _bindingCache.Keys.Any(k => k.Type == 11);
+            }
         }
 
-        // --- RawInput (Keyboard/Mouse) ---
         private void RawInputManager_OnInputEvent(object sender, InputEvent e)
         {
             if (CaptureForm.IsCapturing) { CaptureForm.CurrentInstance?.ProcessInput(e); return; }
@@ -155,7 +156,6 @@ namespace UsbInputMapper.UI
             var tKey = new TriggerKeyHash(e.Type, inputCode);
             if (e.IsKeyDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out _);
 
-            // ★O(1)の高速ルックアップに変更。リストがなければブロック判定だけして即終了
             if (!_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, inputCode), out var bindings) || bindings.Count == 0)
             {
                 if (_globalHookManager.WasRecentlyBlocked(e.Type, inputCode))
@@ -168,7 +168,6 @@ namespace UsbInputMapper.UI
 
             foreach (var b in bindings) 
             {
-                // サブトリガーの判定
                 if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
                 {
                     ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, inputCode, e.IsKeyDown);
@@ -176,16 +175,14 @@ namespace UsbInputMapper.UI
             }
         }
 
-        // --- DirectInput (Gamepad) ---
         private void DiManager_OnInputEvent(object sender, DirectInputEvent e)
         {
             if (CaptureForm.IsCapturing) return;
 
-            // POV(十字キー) リリース制御
             if (e.Type == 12)
             {
                 var povKey = new PovKey(e.DeviceIdentifier, e.Code);
-                if (e.Value == -1) // リリース
+                if (e.Value == -1) 
                 {
                     if (_lastPovStates.TryGetValue(povKey, out int lastVal))
                     {
@@ -201,7 +198,7 @@ namespace UsbInputMapper.UI
                     }
                     return;
                 }
-                else // ダウン/変更
+                else 
                 {
                     if (_lastPovStates.TryGetValue(povKey, out int lastVal) && lastVal != e.Value)
                     {
@@ -234,7 +231,6 @@ namespace UsbInputMapper.UI
                 else _physicalKeysDown.TryRemove(tKey, out _); 
             }
             
-            // ★高速ルックアップ（毎秒数千回来るアナログスティックの処理もここでO(1)になります）
             if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Code), out var bindings))
             {
                 foreach (var binding in bindings)
@@ -251,11 +247,11 @@ namespace UsbInputMapper.UI
                         continue; 
                     }
 
-                    if (e.Type == 11) // アナログ軸
+                    if (e.Type == 11) 
                     {
                         ProcessAnalogAxis(binding, e.Value);
                     }
-                    else if (e.Type == 10) // ボタン
+                    else if (e.Type == 10) 
                     {
                         if (binding.Action.ActionType == ActionType.XboxTrigger)
                         {

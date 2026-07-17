@@ -11,8 +11,7 @@ namespace UsbInputMapper.Core
     public class OutputDispatcher
     {
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
-        [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-        [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+        [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr hWnd, ref SendInputNative.POINT lpPoint);
 
         private readonly ViGEmOutput _viGEmOutput;
         private readonly Stack<SendInputNative.POINT> _mousePositionStack = new Stack<SendInputNative.POINT>();
@@ -73,8 +72,8 @@ namespace UsbInputMapper.Core
             else if (buttonId == 3) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_MIDDLEDOWN : SendInputNative.MOUSEEVENTF_MIDDLEUP;
             else if (buttonId == 4 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = 120; }
             else if (buttonId == 5 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = unchecked((uint)-120); }
-            else if (buttonId == 6) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0001; } // XBUTTON1
-            else if (buttonId == 7) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0002; } // XBUTTON2
+            else if (buttonId == 6) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0001; }
+            else if (buttonId == 7) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0002; }
             
             if ((buttonId == 4 || buttonId == 5) && !isDown) return;
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
@@ -90,9 +89,13 @@ namespace UsbInputMapper.Core
                 if (isWindowRelative)
                 {
                     IntPtr hwnd = GetForegroundWindow();
-                    if (hwnd != IntPtr.Zero && GetWindowRect(hwnd, out RECT rect))
+                    if (hwnd != IntPtr.Zero)
                     {
-                        targetX = rect.Left + x; targetY = rect.Top + y;
+                        // ★ 枠線ズレ防止: クライアント領域基準で座標変換
+                        SendInputNative.POINT pt = new SendInputNative.POINT { X = 0, Y = 0 };
+                        ClientToScreen(hwnd, ref pt);
+                        targetX = pt.X + x; 
+                        targetY = pt.Y + y;
                     }
                 }
                 int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;

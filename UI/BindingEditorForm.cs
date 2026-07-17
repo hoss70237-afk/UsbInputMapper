@@ -13,7 +13,7 @@ namespace UsbInputMapper.UI
     {
         [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(Point p);
         [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
-        [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out OutputDispatcher.RECT lpRect);
+        [DllImport("user32.dll")] private static extern bool ScreenToClient(IntPtr hWnd, ref Point lpPoint);
 
         public UsbInputMapper.Profiles.Binding ResultBinding { get; private set; }
         private List<string> _profileNames;
@@ -30,7 +30,6 @@ namespace UsbInputMapper.UI
             InitializeComponent();
             _profileNames = profileNames ?? new List<string>();
 
-            // アナログ設定パネルの動的生成
             pnlAnalog = new Panel { Location = new Point(90, 285), Size = new Size(360, 40), Visible = false };
             pnlAnalog.Controls.Add(new Label { Text = "半軸:", Location = new Point(0, 5), AutoSize = true });
             cmbAxisRange = new ComboBox { Location = new Point(35, 3), Size = new Size(70, 20), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -69,7 +68,6 @@ namespace UsbInputMapper.UI
                 txtAppPath.Text = existingBinding.Action.ArgumentStr;
                 numMouseX.Value = existingBinding.Action.MouseX; numMouseY.Value = existingBinding.Action.MouseY;
 
-                // アナログ設定復元
                 cmbAxisRange.SelectedIndex = existingBinding.AxisRange;
                 numDeadZone.Value = existingBinding.DeadZone;
                 cmbCurve.SelectedIndex = existingBinding.AccelerationCurve;
@@ -200,7 +198,6 @@ namespace UsbInputMapper.UI
             ResultBinding.Name = txtName.Text; ResultBinding.BlockOriginalInput = chkBlockOriginalInput.Checked;
             ResultBinding.Condition = (TriggerCondition)cmbCondition.SelectedIndex; ResultBinding.ConditionParam = (int)numConditionParam.Value;
             
-            // アナログ設定保存
             ResultBinding.AxisRange = cmbAxisRange.SelectedIndex;
             ResultBinding.DeadZone = (int)numDeadZone.Value;
             ResultBinding.AccelerationCurve = cmbCurve.SelectedIndex;
@@ -241,7 +238,6 @@ namespace UsbInputMapper.UI
                     var evt = capture.CapturedEvent;
                     ResultBinding.DeviceIdentifier = evt.DeviceIdentifier;
                     ResultBinding.InputType = evt.Type;
-                    // ★修正: CaptureForm (RawInput) からのイベントは VKey または MouseButtonFlags に格納される
                     ResultBinding.InputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags;
                     UpdateMainTriggerLabel();
                 }
@@ -363,10 +359,13 @@ namespace UsbInputMapper.UI
                     {
                         IntPtr hwnd = WindowFromPoint(new Point(pt.x, pt.y));
                         IntPtr root = GetAncestor(hwnd, 2); 
-                        if (root != IntPtr.Zero && GetWindowRect(root, out OutputDispatcher.RECT rect))
+                        if (root != IntPtr.Zero)
                         {
-                            targetX = pt.x - rect.Left;
-                            targetY = pt.y - rect.Top;
+                            // ★ 枠線ズレ防止: 正確なクライアント領域座標を取得
+                            Point ptScreen = new Point(pt.x, pt.y);
+                            ScreenToClient(root, ref ptScreen);
+                            targetX = ptScreen.X;
+                            targetY = ptScreen.Y;
                         }
                     }
                     this.BeginInvoke(new Action(() => {

@@ -20,7 +20,7 @@ namespace UsbInputMapper.UI
             public ActionType ActionType { get; set; }
             public int TargetArg { get; set; }
             public ReqType Req { get; set; }
-            public bool IsPositive { get; set; } // Axis用
+            public bool IsPositive { get; set; } 
         }
 
         private List<SetupStep> _steps;
@@ -71,7 +71,7 @@ namespace UsbInputMapper.UI
             if (_waitingForNeutral)
             {
                 if (e.Type == 10 && e.Value > 0) return; 
-                if (e.Type == 12 && e.Value != -1) return; // POV押下中
+                if (e.Type == 12 && e.Value != -1) return; 
                 if (e.Type == 11)
                 {
                     if (!_axisNeutrals.ContainsKey(e.Code)) _axisNeutrals[e.Code] = e.Value;
@@ -85,8 +85,7 @@ namespace UsbInputMapper.UI
                 return;
             }
 
-            // ★検知ロジック
-            if (step.Req == ReqType.Axis || step.Req == ReqType.Trigger)
+            if (step.Req == ReqType.Axis)
             {
                 if (e.Type == 11)
                 {
@@ -95,26 +94,48 @@ namespace UsbInputMapper.UI
                     if (Math.Abs(diff) < 20000) return; 
 
                     bool inputIsPositive = diff > 0;
-                    int axisRange = 0; bool invert = false;
-
-                    if (step.Req == ReqType.Trigger)
-                    {
-                        axisRange = inputIsPositive ? 1 : 2; // 半軸として登録
-                    }
-                    else
-                    {
-                        invert = step.IsPositive != inputIsPositive;
-                    }
+                    bool invert = step.IsPositive != inputIsPositive;
 
                     var b = new UsbInputMapper.Profiles.Binding
                     {
                         Name = step.ActionType.ToString() + "_" + step.TargetArg, DeviceIdentifier = e.DeviceIdentifier,
-                        InputType = e.Type, InputCode = e.Code, InvertAxis = invert, AxisRange = axisRange, DeadZone = 15,
+                        InputType = e.Type, InputCode = e.Code, InvertAxis = invert, AxisRange = 0, DeadZone = 15,
                         Action = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.TargetArg }
                     };
-                    _profileManager.ControllerBaseBindings.RemoveAll(x => x.InputType == e.Type && x.InputCode == e.Code && x.AxisRange == axisRange);
+                    _profileManager.ControllerBaseBindings.RemoveAll(x => x.InputType == e.Type && x.InputCode == e.Code && x.AxisRange == 0);
                     _profileManager.ControllerBaseBindings.Add(b);
-                    _waitingForNeutral = true; lblInstruction.Text = "スティック/トリガーを離してください...";
+                    _waitingForNeutral = true; lblInstruction.Text = "スティックを離してください...";
+                }
+            }
+            else if (step.Req == ReqType.Trigger)
+            {
+                if (e.Type == 11) // アナログトリガー
+                {
+                    if (!_axisNeutrals.ContainsKey(e.Code)) _axisNeutrals[e.Code] = e.Value;
+                    int diff = e.Value - _axisNeutrals[e.Code];
+                    if (Math.Abs(diff) < 15000) return; // ★しきい値を緩和
+
+                    bool inputIsPositive = diff > 0;
+                    var b = new UsbInputMapper.Profiles.Binding
+                    {
+                        Name = step.ActionType.ToString() + "_" + step.TargetArg, DeviceIdentifier = e.DeviceIdentifier,
+                        InputType = e.Type, InputCode = e.Code, InvertAxis = false, AxisRange = inputIsPositive ? 1 : 2, DeadZone = 15,
+                        Action = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.TargetArg }
+                    };
+                    _profileManager.ControllerBaseBindings.RemoveAll(x => x.InputType == e.Type && x.InputCode == e.Code && x.AxisRange == b.AxisRange);
+                    _profileManager.ControllerBaseBindings.Add(b);
+                    _waitingForNeutral = true; lblInstruction.Text = "トリガーを離してください...";
+                }
+                else if (e.Type == 10 && e.Value > 0) // ★デジタルトリガー（ボタン型）にも対応
+                {
+                    var b = new UsbInputMapper.Profiles.Binding
+                    {
+                        Name = step.ActionType.ToString() + "_" + step.TargetArg, DeviceIdentifier = e.DeviceIdentifier,
+                        InputType = e.Type, InputCode = e.Code,
+                        Action = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.TargetArg }
+                    };
+                    _profileManager.ControllerBaseBindings.Add(b);
+                    _waitingForNeutral = true; lblInstruction.Text = "トリガーを離してください...";
                 }
             }
             else if (step.Req == ReqType.POV)
@@ -124,7 +145,7 @@ namespace UsbInputMapper.UI
                     var b = new UsbInputMapper.Profiles.Binding
                     {
                         Name = step.ActionType.ToString() + "_" + step.TargetArg, DeviceIdentifier = e.DeviceIdentifier,
-                        InputType = e.Type, InputCode = e.Value, // 角度を保存
+                        InputType = e.Type, InputCode = e.Value, 
                         Action = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.TargetArg }
                     };
                     _profileManager.ControllerBaseBindings.Add(b);

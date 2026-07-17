@@ -25,9 +25,41 @@ namespace UsbInputMapper.UI
         private ForegroundAppWatcher _appWatcher;
         private GlobalHookManager _globalHookManager;
 
-        private ConcurrentDictionary<string, bool> _physicalKeysDown = new ConcurrentDictionary<string, bool>();
+        // ★文字列生成を排除するための構造体キーを定義
+        private struct TriggerKeyHash : IEquatable<TriggerKeyHash>
+        {
+            public int Type;
+            public int Code;
+            public TriggerKeyHash(int type, int code) { Type = type; Code = code; }
+            public bool Equals(TriggerKeyHash other) => Type == other.Type && Code == other.Code;
+            public override int GetHashCode() => (Type * 397) ^ Code;
+        }
+
+        private struct InputKey : IEquatable<InputKey>
+        {
+            public string DeviceIdentifier;
+            public int Type;
+            public int Code;
+            public InputKey(string deviceIdentifier, int type, int code) { DeviceIdentifier = deviceIdentifier; Type = type; Code = code; }
+            public bool Equals(InputKey other) => Type == other.Type && Code == other.Code && string.Equals(DeviceIdentifier, other.DeviceIdentifier, StringComparison.Ordinal);
+            public override int GetHashCode() => (((DeviceIdentifier != null ? DeviceIdentifier.GetHashCode() : 0) * 397) ^ Type) * 397 ^ Code;
+        }
+
+        private struct PovKey : IEquatable<PovKey>
+        {
+            public string DeviceIdentifier;
+            public int Code;
+            public PovKey(string deviceIdentifier, int code) { DeviceIdentifier = deviceIdentifier; Code = code; }
+            public bool Equals(PovKey other) => Code == other.Code && string.Equals(DeviceIdentifier, other.DeviceIdentifier, StringComparison.Ordinal);
+            public override int GetHashCode() => ((DeviceIdentifier != null ? DeviceIdentifier.GetHashCode() : 0) * 397) ^ Code;
+        }
+
+        private ConcurrentDictionary<TriggerKeyHash, bool> _physicalKeysDown = new ConcurrentDictionary<TriggerKeyHash, bool>();
         private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
-        private Dictionary<string, int> _lastPovStates = new Dictionary<string, int>();
+        private Dictionary<PovKey, int> _lastPovStates = new Dictionary<PovKey, int>();
+
+        // ★イベント毎のLINQ検索を避けるための高速ルックアップキャッシュ
+        private Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
         public TrayApplicationContext()
         {
@@ -39,7 +71,11 @@ namespace UsbInputMapper.UI
         {
             _profileManager = new ProfileManager();
             _profileManager.Load();
-            _profileManager.OnProfileChanged += (s, e) => UpdateHookBlockList();
+            
+            // ★プロファイル切替時や設定保存時にキャッシュを再構築
+            _profileManager.OnProfileChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
+            _profileManager.OnSettingsChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
+            UpdateBindingCache();
 
             _appWatcher = new ForegroundAppWatcher();
             _appWatcher.OnForegroundAppChanged += (s, appPath) => _profileManager.SwitchToAppProfile(appPath);
@@ -71,16 +107,56 @@ namespace UsbInputMapper.UI
             _globalHookManager.SetBlockList(blockList);
         }
 
+        // ★重いLINQ検索を排除するための事前構築メソッド
+        private void UpdateBindingCache()
+        {
+            _bindingCache.Clear();
+            var profile = _profileManager.CurrentActiveProfile;
+            if (profile == null) return;
+
+            foreach (var b in profile.Bindings)
+            {
+                var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode);
+                if (!_bindingCache.TryGetValue(key, out var list))
+                {
+                    list = new List<UsbInputMapper.Profiles.Binding>();
+                    _bindingCache[key] = list;
+                }
+                list.Add(b);
+            }
+
+            if (profile.EnableXInput)
+            {
+                foreach (var b in _profileManager.ControllerBaseBindings)
+                {
+                    var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode);
+                    if (!_bindingCache.TryGetValue(key, out var list))
+                    {
+                        list = new List<UsbInputMapper.Profiles.Binding>();
+                        _bindingCache[key] = list;
+                    }
+                    
+                    // プロファイル側に同一デバイス・タイプ・コードのバインディングが存在しなければベースを追加
+                    bool existsInProfile = profile.Bindings.Any(pb => pb.DeviceIdentifier == b.DeviceIdentifier && pb.InputType == b.InputType && pb.InputCode == b.InputCode);
+                    if (!existsInProfile)
+                    {
+                        list.Add(b);
+                    }
+                }
+            }
+        }
+
         // --- RawInput (Keyboard/Mouse) ---
         private void RawInputManager_OnInputEvent(object sender, InputEvent e)
         {
             if (CaptureForm.IsCapturing) { CaptureForm.CurrentInstance?.ProcessInput(e); return; }
             int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
-            string keyId = $"{e.Type}_{inputCode}";
-            if (e.IsKeyDown) _physicalKeysDown[keyId] = true; else _physicalKeysDown.TryRemove(keyId, out _);
+            
+            var tKey = new TriggerKeyHash(e.Type, inputCode);
+            if (e.IsKeyDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out _);
 
-            var bindings = FindAllMatchingBindings(e.DeviceIdentifier, e.Type, inputCode);
-            if (bindings.Count == 0)
+            // ★O(1)の高速ルックアップに変更。リストがなければブロック判定だけして即終了
+            if (!_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, inputCode), out var bindings) || bindings.Count == 0)
             {
                 if (_globalHookManager.WasRecentlyBlocked(e.Type, inputCode))
                 {
@@ -89,7 +165,15 @@ namespace UsbInputMapper.UI
                 }
                 return;
             }
-            foreach (var b in bindings) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, inputCode, e.IsKeyDown);
+
+            foreach (var b in bindings) 
+            {
+                // サブトリガーの判定
+                if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
+                {
+                    ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, inputCode, e.IsKeyDown);
+                }
+            }
         }
 
         // --- DirectInput (Gamepad) ---
@@ -100,13 +184,19 @@ namespace UsbInputMapper.UI
             // POV(十字キー) リリース制御
             if (e.Type == 12)
             {
-                string povKey = $"{e.DeviceIdentifier}_{e.Code}";
+                var povKey = new PovKey(e.DeviceIdentifier, e.Code);
                 if (e.Value == -1) // リリース
                 {
                     if (_lastPovStates.TryGetValue(povKey, out int lastVal))
                     {
-                        var rb = FindAllMatchingBindings(e.DeviceIdentifier, e.Type, lastVal);
-                        foreach(var b in rb) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
+                        if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, lastVal), out var rBindings))
+                        {
+                            foreach(var b in rBindings)
+                            {
+                                if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
+                                    ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
+                            }
+                        }
                         _lastPovStates.Remove(povKey);
                     }
                     return;
@@ -115,65 +205,69 @@ namespace UsbInputMapper.UI
                 {
                     if (_lastPovStates.TryGetValue(povKey, out int lastVal) && lastVal != e.Value)
                     {
-                        var rb = FindAllMatchingBindings(e.DeviceIdentifier, e.Type, lastVal);
-                        foreach(var b in rb) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
+                        if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, lastVal), out var rBindings))
+                        {
+                            foreach(var b in rBindings)
+                            {
+                                if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
+                                    ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
+                            }
+                        }
                     }
                     _lastPovStates[povKey] = e.Value;
-                    var db = FindAllMatchingBindings(e.DeviceIdentifier, e.Type, e.Value);
-                    foreach(var b in db) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, e.Value, true);
+                    if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Value), out var dBindings))
+                    {
+                        foreach(var b in dBindings)
+                        {
+                            if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
+                                ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, e.Value, true);
+                        }
+                    }
                 }
                 return;
             }
 
-            if (e.Type == 10) { if (e.IsDown) _physicalKeysDown[$"{e.Type}_{e.Code}"] = true; else _physicalKeysDown.TryRemove($"{e.Type}_{e.Code}", out _); }
-            var bindings = FindAllMatchingBindings(e.DeviceIdentifier, e.Type, e.Code);
-
-            foreach (var binding in bindings)
+            if (e.Type == 10) 
+            { 
+                var tKey = new TriggerKeyHash(e.Type, e.Code);
+                if (e.IsDown) _physicalKeysDown[tKey] = true; 
+                else _physicalKeysDown.TryRemove(tKey, out _); 
+            }
+            
+            // ★高速ルックアップ（毎秒数千回来るアナログスティックの処理もここでO(1)になります）
+            if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Code), out var bindings))
             {
-                var profile = _profileManager.CurrentActiveProfile;
-                if (profile != null && !profile.EnableXInput &&
-                   (binding.Action.ActionType == ActionType.XboxController || binding.Action.ActionType == ActionType.XboxAxis || binding.Action.ActionType == ActionType.XboxTrigger))
+                foreach (var binding in bindings)
                 {
-                    continue; 
-                }
-
-                if (e.Type == 11) // アナログ軸
-                {
-                    ProcessAnalogAxis(binding, e.Value);
-                }
-                else if (e.Type == 10) // ボタン
-                {
-                    // ★ボタン型のトリガーに対応
-                    if (binding.Action.ActionType == ActionType.XboxTrigger)
+                    if (binding.SubTriggers != null && !binding.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
                     {
-                        _viGEmOutput.SetSlider(binding.Action.ArgumentNum == 1 ? Xbox360Slider.LeftTrigger : Xbox360Slider.RightTrigger, e.IsDown ? (byte)255 : (byte)0);
+                        continue;
                     }
-                    else
+
+                    var profile = _profileManager.CurrentActiveProfile;
+                    if (profile != null && !profile.EnableXInput &&
+                       (binding.Action.ActionType == ActionType.XboxController || binding.Action.ActionType == ActionType.XboxAxis || binding.Action.ActionType == ActionType.XboxTrigger))
                     {
-                        ProcessBindingExecution(binding, e.DeviceIdentifier, e.Type, e.Code, e.IsDown);
+                        continue; 
+                    }
+
+                    if (e.Type == 11) // アナログ軸
+                    {
+                        ProcessAnalogAxis(binding, e.Value);
+                    }
+                    else if (e.Type == 10) // ボタン
+                    {
+                        if (binding.Action.ActionType == ActionType.XboxTrigger)
+                        {
+                            _viGEmOutput.SetSlider(binding.Action.ArgumentNum == 1 ? Xbox360Slider.LeftTrigger : Xbox360Slider.RightTrigger, e.IsDown ? (byte)255 : (byte)0);
+                        }
+                        else
+                        {
+                            ProcessBindingExecution(binding, e.DeviceIdentifier, e.Type, e.Code, e.IsDown);
+                        }
                     }
                 }
             }
-        }
-
-        private List<UsbInputMapper.Profiles.Binding> FindAllMatchingBindings(string deviceId, int inputType, int inputCode)
-        {
-            var list = new List<UsbInputMapper.Profiles.Binding>();
-            var profile = _profileManager.CurrentActiveProfile;
-            
-            if (profile != null)
-            {
-                var pBindings = profile.Bindings.Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode).ToList();
-                list.AddRange(pBindings);
-                
-                if (pBindings.Count == 0 && profile.EnableXInput)
-                {
-                    var bBindings = _profileManager.ControllerBaseBindings.Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode).ToList();
-                    list.AddRange(bBindings);
-                }
-            }
-            
-            return list.Where(b => b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey($"{st.Type}_{st.Code}"))).ToList();
         }
 
         private void ProcessBindingExecution(UsbInputMapper.Profiles.Binding binding, string deviceId, int type, int inputCode, bool isDown)

@@ -7,7 +7,6 @@ using SharpDX.DirectInput;
 
 namespace UsbInputMapper.Core
 {
-    // ★ class から struct に変更（メモリ確保のオーバーヘッドをゼロにする）
     public struct DirectInputEvent
     {
         public string DeviceIdentifier;
@@ -25,6 +24,13 @@ namespace UsbInputMapper.Core
         private bool _isRunning;
         private class DeviceState { public Joystick Joystick { get; set; } public string Identifier { get; set; } }
         private List<DeviceState> _devices = new List<DeviceState>();
+
+        // ★追加: 軸イベントの送信を制御するフラグ
+        public bool HasAxisBindings { get; set; } = true;
+        public bool ForceEnableAxisEvents { get; set; } = false;
+        
+        // ★追加: ジッター（微細な揺れ）フィルター用の前回値保存
+        private Dictionary<string, int> _lastAxisValues = new Dictionary<string, int>();
 
         public DirectInputManager()
         {
@@ -83,12 +89,27 @@ namespace UsbInputMapper.Core
                                 else
                                 {
                                     type = 11;
+
+                                    // ★追加: スティック割り当てが無い場合は完全にイベントを無視する（設定画面を開いている時を除く）
+                                    if (!HasAxisBindings && !ForceEnableAxisEvents) continue;
+
                                     switch (data.Offset)
                                     {
                                         case JoystickOffset.X: code = 0; break; case JoystickOffset.Y: code = 1; break;
                                         case JoystickOffset.Z: code = 2; break; case JoystickOffset.RotationX: code = 3; break;
                                         case JoystickOffset.RotationY: code = 4; break; case JoystickOffset.RotationZ: code = 5; break;
                                         case JoystickOffset.Sliders0: code = 6; break; case JoystickOffset.Sliders1: code = 7; break;
+                                    }
+
+                                    // ★追加: ジッターフィルター（150未満の微小な値の揺れはノイズとして弾く）
+                                    if (code != -1)
+                                    {
+                                        string axisKey = d.Identifier + "_" + code;
+                                        if (_lastAxisValues.TryGetValue(axisKey, out int lastVal))
+                                        {
+                                            if (Math.Abs(lastVal - value) < 150) continue; 
+                                        }
+                                        _lastAxisValues[axisKey] = value;
                                     }
                                 }
 
@@ -103,7 +124,8 @@ namespace UsbInputMapper.Core
                         catch { }
                     }
                 }
-                Thread.Sleep(1); 
+                // ★修正: 1msだと過剰にループが回るため、一般的なパッドのポーリングレート(200Hz)と同等の 5ms に緩和
+                Thread.Sleep(5); 
             }
         }
 

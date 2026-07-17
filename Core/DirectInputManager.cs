@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using SharpDX;
 using SharpDX.DirectInput;
@@ -10,7 +11,7 @@ namespace UsbInputMapper.Core
     public struct DirectInputEvent
     {
         public string DeviceIdentifier;
-        public int Type; // 10: Button, 11: Axis, 12: POV(十字キー)
+        public int Type; // 10: Button, 11: Axis, 12: POV
         public int Code;
         public int Value; 
         public bool IsDown => (Type == 12) ? Value != -1 : Value > 0; 
@@ -18,22 +19,36 @@ namespace UsbInputMapper.Core
 
     public class DirectInputManager : IDisposable
     {
+        // ★ タイマー精度向上API
+        [DllImport("winmm.dll")]
+        private static extern uint timeBeginPeriod(uint uMilliseconds);
+        [DllImport("winmm.dll")]
+        private static extern uint timeEndPeriod(uint uMilliseconds);
+
         public event EventHandler<DirectInputEvent> OnInputEvent;
         private DirectInput _directInput;
         private Thread _pollingThread;
         private bool _isRunning;
-        private class DeviceState { public Joystick Joystick { get; set; } public string Identifier { get; set; } }
+        
+        private class DeviceState 
+        { 
+            public Joystick Joystick { get; set; } 
+            public string Identifier { get; set; } 
+            // ★ GCスパイク防止: Stringキーをやめ、DeviceState内に辞書を持たせる
+            public Dictionary<int, int> LastAxisValues { get; set; } = new Dictionary<int, int>();
+            // ★ 例外連打防止: エラー時のクールダウン用
+            public long NextAcquireTime { get; set; } = 0;
+        }
         private List<DeviceState> _devices = new List<DeviceState>();
 
-        // ★追加: 軸イベントの送信を制御するフラグ
         public bool HasAxisBindings { get; set; } = true;
         public bool ForceEnableAxisEvents { get; set; } = false;
-        
-        // ★追加: ジッター（微細な揺れ）フィルター用の前回値保存
-        private Dictionary<string, int> _lastAxisValues = new Dictionary<string, int>();
 
         public DirectInputManager()
         {
+            // OSのタイマー精度を1msに向上
+            timeBeginPeriod(1);
+
             _directInput = new DirectInput();
             RefreshDevices();
             _isRunning = true;
@@ -68,6 +83,8 @@ namespace UsbInputMapper.Core
                 {
                     foreach (var d in _devices)
                     {
+                        if (Environment.TickCount < d.NextAcquireTime) continue; // クールダウン中
+
                         try
                         {
                             d.Joystick.Poll();
@@ -89,8 +106,6 @@ namespace UsbInputMapper.Core
                                 else
                                 {
                                     type = 11;
-
-                                    // ★追加: スティック割り当てが無い場合は完全にイベントを無視する（設定画面を開いている時を除く）
                                     if (!HasAxisBindings && !ForceEnableAxisEvents) continue;
 
                                     switch (data.Offset)
@@ -101,15 +116,14 @@ namespace UsbInputMapper.Core
                                         case JoystickOffset.Sliders0: code = 6; break; case JoystickOffset.Sliders1: code = 7; break;
                                     }
 
-                                    // ★追加: ジッターフィルター（150未満の微小な値の揺れはノイズとして弾く）
+                                    // ★ 改善版ジッターフィルター: アロケーションゼロ
                                     if (code != -1)
                                     {
-                                        string axisKey = d.Identifier + "_" + code;
-                                        if (_lastAxisValues.TryGetValue(axisKey, out int lastVal))
+                                        if (d.LastAxisValues.TryGetValue(code, out int lastVal))
                                         {
                                             if (Math.Abs(lastVal - value) < 150) continue; 
                                         }
-                                        _lastAxisValues[axisKey] = value;
+                                        d.LastAxisValues[code] = value;
                                     }
                                 }
 
@@ -119,13 +133,15 @@ namespace UsbInputMapper.Core
                         catch (SharpDXException e)
                         {
                             if (e.ResultCode == SharpDX.DirectInput.ResultCode.NotAcquired || e.ResultCode == SharpDX.DirectInput.ResultCode.InputLost)
-                                try { d.Joystick.Acquire(); } catch { }
+                            {
+                                try { d.Joystick.Acquire(); } 
+                                catch { d.NextAcquireTime = Environment.TickCount + 1000; } // 失敗時は1秒休止
+                            }
                         }
-                        catch { }
+                        catch { d.NextAcquireTime = Environment.TickCount + 1000; }
                     }
                 }
-                // ★修正: 1msだと過剰にループが回るため、一般的なパッドのポーリングレート(200Hz)と同等の 5ms に緩和
-                Thread.Sleep(5); 
+                Thread.Sleep(5); // timeBeginPeriodのおかげで正確に5ms待機
             }
         }
 
@@ -135,6 +151,9 @@ namespace UsbInputMapper.Core
             _pollingThread?.Join(500);
             lock (_devices) { foreach (var d in _devices) d.Joystick.Dispose(); }
             _directInput?.Dispose();
+            
+            // タイマー精度を元に戻す
+            timeEndPeriod(1);
         }
     }
 }

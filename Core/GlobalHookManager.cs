@@ -73,8 +73,9 @@ namespace UsbInputMapper.Core
         private LowLevelHookProc _keyboardProc;
         private LowLevelHookProc _mouseProc;
 
-        private HashSet<string> _blockList = new HashSet<string>();
-        private Dictionary<string, long> _recentBlocked = new Dictionary<string, long>();
+        // ★ GCスパイク防止: String結合を避け、数値(long)をキーにする
+        private HashSet<long> _blockList = new HashSet<long>();
+        private Dictionary<long, long> _recentBlocked = new Dictionary<long, long>();
 
         public bool IsRecording { get; set; }
         public bool IsCoordinateCapturing { get; private set; }
@@ -91,7 +92,7 @@ namespace UsbInputMapper.Core
             public int Type { get; set; }
             public int Code { get; set; }
             public bool IsDown { get; set; }
-            public int X { get; set; } // マウス記録用
+            public int X { get; set; } 
             public int Y { get; set; }
             public long Timestamp { get; set; }
         }
@@ -111,14 +112,17 @@ namespace UsbInputMapper.Core
             }
         }
 
-        public void SetBlockList(HashSet<string> blockList)
+        // キー生成ヘルパーメソッド
+        private long GetHookKey(int type, int code) => ((long)type << 32) | (uint)code;
+
+        public void SetBlockList(HashSet<long> blockList)
         {
-            _blockList = blockList ?? new HashSet<string>();
+            _blockList = blockList ?? new HashSet<long>();
         }
 
         public bool WasRecentlyBlocked(int type, int code)
         {
-            string key = $"{type}_{code}";
+            long key = GetHookKey(type, code);
             if (_recentBlocked.TryGetValue(key, out long time))
             {
                 if (Environment.TickCount - time < 200) return true; 
@@ -157,7 +161,7 @@ namespace UsbInputMapper.Core
 
                 if (!isInjected)
                 {
-                    string key = $"1_{vkCode}";
+                    long key = GetHookKey(1, vkCode);
                     if (_blockList.Contains(key))
                     {
                         _recentBlocked[key] = Environment.TickCount;
@@ -198,33 +202,32 @@ namespace UsbInputMapper.Core
                     code = xButton == 1 ? 6 : 7;
                 }
 
-                // 座標取得時はDownとUpを確実にペアでブロックすることで押しっぱなしを防ぐ
                 if (IsCoordinateCapturing)
                 {
                     if (msg == WM_LBUTTONDOWN)
                     {
                         _capturePoint = ms.pt;
                         _waitingForUp = true;
-                        return (IntPtr)1; // 左クリックダウンをブロック
+                        return (IntPtr)1; 
                     }
                     else if (msg == WM_LBUTTONUP && _waitingForUp)
                     {
                         _waitingForUp = false;
                         IsCoordinateCapturing = false;
-                        _coordinateCaptureCallback?.Invoke(_capturePoint, false); // 通常完了
-                        return (IntPtr)1; // 左クリックアップをブロック
+                        _coordinateCaptureCallback?.Invoke(_capturePoint, false); 
+                        return (IntPtr)1; 
                     }
                     else if (msg == WM_RBUTTONDOWN)
                     {
                         _waitingForRightUp = true;
-                        return (IntPtr)1; // 右クリックダウンをブロック
+                        return (IntPtr)1; 
                     }
                     else if (msg == WM_RBUTTONUP && _waitingForRightUp)
                     {
                         _waitingForRightUp = false;
                         IsCoordinateCapturing = false;
-                        _coordinateCaptureCallback?.Invoke(ms.pt, true); // true = キャンセル
-                        return (IntPtr)1; // 右クリックアップをブロック
+                        _coordinateCaptureCallback?.Invoke(ms.pt, true); 
+                        return (IntPtr)1; 
                     }
                 }
 
@@ -235,11 +238,11 @@ namespace UsbInputMapper.Core
                         OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = Environment.TickCount });
                     }
 
-                    string key = $"0_{code}";
+                    long key = GetHookKey(0, code);
                     if (_blockList.Contains(key))
                     {
                         _recentBlocked[key] = Environment.TickCount;
-                        return (IntPtr)1; // 本来の入力をブロック
+                        return (IntPtr)1; 
                     }
                 }
             }

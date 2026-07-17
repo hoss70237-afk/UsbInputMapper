@@ -30,7 +30,7 @@ namespace UsbInputMapper.UI
             InitializeComponent();
             _profileNames = profileNames ?? new List<string>();
 
-            // ★アナログ設定パネルの動的生成
+            // アナログ設定パネルの動的生成
             pnlAnalog = new Panel { Location = new Point(90, 285), Size = new Size(360, 40), Visible = false };
             pnlAnalog.Controls.Add(new Label { Text = "半軸:", Location = new Point(0, 5), AutoSize = true });
             cmbAxisRange = new ComboBox { Location = new Point(35, 3), Size = new Size(70, 20), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -47,7 +47,7 @@ namespace UsbInputMapper.UI
             pnlAnalog.Controls.Add(cmbCurve);
 
             this.Controls.Add(pnlAnalog);
-            this.ClientSize = new Size(480, 370); // 高さを広げる
+            this.ClientSize = new Size(480, 370); 
             btnOK.Top += 30; btnCancel.Top += 30;
 
             SetupComboBoxes();
@@ -93,9 +93,25 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "Xboxコントローラー入力", Value = (int)ActionType.XboxController });
             cmbActionType.Items.Add(new ComboItem { Text = "Xboxアナログスティック", Value = (int)ActionType.XboxAxis });
             cmbActionType.Items.Add(new ComboItem { Text = "Xboxアナログトリガー", Value = (int)ActionType.XboxTrigger });
+            cmbActionType.Items.Add(new ComboItem { Text = "アプリケーション起動", Value = (int)ActionType.AppLaunch });
+            cmbActionType.Items.Add(new ComboItem { Text = "トグル維持", Value = (int)ActionType.ToggleHold });
+            cmbActionType.Items.Add(new ComboItem { Text = "マクロ実行", Value = (int)ActionType.Macro });
+            cmbActionType.Items.Add(new ComboItem { Text = "プロファイル切り替え", Value = (int)ActionType.ProfileSwitch });
             
             cmbManualSubTrigger.Items.Add(new ComboItem { Text = "左クリック", Value = 0x0001 });
+            cmbManualSubTrigger.Items.Add(new ComboItem { Text = "右クリック", Value = 0x0002 });
+            cmbManualSubTrigger.Items.Add(new ComboItem { Text = "中クリック", Value = 0x0003 });
+            cmbManualSubTrigger.Items.Add(new ComboItem { Text = "ホイール上", Value = 0x0004 });
+            cmbManualSubTrigger.Items.Add(new ComboItem { Text = "ホイール下", Value = 0x0005 });
+            foreach (Keys key in Enum.GetValues(typeof(Keys))) cmbManualSubTrigger.Items.Add(new ComboItem { Text = key.ToString(), Value = 0x010000 | (int)key });
             cmbManualSubTrigger.SelectedIndex = 0;
+
+            foreach (var pName in _profileNames) cmbProfileSwitchTarget.Items.Add(pName);
+            if (cmbProfileSwitchTarget.Items.Count > 0) cmbProfileSwitchTarget.SelectedIndex = 0;
+            
+            cmbProfileSwitchMode.Items.Add("トグル (押す度に切り替え)");
+            cmbProfileSwitchMode.Items.Add("ホールド (押している間だけ)");
+            cmbProfileSwitchMode.SelectedIndex = 0;
         }
 
         private void SetActionTypeCombo(ActionType type) { for (int i = 0; i < cmbActionType.Items.Count; i++) if (((ComboItem)cmbActionType.Items[i]).Value == (int)type) { cmbActionType.SelectedIndex = i; break; } }
@@ -105,15 +121,31 @@ namespace UsbInputMapper.UI
         {
             if (!(cmbActionType.SelectedItem is ComboItem actItem)) return;
             var type = (ActionType)actItem.Value;
-            cmbKeyButton.Visible = false; pnlMouseMove.Visible = false; cmbKeyButton.Items.Clear();
+            
+            cmbKeyButton.Visible = false;
+            txtAppPath.Visible = false;
+            btnBrowseApp.Visible = false;
+            pnlMouseMove.Visible = false;
+            btnEditMacro.Visible = false;
+            cmbProfileSwitchTarget.Visible = false;
+            cmbProfileSwitchMode.Visible = false;
+            
+            cmbKeyButton.Items.Clear();
+            cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged;
 
             switch (type)
             {
                 case ActionType.Keyboard:
-                    cmbKeyButton.Visible = true; foreach (Keys key in Enum.GetValues(typeof(Keys))) cmbKeyButton.Items.Add(new ComboItem { Text = key.ToString(), Value = (int)key });
+                case ActionType.ToggleHold:
+                    cmbKeyButton.Visible = true;
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "(None)", Value = 0 });
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "実際に入力 (同時押し対応)...", Value = -1 });
+                    foreach (Keys key in Enum.GetValues(typeof(Keys))) cmbKeyButton.Items.Add(new ComboItem { Text = key.ToString(), Value = (int)key });
                     break;
                 case ActionType.MouseClick:
                     cmbKeyButton.Visible = true; cmbKeyButton.Items.Add(new ComboItem { Text = "左クリック", Value = 1 }); cmbKeyButton.Items.Add(new ComboItem { Text = "右クリック", Value = 2 });
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "中クリック", Value = 3 }); cmbKeyButton.Items.Add(new ComboItem { Text = "ホイール上", Value = 4 }); cmbKeyButton.Items.Add(new ComboItem { Text = "ホイール下", Value = 5 });
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "サイド進む(X1)", Value = 6 }); cmbKeyButton.Items.Add(new ComboItem { Text = "サイド戻る(X2)", Value = 7 });
                     break;
                 case ActionType.XboxController:
                     cmbKeyButton.Visible = true; string[] xboxBtns = { "A", "B", "X", "Y", "LB", "RB", "Back", "Start", "L3", "R3", "上", "下", "左", "右" };
@@ -125,16 +157,40 @@ namespace UsbInputMapper.UI
                 case ActionType.XboxTrigger:
                     cmbKeyButton.Visible = true; cmbKeyButton.Items.Add(new ComboItem { Text = "左トリガー (LT)", Value = 1 }); cmbKeyButton.Items.Add(new ComboItem { Text = "右トリガー (RT)", Value = 2 });
                     break;
-                case ActionType.MouseMoveRelative: case ActionType.MouseMoveAbsoluteDesk:
-                    pnlMouseMove.Visible = true; break;
+                case ActionType.MouseMoveRelative: case ActionType.MouseMoveContinuous: case ActionType.MouseMoveAbsoluteDesk: case ActionType.MouseMoveAbsoluteWin:
+                    pnlMouseMove.Visible = true;
+                    btnCaptureCoord.Visible = (type != ActionType.MouseMoveContinuous);
+                    break;
+                case ActionType.AppLaunch:
+                    txtAppPath.Visible = true; btnBrowseApp.Visible = true;
+                    break;
+                case ActionType.Macro:
+                    btnEditMacro.Visible = true;
+                    break;
+                case ActionType.ProfileSwitch:
+                    cmbProfileSwitchTarget.Visible = true; cmbProfileSwitchMode.Visible = true;
+                    break;
             }
             if (cmbKeyButton.Items.Count > 0) cmbKeyButton.SelectedIndex = 0;
             if (ResultBinding != null && ResultBinding.Action != null && ResultBinding.Action.ActionType == type) SetOutputTarget(ResultBinding.Action);
+            cmbKeyButton.SelectedIndexChanged += cmbKeyButton_SelectedIndexChanged;
         }
 
         private void SetOutputTarget(ActionDef action)
         {
             if (!cmbKeyButton.Visible) return;
+            if (action.ActionType == ActionType.Keyboard || action.ActionType == ActionType.ToggleHold)
+            {
+                if (action.MultipleKeys != null && action.MultipleKeys.Count > 0)
+                {
+                    string keysStr = string.Join(" + ", action.MultipleKeys.Select(k => ((Keys)k).ToString()));
+                    var customItem = new ComboItem { Text = $"[保存済] {keysStr}", Value = -2 };
+                    cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged;
+                    cmbKeyButton.Items.Insert(0, customItem); cmbKeyButton.SelectedIndex = 0;
+                    cmbKeyButton.SelectedIndexChanged += cmbKeyButton_SelectedIndexChanged;
+                    return;
+                }
+            }
             for (int i = 0; i < cmbKeyButton.Items.Count; i++) if (((ComboItem)cmbKeyButton.Items[i]).Value == action.ArgumentNum) { cmbKeyButton.SelectedIndex = i; break; }
         }
 
@@ -150,19 +206,175 @@ namespace UsbInputMapper.UI
             ResultBinding.AccelerationCurve = cmbCurve.SelectedIndex;
 
             if (cmbActionType.SelectedItem is ComboItem actItem) ResultBinding.Action.ActionType = (ActionType)actItem.Value;
-            if (cmbKeyButton.Visible && cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value >= 0) { ResultBinding.Action.ArgumentNum = cItem.Value; ResultBinding.Action.MultipleKeys.Clear(); if (cItem.Value > 0) ResultBinding.Action.MultipleKeys.Add(cItem.Value); }
+            
+            if (cmbKeyButton.Visible && cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value >= 0) 
+            { 
+                ResultBinding.Action.ArgumentNum = cItem.Value; 
+                ResultBinding.Action.MultipleKeys.Clear(); 
+                if (cItem.Value > 0 && (ResultBinding.Action.ActionType == ActionType.Keyboard || ResultBinding.Action.ActionType == ActionType.ToggleHold)) 
+                    ResultBinding.Action.MultipleKeys.Add(cItem.Value); 
+            }
+
+            if (ResultBinding.Action.ActionType == ActionType.ProfileSwitch)
+            {
+                ResultBinding.Action.ArgumentStr = cmbProfileSwitchTarget.SelectedItem?.ToString();
+                ResultBinding.Action.ArgumentNum = cmbProfileSwitchMode.SelectedIndex;
+            }
+            else
+            {
+                ResultBinding.Action.ArgumentStr = txtAppPath.Text;
+            }
+
             ResultBinding.Action.MouseX = (int)numMouseX.Value; ResultBinding.Action.MouseY = (int)numMouseY.Value;
 
             this.DialogResult = DialogResult.OK; this.Close();
         }
 
-        // --- 他のイベントは省略せず残す ---
         private void btnCancel_Click(object sender, EventArgs e) { this.DialogResult = DialogResult.Cancel; this.Close(); }
-        private void btnReCaptureMain_Click(object sender, EventArgs e) { using (var c = new CaptureForm()) { if (c.ShowDialog() == DialogResult.OK) { ResultBinding.DeviceIdentifier = c.CapturedEvent.DeviceIdentifier; ResultBinding.InputType = c.CapturedEvent.Type; ResultBinding.InputCode = (c.CapturedEvent.Type == 1) ? c.CapturedEvent.VKey : c.CapturedEvent.Value; UpdateMainTriggerLabel(); } } }
-        private void btnAddSubTrigger_Click(object sender, EventArgs e) { /* 省略 */ }
-        private void btnRemoveSubTrigger_Click(object sender, EventArgs e) { /* 省略 */ }
-        private void btnManualAddSub_Click(object sender, EventArgs e) { /* 省略 */ }
-        private void cmbCondition_SelectedIndexChanged(object sender, EventArgs e) { int idx = cmbCondition.SelectedIndex; lblParam.Visible = (idx == 1 || idx == 2); numConditionParam.Visible = (idx == 1 || idx == 2); }
-        private void btnCaptureCoord_Click(object sender, EventArgs e) { /* 省略 */ }
+
+        private void btnReCaptureMain_Click(object sender, EventArgs e)
+        {
+            using (var capture = new CaptureForm(CaptureMode.SingleAny))
+            {
+                if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedEvent != null)
+                {
+                    var evt = capture.CapturedEvent;
+                    ResultBinding.DeviceIdentifier = evt.DeviceIdentifier;
+                    ResultBinding.InputType = evt.Type;
+                    // ★修正: CaptureForm (RawInput) からのイベントは VKey または MouseButtonFlags に格納される
+                    ResultBinding.InputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags;
+                    UpdateMainTriggerLabel();
+                }
+            }
+        }
+
+        private void btnAddSubTrigger_Click(object sender, EventArgs e)
+        {
+            using (var capture = new CaptureForm(CaptureMode.SingleAny))
+            {
+                if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedEvent != null)
+                {
+                    var evt = capture.CapturedEvent;
+                    var key = new TriggerKey
+                    {
+                        DeviceIdentifier = evt.DeviceIdentifier,
+                        Type = evt.Type,
+                        Code = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags
+                    };
+                    lstSubTriggers.Items.Add(key);
+                }
+            }
+        }
+
+        private void btnRemoveSubTrigger_Click(object sender, EventArgs e)
+        {
+            if (lstSubTriggers.SelectedIndex >= 0) lstSubTriggers.Items.RemoveAt(lstSubTriggers.SelectedIndex);
+        }
+
+        private void btnManualAddSub_Click(object sender, EventArgs e)
+        {
+            if (cmbManualSubTrigger.SelectedItem is ComboItem item)
+            {
+                int type = (item.Value & 0x010000) != 0 ? 1 : 0;
+                int code = item.Value & 0xFFFF;
+                var key = new TriggerKey { DeviceIdentifier = "Any", Type = type, Code = code };
+                lstSubTriggers.Items.Add(key);
+            }
+        }
+
+        private void cmbCondition_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            int idx = cmbCondition.SelectedIndex;
+            lblParam.Visible = (idx == 1 || idx == 2);
+            numConditionParam.Visible = (idx == 1 || idx == 2);
+            if (idx == 1) lblParam.Text = "長押し時間 (ms):";
+            if (idx == 2) lblParam.Text = "連打間隔 (ms):";
+        }
+
+        private void cmbKeyButton_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value == -1)
+            {
+                using (var capture = new CaptureForm(CaptureMode.MultiKeyboard))
+                {
+                    if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedKeys.Count > 0)
+                    {
+                        ResultBinding.Action.MultipleKeys = new List<int>(capture.CapturedKeys);
+                        string keysStr = string.Join(" + ", capture.CapturedKeys.Select(k => ((Keys)k).ToString()));
+                        var customItem = new ComboItem { Text = $"[キャプチャ] {keysStr}", Value = -2 };
+                        
+                        cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged;
+                        cmbKeyButton.Items.Insert(0, customItem);
+                        cmbKeyButton.SelectedIndex = 0;
+                        cmbKeyButton.SelectedIndexChanged += cmbKeyButton_SelectedIndexChanged;
+                    }
+                    else
+                    {
+                        cmbKeyButton.SelectedIndex = 0;
+                    }
+                }
+            }
+        }
+
+        private void btnBrowseApp_Click(object sender, EventArgs e)
+        {
+            using (var ofd = new OpenFileDialog { Filter = "実行ファイル|*.exe|全て|*.*" })
+            {
+                if (ofd.ShowDialog() == DialogResult.OK) txtAppPath.Text = ofd.FileName;
+            }
+        }
+
+        private void btnEditMacro_Click(object sender, EventArgs e)
+        {
+            using (var editor = new MacroEditorForm(ResultBinding.Action, _profileNames))
+            {
+                editor.ShowDialog(this);
+            }
+        }
+
+        private void btnCaptureCoord_Click(object sender, EventArgs e)
+        {
+            if (GlobalHookManager.Instance == null) return;
+            var type = (ActionType)((ComboItem)cmbActionType.SelectedItem).Value;
+            bool isRelative = (type == ActionType.MouseMoveRelative);
+            bool isWindow = (type == ActionType.MouseMoveAbsoluteWin);
+
+            GlobalHookManager.POINT startPt = new GlobalHookManager.POINT();
+            
+            GlobalHookManager.Instance.StartCoordinateCapture((pt, canceled) => {
+                if (canceled) return;
+
+                if (isRelative)
+                {
+                    startPt = pt; 
+                    GlobalHookManager.Instance.StartCoordinateCapture((pt2, canceled2) => {
+                        if (canceled2) return;
+                        this.BeginInvoke(new Action(() => {
+                            numMouseX.Value = pt2.x - startPt.x;
+                            numMouseY.Value = pt2.y - startPt.y;
+                        }));
+                    });
+                }
+                else
+                {
+                    int targetX = pt.x;
+                    int targetY = pt.y;
+                    if (isWindow)
+                    {
+                        IntPtr hwnd = WindowFromPoint(new Point(pt.x, pt.y));
+                        IntPtr root = GetAncestor(hwnd, 2); 
+                        if (root != IntPtr.Zero && GetWindowRect(root, out OutputDispatcher.RECT rect))
+                        {
+                            targetX = pt.x - rect.Left;
+                            targetY = pt.y - rect.Top;
+                        }
+                    }
+                    this.BeginInvoke(new Action(() => {
+                        numMouseX.Value = targetX;
+                        numMouseY.Value = targetY;
+                    }));
+                }
+            });
+        }
     }
 }

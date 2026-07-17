@@ -53,8 +53,20 @@ namespace UsbInputMapper.UI
             public override int GetHashCode() => ((DeviceIdentifier != null ? DeviceIdentifier.GetHashCode() : 0) * 397) ^ Code;
         }
 
+        // ★ GCスパイク防止: Stringではなく構造体をキーにする
+        private struct LoopKey : IEquatable<LoopKey>
+        {
+            public string DeviceId;
+            public int Type;
+            public int Code;
+            public int BindingHash;
+            public LoopKey(string deviceId, int type, int code, int bindingHash) { DeviceId = deviceId; Type = type; Code = code; BindingHash = bindingHash; }
+            public bool Equals(LoopKey other) => Type == other.Type && Code == other.Code && BindingHash == other.BindingHash && string.Equals(DeviceId, other.DeviceId, StringComparison.Ordinal);
+            public override int GetHashCode() => (((((DeviceId != null ? DeviceId.GetHashCode() : 0) * 397) ^ Type) * 397) ^ Code) * 397 ^ BindingHash;
+        }
+
         private ConcurrentDictionary<TriggerKeyHash, bool> _physicalKeysDown = new ConcurrentDictionary<TriggerKeyHash, bool>();
-        private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
+        private ConcurrentDictionary<LoopKey, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<LoopKey, CancellationTokenSource>();
         private Dictionary<PovKey, int> _lastPovStates = new Dictionary<PovKey, int>();
         private Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
@@ -89,18 +101,17 @@ namespace UsbInputMapper.UI
             _diManager = new DirectInputManager();
             _diManager.OnInputEvent += DiManager_OnInputEvent;
 
-            // ★マネージャー初期化後にキャッシュと軸イベントフラグを構築する
             UpdateBindingCache();
         }
 
         private void UpdateHookBlockList()
         {
-            var blockList = new HashSet<string>();
+            var blockList = new HashSet<long>();
             var profile = _profileManager.CurrentActiveProfile;
             if (profile != null)
             {
                 foreach (var b in profile.Bindings)
-                    if (b.BlockOriginalInput) blockList.Add($"{b.InputType}_{b.InputCode}");
+                    if (b.BlockOriginalInput) blockList.Add(((long)b.InputType << 32) | (uint)b.InputCode);
             }
             _globalHookManager.SetBlockList(blockList);
         }
@@ -141,7 +152,6 @@ namespace UsbInputMapper.UI
                 }
             }
 
-            // ★追加: 現在のプロファイルに軸（Type=11）のバインディングが存在するかどうかをDirectInputManagerに伝える
             if (_diManager != null)
             {
                 _diManager.HasAxisBindings = _bindingCache.Keys.Any(k => k.Type == 11);
@@ -268,7 +278,7 @@ namespace UsbInputMapper.UI
 
         private void ProcessBindingExecution(UsbInputMapper.Profiles.Binding binding, string deviceId, int type, int inputCode, bool isDown)
         {
-            string loopKey = $"{deviceId}_{type}_{inputCode}_{binding.GetHashCode()}";
+            var loopKey = new LoopKey(deviceId, type, inputCode, binding.GetHashCode());
 
             if (isDown)
             {

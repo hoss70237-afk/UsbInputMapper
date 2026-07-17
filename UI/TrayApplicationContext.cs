@@ -27,7 +27,7 @@ namespace UsbInputMapper.UI
 
         private ConcurrentDictionary<string, bool> _physicalKeysDown = new ConcurrentDictionary<string, bool>();
         private ConcurrentDictionary<string, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<string, CancellationTokenSource>();
-        private Dictionary<string, int> _lastPovStates = new Dictionary<string, int>(); // ★POVリリース管理用
+        private Dictionary<string, int> _lastPovStates = new Dictionary<string, int>();
 
         public TrayApplicationContext()
         {
@@ -97,7 +97,7 @@ namespace UsbInputMapper.UI
         {
             if (CaptureForm.IsCapturing) return;
 
-            // ★POVリリース制御
+            // POV(十字キー) リリース制御
             if (e.Type == 12)
             {
                 string povKey = $"{e.DeviceIdentifier}_{e.Code}";
@@ -130,12 +130,32 @@ namespace UsbInputMapper.UI
 
             foreach (var binding in bindings)
             {
-                if (e.Type == 11) ProcessAnalogAxis(binding, e.Value);
-                else if (e.Type == 10) ProcessBindingExecution(binding, e.DeviceIdentifier, e.Type, e.Code, e.IsDown);
+                var profile = _profileManager.CurrentActiveProfile;
+                if (profile != null && !profile.EnableXInput &&
+                   (binding.Action.ActionType == ActionType.XboxController || binding.Action.ActionType == ActionType.XboxAxis || binding.Action.ActionType == ActionType.XboxTrigger))
+                {
+                    continue; 
+                }
+
+                if (e.Type == 11) // アナログ軸
+                {
+                    ProcessAnalogAxis(binding, e.Value);
+                }
+                else if (e.Type == 10) // ボタン
+                {
+                    // ★ボタン型のトリガーに対応
+                    if (binding.Action.ActionType == ActionType.XboxTrigger)
+                    {
+                        _viGEmOutput.SetSlider(binding.Action.ArgumentNum == 1 ? Xbox360Slider.LeftTrigger : Xbox360Slider.RightTrigger, e.IsDown ? (byte)255 : (byte)0);
+                    }
+                    else
+                    {
+                        ProcessBindingExecution(binding, e.DeviceIdentifier, e.Type, e.Code, e.IsDown);
+                    }
+                }
             }
         }
 
-        // --- 上書きとベースの統合検索 ---
         private List<UsbInputMapper.Profiles.Binding> FindAllMatchingBindings(string deviceId, int inputType, int inputCode)
         {
             var list = new List<UsbInputMapper.Profiles.Binding>();
@@ -146,7 +166,6 @@ namespace UsbInputMapper.UI
                 var pBindings = profile.Bindings.Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode).ToList();
                 list.AddRange(pBindings);
                 
-                // ★上書き(pBindings)が無くて、かつXInput有効ならベースから検索
                 if (pBindings.Count == 0 && profile.EnableXInput)
                 {
                     var bBindings = _profileManager.ControllerBaseBindings.Where(b => b.DeviceIdentifier == deviceId && b.InputType == inputType && b.InputCode == inputCode).ToList();

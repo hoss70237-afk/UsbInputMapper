@@ -11,8 +11,6 @@
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <Deterministic>true</Deterministic>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -21,8 +19,6 @@
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -30,8 +26,6 @@
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
@@ -74,42 +68,20 @@
     <Compile Include="Profiles\ProfileManager.cs" />
     <Compile Include="Profiles\ForegroundAppWatcher.cs" />
     <Compile Include="UI\TrayApplicationContext.cs" />
-    <Compile Include="UI\MainForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="UI\MainForm.Designer.cs">
-      <DependentUpon>MainForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="UI\CaptureForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="UI\CaptureForm.Designer.cs">
-      <DependentUpon>CaptureForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="UI\BindingEditorForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="UI\BindingEditorForm.Designer.cs">
-      <DependentUpon>BindingEditorForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="UI\ProfileEditorForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="UI\ProfileEditorForm.Designer.cs">
-      <DependentUpon>ProfileEditorForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="UI\MacroEditorForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="UI\MacroEditorForm.Designer.cs">
-      <DependentUpon>MacroEditorForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="UI\ControllerSetupForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="UI\ControllerSetupForm.Designer.cs">
-      <DependentUpon>ControllerSetupForm.cs</DependentUpon>
-    </Compile>
+    <Compile Include="UI\MainForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\MainForm.Designer.cs"><DependentUpon>MainForm.cs</DependentUpon></Compile>
+    <Compile Include="UI\CaptureForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\CaptureForm.Designer.cs"><DependentUpon>CaptureForm.cs</DependentUpon></Compile>
+    <Compile Include="UI\BindingEditorForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\BindingEditorForm.Designer.cs"><DependentUpon>BindingEditorForm.cs</DependentUpon></Compile>
+    <Compile Include="UI\ProfileEditorForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\ProfileEditorForm.Designer.cs"><DependentUpon>ProfileEditorForm.cs</DependentUpon></Compile>
+    <Compile Include="UI\MacroEditorForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\MacroEditorForm.Designer.cs"><DependentUpon>MacroEditorForm.cs</DependentUpon></Compile>
+    <Compile Include="UI\ControllerSetupForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\ControllerSetupForm.Designer.cs"><DependentUpon>ControllerSetupForm.cs</DependentUpon></Compile>
+    <Compile Include="UI\ControllerBaseForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\ControllerBaseForm.Designer.cs"><DependentUpon>ControllerBaseForm.cs</DependentUpon></Compile>
     <Compile Include="Util\StartupRegistrar.cs" />
     <Compile Include="Util\SingleInstance.cs" />
     <Compile Include="Util\PrerequisiteChecker.cs" />

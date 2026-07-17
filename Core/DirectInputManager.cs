@@ -7,12 +7,13 @@ using SharpDX.DirectInput;
 
 namespace UsbInputMapper.Core
 {
-    public class DirectInputEvent
+    // ★ class から struct に変更（メモリ確保のオーバーヘッドをゼロにする）
+    public struct DirectInputEvent
     {
-        public string DeviceIdentifier { get; set; }
-        public int Type { get; set; } // 10: Button, 11: Axis, 12: POV(十字キー)
-        public int Code { get; set; }
-        public int Value { get; set; } 
+        public string DeviceIdentifier;
+        public int Type; // 10: Button, 11: Axis, 12: POV(十字キー)
+        public int Code;
+        public int Value; 
         public bool IsDown => (Type == 12) ? Value != -1 : Value > 0; 
     }
 
@@ -77,7 +78,6 @@ namespace UsbInputMapper.Core
                                 }
                                 else if (data.Offset >= JoystickOffset.PointOfViewControllers0 && data.Offset <= JoystickOffset.PointOfViewControllers3)
                                 {
-                                    // ★追加: 十字キー (POV)
                                     type = 12; code = data.Offset - JoystickOffset.PointOfViewControllers0; value = data.Value;
                                 }
                                 else

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using UsbInputMapper.Profiles;
 using Nefarius.ViGEm.Client.Targets.Xbox360;
@@ -11,10 +12,13 @@ namespace UsbInputMapper.Core
     public class OutputDispatcher
     {
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(SendInputNative.POINT p);
+        [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
         [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr hWnd, ref SendInputNative.POINT lpPoint);
 
         private readonly ViGEmOutput _viGEmOutput;
         private readonly Stack<SendInputNative.POINT> _mousePositionStack = new Stack<SendInputNative.POINT>();
+        private readonly Random _random = new Random();
 
         public OutputDispatcher(ViGEmOutput viGEmOutput) { _viGEmOutput = viGEmOutput; }
 
@@ -31,6 +35,7 @@ namespace UsbInputMapper.Core
                 case ActionType.MouseMoveRelative: if (isDown) SendMouseMove(action.MouseX, action.MouseY, false, false); break;
                 case ActionType.MouseMoveAbsoluteDesk: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, false); break;
                 case ActionType.MouseMoveAbsoluteWin: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, true); break;
+                case ActionType.MouseMoveAbsoluteHoverWin: if (isDown) SendMouseMoveHover(action.MouseX, action.MouseY); break;
                 case ActionType.MousePosSave: if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt); break;
                 case ActionType.MousePosRestore:
                     if (isDown && _mousePositionStack.Count > 0)
@@ -41,6 +46,35 @@ namespace UsbInputMapper.Core
                     break;
                 case ActionType.AppLaunch: if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
                 case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
+                case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; // ★追加: マクロ実行エンジン
+            }
+        }
+
+        private async Task ExecuteMacroAsync(ActionDef action)
+        {
+            if (action.MacroSteps == null) return;
+            foreach (var step in action.MacroSteps)
+            {
+                int delay = 0;
+                if (step.UseDelay)
+                {
+                    delay = step.DelayMs;
+                    if (step.UseFluctuation && step.FluctuationMs > 0)
+                    {
+                        delay += _random.Next(-step.FluctuationMs, step.FluctuationMs + 1);
+                    }
+                    if (delay < 0) delay = 0;
+                }
+
+                if (delay > 0) await Task.Delay(delay);
+
+                bool isDown = step.PressState == StepPressState.Down || step.PressState == StepPressState.Tap;
+                bool isUp = step.PressState == StepPressState.Up || step.PressState == StepPressState.Tap;
+
+                ActionDef stepAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, MouseX = step.MouseX, MouseY = step.MouseY };
+                if (isDown) Dispatch(stepAct, true);
+                if (step.PressState == StepPressState.Tap) await Task.Delay(10);
+                if (isUp) Dispatch(stepAct, false);
             }
         }
 
@@ -79,7 +113,7 @@ namespace UsbInputMapper.Core
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }
 
-        private void SendMouseMove(int x, int y, bool isAbsolute, bool isWindowRelative)
+        public void SendMouseMove(int x, int y, bool isAbsolute, bool isWindowRelative)
         {
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
@@ -91,11 +125,9 @@ namespace UsbInputMapper.Core
                     IntPtr hwnd = GetForegroundWindow();
                     if (hwnd != IntPtr.Zero)
                     {
-                        // ★ 枠線ズレ防止: クライアント領域基準で座標変換
                         SendInputNative.POINT pt = new SendInputNative.POINT { X = 0, Y = 0 };
                         ClientToScreen(hwnd, ref pt);
-                        targetX = pt.X + x; 
-                        targetY = pt.Y + y;
+                        targetX = pt.X + x; targetY = pt.Y + y;
                     }
                 }
                 int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
@@ -108,6 +140,21 @@ namespace UsbInputMapper.Core
                 inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE;
             }
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
+        }
+
+        private void SendMouseMoveHover(int x, int y)
+        {
+            if (SendInputNative.GetCursorPos(out var pt))
+            {
+                IntPtr hwnd = WindowFromPoint(pt);
+                IntPtr root = GetAncestor(hwnd, 2); 
+                if (root != IntPtr.Zero)
+                {
+                    SendInputNative.POINT ptScreen = new SendInputNative.POINT { X = 0, Y = 0 };
+                    ClientToScreen(root, ref ptScreen);
+                    SendMouseMove(ptScreen.X + x, ptScreen.Y + y, true, false);
+                }
+            }
         }
 
         private void LaunchApp(string path, string args)

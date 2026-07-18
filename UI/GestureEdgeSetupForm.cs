@@ -20,6 +20,7 @@ namespace UsbInputMapper.UI
         private Button _btnCaptureTrigger;
         private Label _lblTrigger;
         private ComboBox _cmbSlices;
+        private ComboBox _cmbMode; // ★追加: 動作モード
         private ListBox _lstDirs;
         private Button _btnEditDir;
         private NumericUpDown _numSize;
@@ -39,11 +40,11 @@ namespace UsbInputMapper.UI
         {
             _profileNames = profileNames ?? new List<string>();
             this.Text = "ジェスチャー / ベゼル設定";
-            this.Size = new Size(400, 360);
+            this.Size = new Size(400, 390);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
 
-            _tabs = new TabControl { Location = new Point(10, 10), Size = new Size(360, 260) };
+            _tabs = new TabControl { Location = new Point(10, 10), Size = new Size(360, 290) };
             _tabGesture = new TabPage("ジェスチャー(HUD)");
             _tabBezel = new TabPage("ベゼルタッチ");
             _tabs.TabPages.Add(_tabGesture); _tabs.TabPages.Add(_tabBezel);
@@ -51,9 +52,9 @@ namespace UsbInputMapper.UI
             SetupGestureUI();
             SetupBezelUI();
 
-            Button btnOk = new Button { Text = "OK", Location = new Point(210, 280), Size = new Size(75, 23) };
+            Button btnOk = new Button { Text = "OK", Location = new Point(210, 310), Size = new Size(75, 23) };
             btnOk.Click += BtnOk_Click;
-            Button btnCancel = new Button { Text = "キャンセル", Location = new Point(295, 280), Size = new Size(75, 23) };
+            Button btnCancel = new Button { Text = "キャンセル", Location = new Point(295, 310), Size = new Size(75, 23) };
             btnCancel.Click += (s, e) => { this.DialogResult = DialogResult.Cancel; this.Close(); };
 
             this.Controls.Add(_tabs); this.Controls.Add(btnOk); this.Controls.Add(btnCancel);
@@ -76,7 +77,9 @@ namespace UsbInputMapper.UI
                     _triggerCode = existingBinding.InputCode; 
                     _triggerDevId = existingBinding.DeviceIdentifier;
                     _lblTrigger.Text = $"開始ボタン: {UsbInputMapper.Profiles.Binding.GetCodeName(_triggerType, _triggerCode)}";
-                    _cmbSlices.SelectedIndex = existingBinding.Action.GestureSlices == 24 ? 1 : 0;
+                    
+                    _cmbSlices.SelectedIndex = existingBinding.Action.GestureSlices == 12 ? 1 : 0;
+                    _cmbMode.SelectedIndex = existingBinding.Action.GestureMode;
                     _numSize.Value = existingBinding.Action.GestureSize;
                     
                     _bezelAction = new ActionDef(); 
@@ -105,19 +108,26 @@ namespace UsbInputMapper.UI
                 }
             };
 
-            Label l1 = new Label { Text = "分割数:", Location = new Point(10, 45), AutoSize = true };
-            _cmbSlices = new ComboBox { Location = new Point(60, 42), Size = new Size(60, 20), DropDownStyle = ComboBoxStyle.DropDownList };
-            _cmbSlices.Items.AddRange(new[] { "8", "24" }); _cmbSlices.SelectedIndex = 0;
+            Label l0 = new Label { Text = "動作モード:", Location = new Point(10, 45), AutoSize = true };
+            _cmbMode = new ComboBox { Location = new Point(80, 42), Size = new Size(160, 20), DropDownStyle = ComboBoxStyle.DropDownList };
+            _cmbMode.Items.AddRange(new[] { "離した時に実行 (ホールド)", "クリックで実行" });
+            _cmbMode.SelectedIndex = 0;
+
+            Label l1 = new Label { Text = "分割数:", Location = new Point(10, 75), AutoSize = true };
+            _cmbSlices = new ComboBox { Location = new Point(60, 72), Size = new Size(60, 20), DropDownStyle = ComboBoxStyle.DropDownList };
+            _cmbSlices.Items.AddRange(new[] { "8", "12" }); // ★修正: 24を廃止し12に変更
+            _cmbSlices.SelectedIndex = 0;
             _cmbSlices.SelectedIndexChanged += (s, e) => RefreshDirList();
 
-            Label l2 = new Label { Text = "サイズ:", Location = new Point(140, 45), AutoSize = true };
-            _numSize = new NumericUpDown { Location = new Point(180, 42), Size = new Size(60, 20), Maximum = 1000, Value = 200 };
+            Label l2 = new Label { Text = "サイズ:", Location = new Point(140, 75), AutoSize = true };
+            _numSize = new NumericUpDown { Location = new Point(180, 72), Size = new Size(60, 20), Maximum = 1000, Value = 200 };
 
-            _lstDirs = new ListBox { Location = new Point(10, 70), Size = new Size(250, 148) };
-            _btnEditDir = new Button { Text = "割当編集", Location = new Point(270, 70), Size = new Size(70, 23) };
+            _lstDirs = new ListBox { Location = new Point(10, 100), Size = new Size(250, 148) };
+            _btnEditDir = new Button { Text = "割当編集", Location = new Point(270, 100), Size = new Size(70, 23) };
             _btnEditDir.Click += BtnEditDir_Click;
 
             _tabGesture.Controls.Add(_btnCaptureTrigger); _tabGesture.Controls.Add(_lblTrigger);
+            _tabGesture.Controls.Add(l0); _tabGesture.Controls.Add(_cmbMode);
             _tabGesture.Controls.Add(l1); _tabGesture.Controls.Add(_cmbSlices); _tabGesture.Controls.Add(l2); _tabGesture.Controls.Add(_numSize);
             _tabGesture.Controls.Add(_lstDirs); _tabGesture.Controls.Add(_btnEditDir);
             RefreshDirList();
@@ -126,7 +136,7 @@ namespace UsbInputMapper.UI
         private void RefreshDirList()
         {
             if (ResultBinding == null || ResultBinding.Action == null) return;
-            int slices = _cmbSlices.SelectedIndex == 1 ? 24 : 8;
+            int slices = _cmbSlices.SelectedIndex == 1 ? 12 : 8;
             if (ResultBinding.Action.GestureDirections.Count != slices)
             {
                 var newList = new List<GestureDirection>();
@@ -202,7 +212,8 @@ namespace UsbInputMapper.UI
                 ResultBinding.DeviceIdentifier = _triggerDevId;
                 ResultBinding.Name = "ジェスチャー";
                 ResultBinding.Action.ActionType = ActionType.Gesture;
-                ResultBinding.Action.GestureSlices = _cmbSlices.SelectedIndex == 1 ? 24 : 8;
+                ResultBinding.Action.GestureMode = _cmbMode.SelectedIndex;
+                ResultBinding.Action.GestureSlices = _cmbSlices.SelectedIndex == 1 ? 12 : 8;
                 ResultBinding.Action.GestureSize = (int)_numSize.Value;
             }
             else

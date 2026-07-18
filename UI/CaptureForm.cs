@@ -18,6 +18,7 @@ namespace UsbInputMapper.UI
         public List<int> CapturedKeys { get; private set; } = new List<int>();
 
         private int _downCount = 0;
+        private bool _ignoreInput = false;
 
         public CaptureForm(CaptureMode mode = CaptureMode.SingleAny)
         {
@@ -26,23 +27,22 @@ namespace UsbInputMapper.UI
             if (Mode == CaptureMode.MultiKeyboard)
             {
                 label1.Text = "キーボードのキーを押してください。\r\nすべてのキーを離すと確定します。";
+                btnGestureEdge.Visible = false; // ジェスチャーボタンはSingleモードのみ
             }
+
+            btnCancel.MouseEnter += (s, e) => _ignoreInput = true;
+            btnCancel.MouseLeave += (s, e) => _ignoreInput = false;
+            btnGestureEdge.MouseEnter += (s, e) => _ignoreInput = true;
+            btnGestureEdge.MouseLeave += (s, e) => _ignoreInput = false;
         }
 
-        private void CaptureForm_Load(object sender, EventArgs e)
-        {
-            IsCapturing = true;
-            CurrentInstance = this;
-        }
-
-        private void CaptureForm_FormClosed(object sender, FormClosedEventArgs e)
-        {
-            IsCapturing = false;
-            if (CurrentInstance == this) CurrentInstance = null;
-        }
+        private void CaptureForm_Load(object sender, EventArgs e) { IsCapturing = true; CurrentInstance = this; }
+        private void CaptureForm_FormClosed(object sender, FormClosedEventArgs e) { IsCapturing = false; if (CurrentInstance == this) CurrentInstance = null; }
 
         public void ProcessInput(InputEvent e)
         {
+            if (_ignoreInput) return; // ボタン上でのクリック破棄
+            
             if (this.InvokeRequired)
             {
                 this.Invoke(new Action(() => ProcessInput(e)));
@@ -51,16 +51,11 @@ namespace UsbInputMapper.UI
 
             if (Mode == CaptureMode.SingleAny)
             {
-                if (e.IsKeyDown)
-                {
-                    CapturedEvent = e;
-                    this.DialogResult = DialogResult.OK;
-                    this.Close();
-                }
+                if (e.IsKeyDown) { CapturedEvent = e; this.DialogResult = DialogResult.OK; this.Close(); }
             }
             else if (Mode == CaptureMode.MultiKeyboard)
             {
-                if (e.Type == 1) // Keyboardのみ
+                if (e.Type == 1)
                 {
                     if (e.IsKeyDown)
                     {
@@ -72,19 +67,18 @@ namespace UsbInputMapper.UI
                     else
                     {
                         _downCount--;
-                        if (_downCount <= 0 && CapturedKeys.Count > 0)
-                        {
-                            this.DialogResult = DialogResult.OK;
-                            this.Close();
-                        }
+                        if (_downCount <= 0 && CapturedKeys.Count > 0) { this.DialogResult = DialogResult.OK; this.Close(); }
                     }
                 }
             }
         }
 
-        private void btnCancel_Click(object sender, EventArgs e)
+        private void btnCancel_Click(object sender, EventArgs e) { this.DialogResult = DialogResult.Cancel; this.Close(); }
+        
+        private void btnGestureEdge_Click(object sender, EventArgs e)
         {
-            this.DialogResult = DialogResult.Cancel;
+            // ジェスチャー・ベゼル用の特別な戻り値(Retry)を返す
+            this.DialogResult = DialogResult.Retry;
             this.Close();
         }
     }

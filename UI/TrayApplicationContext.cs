@@ -27,39 +27,28 @@ namespace UsbInputMapper.UI
 
         private struct TriggerKeyHash : IEquatable<TriggerKeyHash>
         {
-            public int Type;
-            public int Code;
+            public int Type; public int Code;
             public TriggerKeyHash(int type, int code) { Type = type; Code = code; }
             public bool Equals(TriggerKeyHash other) => Type == other.Type && Code == other.Code;
             public override int GetHashCode() => (Type * 397) ^ Code;
         }
-
         private struct InputKey : IEquatable<InputKey>
         {
-            public string DeviceIdentifier;
-            public int Type;
-            public int Code;
+            public string DeviceIdentifier; public int Type; public int Code;
             public InputKey(string deviceIdentifier, int type, int code) { DeviceIdentifier = deviceIdentifier; Type = type; Code = code; }
             public bool Equals(InputKey other) => Type == other.Type && Code == other.Code && string.Equals(DeviceIdentifier, other.DeviceIdentifier, StringComparison.Ordinal);
             public override int GetHashCode() => (((DeviceIdentifier != null ? DeviceIdentifier.GetHashCode() : 0) * 397) ^ Type) * 397 ^ Code;
         }
-
         private struct PovKey : IEquatable<PovKey>
         {
-            public string DeviceIdentifier;
-            public int Code;
+            public string DeviceIdentifier; public int Code;
             public PovKey(string deviceIdentifier, int code) { DeviceIdentifier = deviceIdentifier; Code = code; }
             public bool Equals(PovKey other) => Code == other.Code && string.Equals(DeviceIdentifier, other.DeviceIdentifier, StringComparison.Ordinal);
             public override int GetHashCode() => ((DeviceIdentifier != null ? DeviceIdentifier.GetHashCode() : 0) * 397) ^ Code;
         }
-
-        // ★ GCスパイク防止: Stringではなく構造体をキーにする
         private struct LoopKey : IEquatable<LoopKey>
         {
-            public string DeviceId;
-            public int Type;
-            public int Code;
-            public int BindingHash;
+            public string DeviceId; public int Type; public int Code; public int BindingHash;
             public LoopKey(string deviceId, int type, int code, int bindingHash) { DeviceId = deviceId; Type = type; Code = code; BindingHash = bindingHash; }
             public bool Equals(LoopKey other) => Type == other.Type && Code == other.Code && BindingHash == other.BindingHash && string.Equals(DeviceId, other.DeviceId, StringComparison.Ordinal);
             public override int GetHashCode() => (((((DeviceId != null ? DeviceId.GetHashCode() : 0) * 397) ^ Type) * 397) ^ Code) * 397 ^ BindingHash;
@@ -70,38 +59,81 @@ namespace UsbInputMapper.UI
         private Dictionary<PovKey, int> _lastPovStates = new Dictionary<PovKey, int>();
         private Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
-        public TrayApplicationContext()
-        {
-            InitializeCore();
-            InitializeTrayIcon();
-        }
+        // ★ StickToMouse / BezelTouch 用
+        private System.Windows.Forms.Timer _loopTimer;
+        private volatile int _stickMouseDx = 0;
+        private volatile int _stickMouseDy = 0;
+        private int _currentBezelCode = -1;
+        private int _bezelHoverTime = 0;
+
+        // ★ ジェスチャー用
+        private GestureHudForm _hudForm;
+        private ActionDef _currentGestureDef;
+
+        public TrayApplicationContext() { InitializeCore(); InitializeTrayIcon(); }
 
         private void InitializeCore()
         {
-            _profileManager = new ProfileManager();
-            _profileManager.Load();
-            
+            _profileManager = new ProfileManager(); _profileManager.Load();
             _profileManager.OnProfileChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
             _profileManager.OnSettingsChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
 
-            _appWatcher = new ForegroundAppWatcher();
-            _appWatcher.OnForegroundAppChanged += (s, appPath) => _profileManager.SwitchToAppProfile(appPath);
-            _appWatcher.Start();
+            _appWatcher = new ForegroundAppWatcher(); _appWatcher.OnForegroundAppChanged += (s, appPath) => _profileManager.SwitchToAppProfile(appPath); _appWatcher.Start();
 
-            _viGEmOutput = new ViGEmOutput();
-            _viGEmOutput.Initialize();
+            _viGEmOutput = new ViGEmOutput(); _viGEmOutput.Initialize();
             _dispatcher = new OutputDispatcher(_viGEmOutput);
-
-            _globalHookManager = new GlobalHookManager();
-            UpdateHookBlockList();
-
-            _rawInputManager = new RawInputManager();
-            _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
-
-            _diManager = new DirectInputManager();
-            _diManager.OnInputEvent += DiManager_OnInputEvent;
+            _globalHookManager = new GlobalHookManager(); UpdateHookBlockList();
+            _rawInputManager = new RawInputManager(); _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
+            _diManager = new DirectInputManager(); _diManager.OnInputEvent += DiManager_OnInputEvent;
 
             UpdateBindingCache();
+
+            _loopTimer = new System.Windows.Forms.Timer { Interval = 10 };
+            _loopTimer.Tick += LoopTimer_Tick;
+            _loopTimer.Start();
+        }
+
+        private void LoopTimer_Tick(object sender, EventArgs e)
+        {
+            if (_stickMouseDx != 0 || _stickMouseDy != 0) _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);
+
+            if (SendInputNative.GetCursorPos(out var pt))
+            {
+                int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
+                int x = pt.X; int y = pt.Y;
+                int code = -1;
+
+                if (x <= 3 && y <= 3) code = 0; // TopLeftCorner
+                else if (x >= sW - 4 && y <= 3) code = 4; // TopRightCorner
+                else if (x >= sW - 4 && y >= sH - 4) code = 8; // BottomRightCorner
+                else if (x <= 3 && y >= sH - 4) code = 12; // BottomLeftCorner
+                else if (y <= 0) { if (x < sW / 3) code = 1; else if (x < sW * 2 / 3) code = 2; else code = 3; }
+                else if (x >= sW - 1) { if (y < sH / 3) code = 5; else if (y < sH * 2 / 3) code = 6; else code = 7; }
+                else if (y >= sH - 1) { if (x >= sW * 2 / 3) code = 9; else if (x >= sW / 3) code = 10; else code = 11; }
+                else if (x <= 0) { if (y >= sH * 2 / 3) code = 13; else if (y >= sH / 3) code = 14; else code = 15; }
+
+                if (code != -1)
+                {
+                    if (_currentBezelCode == code) { _bezelHoverTime += _loopTimer.Interval; }
+                    else { _currentBezelCode = code; _bezelHoverTime = 0; }
+
+                    if (_bindingCache.TryGetValue(new InputKey("Any", 5, code), out var bindings))
+                    {
+                        foreach (var b in bindings)
+                        {
+                            if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
+                            {
+                                if (_bezelHoverTime >= b.ConditionParam && _bezelHoverTime - _loopTimer.Interval < b.ConditionParam)
+                                {
+                                    ExecuteAction(b.Action, true);
+                                    ExecuteAction(b.Action, false); // Tap
+                                }
+                            }
+                        }
+                    }
+                }
+                else { _currentBezelCode = -1; _bezelHoverTime = 0; }
+            }
         }
 
         private void UpdateHookBlockList()
@@ -110,8 +142,7 @@ namespace UsbInputMapper.UI
             var profile = _profileManager.CurrentActiveProfile;
             if (profile != null)
             {
-                foreach (var b in profile.Bindings)
-                    if (b.BlockOriginalInput) blockList.Add(((long)b.InputType << 32) | (uint)b.InputCode);
+                foreach (var b in profile.Bindings) if (b.BlockOriginalInput) blockList.Add(((long)b.InputType << 32) | (uint)b.InputCode);
             }
             _globalHookManager.SetBlockList(blockList);
         }
@@ -121,41 +152,23 @@ namespace UsbInputMapper.UI
             _bindingCache.Clear();
             var profile = _profileManager.CurrentActiveProfile;
             if (profile == null) return;
-
             foreach (var b in profile.Bindings)
             {
                 var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode);
-                if (!_bindingCache.TryGetValue(key, out var list))
-                {
-                    list = new List<UsbInputMapper.Profiles.Binding>();
-                    _bindingCache[key] = list;
-                }
+                if (!_bindingCache.TryGetValue(key, out var list)) { list = new List<UsbInputMapper.Profiles.Binding>(); _bindingCache[key] = list; }
                 list.Add(b);
             }
-
             if (profile.EnableXInput)
             {
                 foreach (var b in _profileManager.ControllerBaseBindings)
                 {
                     var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode);
-                    if (!_bindingCache.TryGetValue(key, out var list))
-                    {
-                        list = new List<UsbInputMapper.Profiles.Binding>();
-                        _bindingCache[key] = list;
-                    }
-                    
+                    if (!_bindingCache.TryGetValue(key, out var list)) { list = new List<UsbInputMapper.Profiles.Binding>(); _bindingCache[key] = list; }
                     bool existsInProfile = profile.Bindings.Any(pb => pb.DeviceIdentifier == b.DeviceIdentifier && pb.InputType == b.InputType && pb.InputCode == b.InputCode);
-                    if (!existsInProfile)
-                    {
-                        list.Add(b);
-                    }
+                    if (!existsInProfile) list.Add(b);
                 }
             }
-
-            if (_diManager != null)
-            {
-                _diManager.HasAxisBindings = _bindingCache.Keys.Any(k => k.Type == 11);
-            }
+            if (_diManager != null) _diManager.HasAxisBindings = _bindingCache.Keys.Any(k => k.Type == 11);
         }
 
         private void RawInputManager_OnInputEvent(object sender, InputEvent e)
@@ -198,11 +211,7 @@ namespace UsbInputMapper.UI
                     {
                         if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, lastVal), out var rBindings))
                         {
-                            foreach(var b in rBindings)
-                            {
-                                if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
-                                    ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
-                            }
+                            foreach(var b in rBindings) if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
                         }
                         _lastPovStates.Remove(povKey);
                     }
@@ -214,21 +223,13 @@ namespace UsbInputMapper.UI
                     {
                         if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, lastVal), out var rBindings))
                         {
-                            foreach(var b in rBindings)
-                            {
-                                if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
-                                    ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
-                            }
+                            foreach(var b in rBindings) if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
                         }
                     }
                     _lastPovStates[povKey] = e.Value;
                     if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Value), out var dBindings))
                     {
-                        foreach(var b in dBindings)
-                        {
-                            if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
-                                ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, e.Value, true);
-                        }
+                        foreach(var b in dBindings) if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, e.Value, true);
                     }
                 }
                 return;
@@ -245,32 +246,15 @@ namespace UsbInputMapper.UI
             {
                 foreach (var binding in bindings)
                 {
-                    if (binding.SubTriggers != null && !binding.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
-                    {
-                        continue;
-                    }
-
+                    if (binding.SubTriggers != null && !binding.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) continue;
                     var profile = _profileManager.CurrentActiveProfile;
-                    if (profile != null && !profile.EnableXInput &&
-                       (binding.Action.ActionType == ActionType.XboxController || binding.Action.ActionType == ActionType.XboxAxis || binding.Action.ActionType == ActionType.XboxTrigger))
-                    {
-                        continue; 
-                    }
+                    if (profile != null && !profile.EnableXInput && (binding.Action.ActionType == ActionType.XboxController || binding.Action.ActionType == ActionType.XboxAxis || binding.Action.ActionType == ActionType.XboxTrigger)) continue; 
 
-                    if (e.Type == 11) 
-                    {
-                        ProcessAnalogAxis(binding, e.Value);
-                    }
+                    if (e.Type == 11) ProcessAnalogAxis(binding, e.Value);
                     else if (e.Type == 10) 
                     {
-                        if (binding.Action.ActionType == ActionType.XboxTrigger)
-                        {
-                            _viGEmOutput.SetSlider(binding.Action.ArgumentNum == 1 ? Xbox360Slider.LeftTrigger : Xbox360Slider.RightTrigger, e.IsDown ? (byte)255 : (byte)0);
-                        }
-                        else
-                        {
-                            ProcessBindingExecution(binding, e.DeviceIdentifier, e.Type, e.Code, e.IsDown);
-                        }
+                        if (binding.Action.ActionType == ActionType.XboxTrigger) _viGEmOutput.SetSlider(binding.Action.ArgumentNum == 1 ? Xbox360Slider.LeftTrigger : Xbox360Slider.RightTrigger, e.IsDown ? (byte)255 : (byte)0);
+                        else ProcessBindingExecution(binding, e.DeviceIdentifier, e.Type, e.Code, e.IsDown);
                     }
                 }
             }
@@ -283,23 +267,24 @@ namespace UsbInputMapper.UI
             if (isDown)
             {
                 if (binding.Condition == TriggerCondition.Release) return;
-                if (_activeLoops.ContainsKey(loopKey)) return;
-                var cts = new CancellationTokenSource();
-                _activeLoops[loopKey] = cts;
 
-                Task.Run(async () =>
+                if (binding.Action.ActionType == ActionType.Gesture)
                 {
-                    try
+                    if (_hudForm == null || _hudForm.IsDisposed)
                     {
-                        if (binding.Condition == TriggerCondition.RapidFire)
-                        {
-                            while (!cts.Token.IsCancellationRequested)
-                            {
-                                ExecuteAction(binding.Action, true);
-                                await Task.Delay(20);
-                                ExecuteAction(binding.Action, false);
-                                await Task.Delay(Math.Max(10, binding.ConditionParam), cts.Token);
-                            }
+                        _currentGestureDef = binding.Action;
+                        _hudForm = new GestureHudForm(_currentGestureDef);
+                        _hudForm.Show();
+                    }
+                    return;
+                }
+
+                if (_activeLoops.ContainsKey(loopKey)) return;
+                var cts = new CancellationTokenSource(); _activeLoops[loopKey] = cts;
+                Task.Run(async () => {
+                    try {
+                        if (binding.Condition == TriggerCondition.RapidFire) {
+                            while (!cts.Token.IsCancellationRequested) { ExecuteAction(binding.Action, true); await Task.Delay(20); ExecuteAction(binding.Action, false); await Task.Delay(Math.Max(10, binding.ConditionParam), cts.Token); }
                         }
                         else { ExecuteAction(binding.Action, true); }
                     } catch { }
@@ -307,11 +292,23 @@ namespace UsbInputMapper.UI
             }
             else
             {
-                if (_activeLoops.TryRemove(loopKey, out var cts)) { cts.Cancel(); cts.Dispose(); }
-                if (binding.Condition == TriggerCondition.Release)
+                if (binding.Action.ActionType == ActionType.Gesture)
                 {
-                    ExecuteAction(binding.Action, true); Thread.Sleep(20); ExecuteAction(binding.Action, false);
+                    if (_hudForm != null && !_hudForm.IsDisposed)
+                    {
+                        int selectedDir = _hudForm.SelectedDirectionIndex;
+                        _hudForm.Hide(); _hudForm.Dispose(); _hudForm = null;
+                        if (selectedDir >= 0 && selectedDir < _currentGestureDef.GestureDirections.Count)
+                        {
+                            var act = _currentGestureDef.GestureDirections[selectedDir].Action;
+                            if (act != null) { ExecuteAction(act, true); ExecuteAction(act, false); }
+                        }
+                    }
+                    return;
                 }
+
+                if (_activeLoops.TryRemove(loopKey, out var cts)) { cts.Cancel(); cts.Dispose(); }
+                if (binding.Condition == TriggerCondition.Release) { ExecuteAction(binding.Action, true); Thread.Sleep(20); ExecuteAction(binding.Action, false); }
                 else { ExecuteAction(binding.Action, false); }
             }
         }
@@ -324,7 +321,6 @@ namespace UsbInputMapper.UI
             else if (binding.AxisRange == 2) normalized = (rawValue > 32767) ? 0 : (32767.5 - rawValue) / 32767.5;
 
             if (binding.InvertAxis) normalized *= -1;
-
             double deadZone = binding.DeadZone / 100.0;
             if (Math.Abs(normalized) < deadZone) normalized = 0;
             else normalized = Math.Sign(normalized) * ((Math.Abs(normalized) - deadZone) / (1.0 - deadZone));
@@ -336,17 +332,27 @@ namespace UsbInputMapper.UI
             {
                 short outValue = (short)(normalized * 32767);
                 Xbox360Axis axis = Xbox360Axis.LeftThumbX;
-                switch(binding.Action.ArgumentNum)
-                {
-                    case 1: axis = Xbox360Axis.LeftThumbX; break; case 2: axis = Xbox360Axis.LeftThumbY; outValue = (short)-outValue; break; 
-                    case 3: axis = Xbox360Axis.RightThumbX; break; case 4: axis = Xbox360Axis.RightThumbY; outValue = (short)-outValue; break;
-                }
+                switch(binding.Action.ArgumentNum) { case 1: axis = Xbox360Axis.LeftThumbX; break; case 2: axis = Xbox360Axis.LeftThumbY; outValue = (short)-outValue; break; case 3: axis = Xbox360Axis.RightThumbX; break; case 4: axis = Xbox360Axis.RightThumbY; outValue = (short)-outValue; break; }
                 _viGEmOutput.SetAxis(axis, outValue);
             }
             else if (binding.Action.ActionType == ActionType.XboxTrigger)
             {
                 double trigNorm = (binding.AxisRange == 0) ? (normalized + 1.0) / 2.0 : Math.Abs(normalized);
                 _viGEmOutput.SetSlider(binding.Action.ArgumentNum == 1 ? Xbox360Slider.LeftTrigger : Xbox360Slider.RightTrigger, (byte)(trigNorm * 255));
+            }
+            else if (binding.Action.ActionType == ActionType.StickToMouse)
+            {
+                // ActionDefの独自DZ/Curveで上書き
+                double szDZ = binding.Action.StickDeadZone / 100.0;
+                double spd = binding.Action.StickMaxSpeed;
+                double norm2 = (rawValue - 32767.5) / 32767.5;
+                if (Math.Abs(norm2) < szDZ) norm2 = 0; else norm2 = Math.Sign(norm2) * ((Math.Abs(norm2) - szDZ) / (1.0 - szDZ));
+                if (binding.Action.StickCurve == 1) norm2 = Math.Sign(norm2) * Math.Sqrt(Math.Abs(norm2));
+                else if (binding.Action.StickCurve == 2) norm2 = Math.Sign(norm2) * Math.Pow(Math.Abs(norm2), 2);
+
+                int dVal = (int)(norm2 * spd);
+                if (binding.InputCode == 0 || binding.InputCode == 3) _stickMouseDx = dVal;
+                else if (binding.InputCode == 1 || binding.InputCode == 4) _stickMouseDy = dVal;
             }
         }
 
@@ -369,6 +375,6 @@ namespace UsbInputMapper.UI
 
         private void InitializeTrayIcon() { _trayIcon = new NotifyIcon { Icon = SystemIcons.Application, Text = "UsbInputMapper", Visible = true }; ContextMenuStrip menu = new ContextMenuStrip(); menu.Items.Add("設定を開く", null, ShowMainForm); menu.Items.Add("終了", null, ExitApp); _trayIcon.ContextMenuStrip = menu; _trayIcon.DoubleClick += ShowMainForm; }
         private void ShowMainForm(object sender, EventArgs e) { if (_mainForm == null || _mainForm.IsDisposed) _mainForm = new MainForm(_profileManager, _diManager); _mainForm.Show(); _mainForm.Activate(); }
-        private void ExitApp(object sender, EventArgs e) { _trayIcon.Visible = false; _globalHookManager?.Dispose(); _rawInputManager?.Dispose(); _diManager?.Dispose(); _viGEmOutput?.Dispose(); Application.Exit(); }
+        private void ExitApp(object sender, EventArgs e) { _loopTimer?.Stop(); _trayIcon.Visible = false; _globalHookManager?.Dispose(); _rawInputManager?.Dispose(); _diManager?.Dispose(); _viGEmOutput?.Dispose(); Application.Exit(); }
     }
 }

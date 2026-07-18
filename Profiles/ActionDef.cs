@@ -12,18 +12,29 @@ namespace UsbInputMapper.Profiles
         MouseMoveContinuous,
         MouseMoveAbsoluteDesk,
         MouseMoveAbsoluteWin,
+        MouseMoveAbsoluteHoverWin, // ★追加: ポインターが乗っているウィンドウ
         MousePosSave,
         MousePosRestore,
         XboxController,
-        XboxAxis,     // ★アナログスティック用追加 (ArgumentNum: 1=LX, 2=LY, 3=RX, 4=RY)
-        XboxTrigger,  // ★アナログトリガー用追加 (ArgumentNum: 1=LT, 2=RT)
+        XboxAxis,     
+        XboxTrigger,  
         AppLaunch,
         Macro,
         ToggleHold,
-        ProfileSwitch
+        ProfileSwitch,
+        StickToMouse, // ★追加: スティック入力のみマウス移動
+        Gesture       // ★追加: ジェスチャーHUD
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }
+
+    public class GestureDirection
+    {
+        public int DirectionIndex { get; set; }
+        public string Label { get; set; }
+        public ActionDef Action { get; set; }
+        public GestureDirection() { Action = new ActionDef(); Label = ""; }
+    }
 
     public class ActionDef
     {
@@ -39,14 +50,49 @@ namespace UsbInputMapper.Profiles
         public MacroPlaybackMode PlaybackMode { get; set; }
         public int StepTimeoutMs { get; set; }
 
+        // ★追加: スティック入力のみマウス移動
+        public int StickDeadZone { get; set; } = 15;
+        public int StickMaxSpeed { get; set; } = 20;
+        public int StickCurve { get; set; } = 0; // 0: リニア, 1: 早め, 2: 遅め
+
+        // ★追加: ジェスチャー
+        public int GestureSlices { get; set; } = 8;
+        public int GestureSize { get; set; } = 200;
+        public List<GestureDirection> GestureDirections { get; set; }
+
         public ActionDef()
         {
             MultipleKeys = new List<int>();
             MacroSteps = new List<MacroStep>();
+            GestureDirections = new List<GestureDirection>();
             PlaybackMode = MacroPlaybackMode.Sequence;
             StepTimeoutMs = 1000;
         }
 
-        public override string ToString() => ActionType.ToString();
+        public override string ToString()
+        {
+            switch (ActionType)
+            {
+                case ActionType.None: return "アクションなし";
+                case ActionType.Keyboard: 
+                case ActionType.ToggleHold:
+                    if (MultipleKeys != null && MultipleKeys.Count > 0) return "キーボード: " + string.Join("+", MultipleKeys);
+                    return "キーボード: " + (System.Windows.Forms.Keys)ArgumentNum;
+                case ActionType.MouseClick: return "マウスクリック: " + ArgumentNum;
+                case ActionType.MouseMoveRelative: return $"マウス移動(相対): X={MouseX}, Y={MouseY}";
+                case ActionType.MouseMoveAbsoluteDesk: return $"マウス絶対(デスク): X={MouseX}, Y={MouseY}";
+                case ActionType.MouseMoveAbsoluteWin: return $"マウス絶対(アクティブ): X={MouseX}, Y={MouseY}";
+                case ActionType.MouseMoveAbsoluteHoverWin: return $"マウス絶対(ポインタ下): X={MouseX}, Y={MouseY}";
+                case ActionType.XboxController: return "Xboxボタン: " + ArgumentNum;
+                case ActionType.XboxAxis: return "Xboxスティック軸: " + ArgumentNum;
+                case ActionType.XboxTrigger: return "Xboxトリガー: " + ArgumentNum;
+                case ActionType.AppLaunch: return "アプリ起動: " + System.IO.Path.GetFileName(ArgumentStr);
+                case ActionType.Macro: return "マクロ実行";
+                case ActionType.ProfileSwitch: return "プロファイル切替: " + ArgumentStr;
+                case ActionType.StickToMouse: return $"スティックマウス(最高速度:{StickMaxSpeed})";
+                case ActionType.Gesture: return $"ジェスチャーHUD({GestureSlices}分割)";
+                default: return ActionType.ToString();
+            }
+        }
     }
 }

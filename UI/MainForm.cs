@@ -1,7 +1,9 @@
 using System;
 using System.Linq;
+using System.Collections.Generic;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using Newtonsoft.Json;
 using UsbInputMapper.Profiles;
 using UsbInputMapper.Core;
 
@@ -13,17 +15,67 @@ namespace UsbInputMapper.UI
         private readonly DirectInputManager _diManager;
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
+        // ★追加: アイテムのコピペ用
+        private static List<UsbInputMapper.Profiles.Binding> _clipboardBindings = new List<UsbInputMapper.Profiles.Binding>();
+        private ContextMenuStrip _bindingsContextMenu;
+
         public MainForm(ProfileManager profileManager, DirectInputManager diManager)
         {
             InitializeComponent();
             _profileManager = profileManager;
             _diManager = diManager;
+
+            // ★追加: リストを複数選択可能に変更
+            lstBindings.SelectionMode = SelectionMode.MultiExtended;
+            SetupContextMenu();
+
             LoadProfiles();
 
             using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey, false))
             {
                 chkStartup.Checked = (key.GetValue("UsbInputMapper") != null);
             }
+        }
+
+        private void SetupContextMenu()
+        {
+            _bindingsContextMenu = new ContextMenuStrip();
+            var mnuCopy = new ToolStripMenuItem("コピー");
+            mnuCopy.Click += (s, e) => {
+                _clipboardBindings.Clear();
+                foreach (ListViewItem item in lstBindings.SelectedItems) {
+                    string json = JsonConvert.SerializeObject(item.Tag);
+                    _clipboardBindings.Add(JsonConvert.DeserializeObject<UsbInputMapper.Profiles.Binding>(json));
+                }
+            };
+            var mnuPaste = new ToolStripMenuItem("貼り付け");
+            mnuPaste.Click += (s, e) => {
+                if (lstProfiles.SelectedItem is Profile p && _clipboardBindings.Count > 0) {
+                    foreach (var b in _clipboardBindings) {
+                        string json = JsonConvert.SerializeObject(b);
+                        p.Bindings.Add(JsonConvert.DeserializeObject<UsbInputMapper.Profiles.Binding>(json));
+                    }
+                    _profileManager.Save(); RefreshBindings();
+                }
+            };
+            var mnuDelete = new ToolStripMenuItem("削除");
+            mnuDelete.Click += (s, e) => btnDeleteBinding_Click(this, EventArgs.Empty);
+            var mnuSelectAll = new ToolStripMenuItem("全て選択");
+            mnuSelectAll.Click += (s, e) => { for (int i = 0; i < lstBindings.Items.Count; i++) lstBindings.SetSelected(i, true); };
+
+            _bindingsContextMenu.Items.Add(mnuCopy);
+            _bindingsContextMenu.Items.Add(mnuPaste);
+            _bindingsContextMenu.Items.Add(new ToolStripSeparator());
+            _bindingsContextMenu.Items.Add(mnuDelete);
+            _bindingsContextMenu.Items.Add(new ToolStripSeparator());
+            _bindingsContextMenu.Items.Add(mnuSelectAll);
+
+            lstBindings.ContextMenuStrip = _bindingsContextMenu;
+            _bindingsContextMenu.Opening += (s, e) => {
+                mnuCopy.Enabled = lstBindings.SelectedItems.Count > 0;
+                mnuPaste.Enabled = _clipboardBindings.Count > 0 && lstProfiles.SelectedItem != null;
+                mnuDelete.Enabled = lstBindings.SelectedItems.Count > 0;
+            };
         }
 
         private void LoadProfiles()
@@ -72,7 +124,18 @@ namespace UsbInputMapper.UI
             }
         }
 
-        private void btnAddProfile_Click(object sender, EventArgs e) { var p = new Profile { Name = "新規プロファイル" }; using (var ed = new ProfileEditorForm(p)) { if (ed.ShowDialog() == DialogResult.OK) { _profileManager.Profiles.Add(p); _profileManager.Save(); LoadProfiles(); lstProfiles.SelectedIndex = lstProfiles.Items.Count - 1; } } }
+        private void btnAddProfile_Click(object sender, EventArgs e) 
+        { 
+            var p = new Profile { Name = "新規プロファイル" }; 
+            using (var ed = new ProfileEditorForm(p, _profileManager.Profiles)) 
+            { 
+                if (ed.ShowDialog() == DialogResult.OK) 
+                { 
+                    _profileManager.Profiles.Add(p); _profileManager.Save(); LoadProfiles(); lstProfiles.SelectedIndex = lstProfiles.Items.Count - 1; 
+                } 
+            } 
+        }
+
         private void btnEditProfile_Click(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { using (var ed = new ProfileEditorForm(p)) { if (ed.ShowDialog() == DialogResult.OK) { _profileManager.Save(); LoadProfiles(); } } } }
         private void btnDuplicateProfile_Click(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { _profileManager.DuplicateProfile(p); LoadProfiles(); lstProfiles.SelectedIndex = lstProfiles.Items.Count - 1; } }
         private void btnDeleteProfile_Click(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p && !p.IsDefault) { _profileManager.Profiles.Remove(p); _profileManager.Save(); LoadProfiles(); } }
@@ -94,7 +157,7 @@ namespace UsbInputMapper.UI
                         if (ed.ShowDialog(this) == DialogResult.OK) { p.Bindings.Add(b); _profileManager.Save(); RefreshBindings(); }
                     }
                 }
-                else if (res == DialogResult.Retry) // ★ジェスチャー・ベゼル設定
+                else if (res == DialogResult.Retry) 
                 {
                     using (var geForm = new GestureEdgeSetupForm(null, _profileManager.Profiles.Select(x => x.Name).ToList()))
                     {
@@ -108,7 +171,7 @@ namespace UsbInputMapper.UI
         { 
             if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b) 
             { 
-                if (b.InputType == 4 || b.InputType == 5 || b.Action.ActionType == ActionType.Gesture) // ジェスチャー/ベゼル
+                if (b.InputType == 4 || b.InputType == 5 || b.Action.ActionType == ActionType.Gesture)
                 {
                     using (var geForm = new GestureEdgeSetupForm(b, _profileManager.Profiles.Select(x => x.Name).ToList()))
                     {
@@ -124,9 +187,38 @@ namespace UsbInputMapper.UI
                 }
             } 
         }
-        private void btnDeleteBinding_Click(object sender, EventArgs e) { if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b && lstProfiles.SelectedItem is Profile p) { p.Bindings.Remove(b); _profileManager.Save(); RefreshBindings(); } }
-        private void btnUpBinding_Click(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedIndex > 0) { _profileManager.MoveBinding(p.Bindings, lstBindings.SelectedIndex, -1); RefreshBindings(); } }
-        private void btnDownBinding_Click(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedIndex >= 0 && lstBindings.SelectedIndex < lstBindings.Items.Count - 1) { _profileManager.MoveBinding(p.Bindings, lstBindings.SelectedIndex, 1); RefreshBindings(); } }
+
+        private void btnDeleteBinding_Click(object sender, EventArgs e) 
+        { 
+            if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedItems.Count > 0) 
+            { 
+                foreach (ListViewItem item in lstBindings.SelectedItems.Cast<ListViewItem>().ToList()) 
+                { 
+                    p.Bindings.Remove((UsbInputMapper.Profiles.Binding)item.Tag); 
+                } 
+                _profileManager.Save(); RefreshBindings(); 
+            } 
+        }
+
+        private void btnUpBinding_Click(object sender, EventArgs e) 
+        { 
+            if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedItems.Count == 1 && lstBindings.SelectedIndex > 0) 
+            { 
+                int idx = lstBindings.SelectedIndex;
+                _profileManager.MoveBinding(p.Bindings, idx, -1); RefreshBindings(); 
+                lstBindings.SetSelected(idx - 1, true);
+            } 
+        }
+
+        private void btnDownBinding_Click(object sender, EventArgs e) 
+        { 
+            if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedItems.Count == 1 && lstBindings.SelectedIndex >= 0 && lstBindings.SelectedIndex < lstBindings.Items.Count - 1) 
+            { 
+                int idx = lstBindings.SelectedIndex;
+                _profileManager.MoveBinding(p.Bindings, idx, 1); RefreshBindings(); 
+                lstBindings.SetSelected(idx + 1, true);
+            } 
+        }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e) { if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; this.Hide(); } }
     }

@@ -25,6 +25,9 @@ namespace UsbInputMapper.UI
         private ForegroundAppWatcher _appWatcher;
         private GlobalHookManager _globalHookManager;
 
+        // ★修正: フォーム表示用の UIスレッド SynchronizationContext を保持
+        private SynchronizationContext _syncContext;
+
         private struct TriggerKeyHash : IEquatable<TriggerKeyHash>
         {
             public int Type; public int Code;
@@ -59,18 +62,21 @@ namespace UsbInputMapper.UI
         private Dictionary<PovKey, int> _lastPovStates = new Dictionary<PovKey, int>();
         private Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
-        // ★ StickToMouse / BezelTouch 用
         private System.Windows.Forms.Timer _loopTimer;
         private volatile int _stickMouseDx = 0;
         private volatile int _stickMouseDy = 0;
         private int _currentBezelCode = -1;
         private int _bezelHoverTime = 0;
 
-        // ★ ジェスチャー用
         private GestureHudForm _hudForm;
         private ActionDef _currentGestureDef;
 
-        public TrayApplicationContext() { InitializeCore(); InitializeTrayIcon(); }
+        public TrayApplicationContext() 
+        {
+            _syncContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+            InitializeCore(); 
+            InitializeTrayIcon(); 
+        }
 
         private void InitializeCore()
         {
@@ -270,12 +276,15 @@ namespace UsbInputMapper.UI
 
                 if (binding.Action.ActionType == ActionType.Gesture)
                 {
-                    if (_hudForm == null || _hudForm.IsDisposed)
-                    {
-                        _currentGestureDef = binding.Action;
-                        _hudForm = new GestureHudForm(_currentGestureDef);
-                        _hudForm.Show();
-                    }
+                    // ★修正: UIスレッド (SynchronizationContext) 上で HUD フォームを生成・表示する
+                    _syncContext.Post(_ => {
+                        if (_hudForm == null || _hudForm.IsDisposed)
+                        {
+                            _currentGestureDef = binding.Action;
+                            _hudForm = new GestureHudForm(_currentGestureDef);
+                            _hudForm.Show();
+                        }
+                    }, null);
                     return;
                 }
 
@@ -294,16 +303,23 @@ namespace UsbInputMapper.UI
             {
                 if (binding.Action.ActionType == ActionType.Gesture)
                 {
-                    if (_hudForm != null && !_hudForm.IsDisposed)
-                    {
-                        int selectedDir = _hudForm.SelectedDirectionIndex;
-                        _hudForm.Hide(); _hudForm.Dispose(); _hudForm = null;
-                        if (selectedDir >= 0 && selectedDir < _currentGestureDef.GestureDirections.Count)
+                    // ★修正: UIスレッド (SynchronizationContext) 上で HUD フォームを破棄・処理する
+                    _syncContext.Post(_ => {
+                        if (_hudForm != null && !_hudForm.IsDisposed)
                         {
-                            var act = _currentGestureDef.GestureDirections[selectedDir].Action;
-                            if (act != null) { ExecuteAction(act, true); ExecuteAction(act, false); }
+                            int selectedDir = _hudForm.SelectedDirectionIndex;
+                            _hudForm.Hide(); _hudForm.Dispose(); _hudForm = null;
+                            
+                            if (selectedDir >= 0 && selectedDir < _currentGestureDef.GestureDirections.Count)
+                            {
+                                var act = _currentGestureDef.GestureDirections[selectedDir].Action;
+                                if (act != null && act.ActionType != ActionType.None) 
+                                { 
+                                    ExecuteAction(act, true); ExecuteAction(act, false); 
+                                }
+                            }
                         }
-                    }
+                    }, null);
                     return;
                 }
 
@@ -342,7 +358,6 @@ namespace UsbInputMapper.UI
             }
             else if (binding.Action.ActionType == ActionType.StickToMouse)
             {
-                // ActionDefの独自DZ/Curveで上書き
                 double szDZ = binding.Action.StickDeadZone / 100.0;
                 double spd = binding.Action.StickMaxSpeed;
                 double norm2 = (rawValue - 32767.5) / 32767.5;

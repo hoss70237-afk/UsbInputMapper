@@ -72,10 +72,14 @@ namespace UsbInputMapper.UI
                 else // Gesture
                 {
                     _tabs.SelectedTab = _tabGesture;
-                    _triggerType = existingBinding.InputType; _triggerCode = existingBinding.InputCode; _triggerDevId = existingBinding.DeviceIdentifier;
+                    _triggerType = existingBinding.InputType; 
+                    _triggerCode = existingBinding.InputCode; 
+                    _triggerDevId = existingBinding.DeviceIdentifier;
                     _lblTrigger.Text = $"開始ボタン: {UsbInputMapper.Profiles.Binding.GetCodeName(_triggerType, _triggerCode)}";
                     _cmbSlices.SelectedIndex = existingBinding.Action.GestureSlices == 24 ? 1 : 0;
                     _numSize.Value = existingBinding.Action.GestureSize;
+                    
+                    _bezelAction = new ActionDef(); 
                 }
             }
             else
@@ -92,7 +96,10 @@ namespace UsbInputMapper.UI
             _btnCaptureTrigger.Click += (s, e) => {
                 using(var cap = new CaptureForm(CaptureMode.SingleAny)) {
                     if (cap.ShowDialog(this) == DialogResult.OK && cap.CapturedEvent != null) {
-                        var ev = cap.CapturedEvent; _triggerDevId = ev.DeviceIdentifier; _triggerType = ev.Type; _triggerCode = ev.Type == 1 ? ev.VKey : (int)ev.MouseButtonFlags;
+                        var ev = cap.CapturedEvent; 
+                        _triggerDevId = ev.DeviceIdentifier; 
+                        _triggerType = ev.Type; 
+                        _triggerCode = ev.Type == 1 ? ev.VKey : (int)ev.MouseButtonFlags;
                         _lblTrigger.Text = $"開始ボタン: {UsbInputMapper.Profiles.Binding.GetCodeName(_triggerType, _triggerCode)}";
                     }
                 }
@@ -132,7 +139,9 @@ namespace UsbInputMapper.UI
             }
             int idx = _lstDirs.SelectedIndex;
             _lstDirs.Items.Clear();
-            foreach (var d in ResultBinding.Action.GestureDirections) _lstDirs.Items.Add($"[{d.DirectionIndex}] {d.Label} -> {d.Action.ToString()}");
+            foreach (var d in ResultBinding.Action.GestureDirections) 
+                _lstDirs.Items.Add($"[{d.DirectionIndex}] {d.Label} -> {d.Action.ToString()}");
+            
             if (idx >= 0 && idx < _lstDirs.Items.Count) _lstDirs.SelectedIndex = idx;
         }
 
@@ -171,7 +180,10 @@ namespace UsbInputMapper.UI
                 var dummyBinding = new UsbInputMapper.Profiles.Binding { Action = _bezelAction };
                 using (var editor = new BindingEditorForm(dummyBinding, _profileNames))
                 {
-                    if (editor.ShowDialog(this) == DialogResult.OK) { _bezelAction = editor.ResultBinding.Action; _lblBezelAction.Text = _bezelAction.ToString(); }
+                    if (editor.ShowDialog(this) == DialogResult.OK) { 
+                        _bezelAction = editor.ResultBinding.Action; 
+                        _lblBezelAction.Text = _bezelAction.ToString(); 
+                    }
                 }
             };
 
@@ -185,7 +197,9 @@ namespace UsbInputMapper.UI
             if (_tabs.SelectedTab == _tabGesture)
             {
                 if (_triggerType == -1) { MessageBox.Show("開始ボタンを設定してください。"); return; }
-                ResultBinding.InputType = _triggerType; ResultBinding.InputCode = _triggerCode; ResultBinding.DeviceIdentifier = _triggerDevId;
+                ResultBinding.InputType = _triggerType; 
+                ResultBinding.InputCode = _triggerCode; 
+                ResultBinding.DeviceIdentifier = _triggerDevId;
                 ResultBinding.Name = "ジェスチャー";
                 ResultBinding.Action.ActionType = ActionType.Gesture;
                 ResultBinding.Action.GestureSlices = _cmbSlices.SelectedIndex == 1 ? 24 : 8;

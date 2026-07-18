@@ -11,17 +11,16 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Button btnDeleteProfile;
         private System.Windows.Forms.Button btnUpProfile;
         private System.Windows.Forms.Button btnDownProfile;
-        
         private System.Windows.Forms.Button btnAddBinding;
         private System.Windows.Forms.Button btnEditBinding;
         private System.Windows.Forms.Button btnDuplicateBinding; 
         private System.Windows.Forms.Button btnDeleteBinding;
         private System.Windows.Forms.Button btnUpBinding;
         private System.Windows.Forms.Button btnDownBinding;
-        
         private System.Windows.Forms.Label lblProfiles;
         private System.Windows.Forms.Label lblBindings;
         private System.Windows.Forms.CheckBox chkEnableXInput;
+        private System.Windows.Forms.CheckBox chkStartup; // ★追加
         private System.Windows.Forms.Button btnControllerBase;
 
         protected override void Dispose(bool disposing) { if (disposing && (components != null)) components.Dispose(); base.Dispose(disposing); }
@@ -38,7 +37,7 @@ namespace UsbInputMapper.UI
             this.btnUpBinding = new System.Windows.Forms.Button(); this.btnDownBinding = new System.Windows.Forms.Button();
             
             this.lblProfiles = new System.Windows.Forms.Label(); this.lblBindings = new System.Windows.Forms.Label();
-            this.chkEnableXInput = new System.Windows.Forms.CheckBox(); this.btnControllerBase = new System.Windows.Forms.Button();
+            this.chkEnableXInput = new System.Windows.Forms.CheckBox(); this.chkStartup = new System.Windows.Forms.CheckBox(); this.btnControllerBase = new System.Windows.Forms.Button();
 
             this.SuspendLayout();
             
@@ -54,7 +53,6 @@ namespace UsbInputMapper.UI
             
             this.btnAddBinding.Location = new System.Drawing.Point(245, 250); this.btnAddBinding.Size = new System.Drawing.Size(110, 23); this.btnAddBinding.Text = "入力上書き(追加)"; this.btnAddBinding.Click += new System.EventHandler(this.btnAddBinding_Click);
             this.btnEditBinding.Location = new System.Drawing.Point(361, 250); this.btnEditBinding.Size = new System.Drawing.Size(60, 23); this.btnEditBinding.Text = "編集"; this.btnEditBinding.Click += new System.EventHandler(this.btnEditBinding_Click);
-            this.btnDuplicateBinding.Location = new System.Drawing.Point(427, 250); this.btnDuplicateBinding.Size = new System.Drawing.Size(60, 23); this.btnDuplicateBinding.Text = "複製"; this.btnDuplicateBinding.Click += new System.EventHandler(this.btnDuplicateBinding_Click);
             this.btnDeleteBinding.Location = new System.Drawing.Point(493, 250); this.btnDeleteBinding.Size = new System.Drawing.Size(60, 23); this.btnDeleteBinding.Text = "削除"; this.btnDeleteBinding.Click += new System.EventHandler(this.btnDeleteBinding_Click);
             this.btnUpBinding.Location = new System.Drawing.Point(559, 250); this.btnUpBinding.Size = new System.Drawing.Size(50, 23); this.btnUpBinding.Text = "▲"; this.btnUpBinding.Click += new System.EventHandler(this.btnUpBinding_Click);
             this.btnDownBinding.Location = new System.Drawing.Point(615, 250); this.btnDownBinding.Size = new System.Drawing.Size(50, 23); this.btnDownBinding.Text = "▼"; this.btnDownBinding.Click += new System.EventHandler(this.btnDownBinding_Click);
@@ -62,14 +60,16 @@ namespace UsbInputMapper.UI
             this.lblProfiles.AutoSize = true; this.lblProfiles.Location = new System.Drawing.Point(12, 9); this.lblProfiles.Text = "プロファイル:";
             this.lblBindings.AutoSize = true; this.lblBindings.Location = new System.Drawing.Point(243, 9); this.lblBindings.Text = "入力上書き設定 (プロファイル専用):";
 
-            this.chkEnableXInput.AutoSize = true; this.chkEnableXInput.Location = new System.Drawing.Point(245, 26); this.chkEnableXInput.Text = "このプロファイルでベースコントローラー出力を有効にする"; this.chkEnableXInput.CheckedChanged += new System.EventHandler(this.chkEnableXInput_CheckedChanged);
+            this.chkEnableXInput.AutoSize = true; this.chkEnableXInput.Location = new System.Drawing.Point(245, 26); this.chkEnableXInput.Text = "このプロファイルでベース出力有効化"; this.chkEnableXInput.CheckedChanged += new System.EventHandler(this.chkEnableXInput_CheckedChanged);
             
-            // ★コントローラー基本設定ボタン
-            this.btnControllerBase.Location = new System.Drawing.Point(524, 22); this.btnControllerBase.Size = new System.Drawing.Size(141, 23); this.btnControllerBase.Text = "コントローラーベース設定..."; this.btnControllerBase.Click += new System.EventHandler(this.btnControllerBase_Click);
+            this.chkStartup.AutoSize = true; this.chkStartup.Location = new System.Drawing.Point(12, 305); this.chkStartup.Text = "PC起動時にタスクトレイに起動"; this.chkStartup.CheckedChanged += new System.EventHandler(this.chkStartup_CheckedChanged);
+            
+            this.btnControllerBase.Location = new System.Drawing.Point(493, 22); this.btnControllerBase.Size = new System.Drawing.Size(172, 23); this.btnControllerBase.Text = "コントローラーベース設定..."; this.btnControllerBase.Click += new System.EventHandler(this.btnControllerBase_Click);
 
-            this.ClientSize = new System.Drawing.Size(680, 320);
+            this.ClientSize = new System.Drawing.Size(680, 330);
+            this.Controls.Add(this.chkStartup);
             this.Controls.Add(this.btnControllerBase); this.Controls.Add(this.chkEnableXInput);
-            this.Controls.Add(this.btnDownBinding); this.Controls.Add(this.btnUpBinding); this.Controls.Add(this.btnDeleteBinding); this.Controls.Add(this.btnDuplicateBinding); this.Controls.Add(this.btnEditBinding); this.Controls.Add(this.btnAddBinding);
+            this.Controls.Add(this.btnDownBinding); this.Controls.Add(this.btnUpBinding); this.Controls.Add(this.btnDeleteBinding); this.Controls.Add(this.btnEditBinding); this.Controls.Add(this.btnAddBinding);
             this.Controls.Add(this.btnDownProfile); this.Controls.Add(this.btnUpProfile); this.Controls.Add(this.btnDeleteProfile); this.Controls.Add(this.btnDuplicateProfile); this.Controls.Add(this.btnEditProfile); this.Controls.Add(this.btnAddProfile);
             this.Controls.Add(this.lblBindings); this.Controls.Add(this.lblProfiles); 
             this.Controls.Add(this.lstBindings); this.Controls.Add(this.lstProfiles);

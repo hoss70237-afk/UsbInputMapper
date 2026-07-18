@@ -25,7 +25,6 @@ namespace UsbInputMapper.UI
         private ForegroundAppWatcher _appWatcher;
         private GlobalHookManager _globalHookManager;
 
-        // ★修正: フォーム表示用の UIスレッド SynchronizationContext を保持
         private SynchronizationContext _syncContext;
 
         private struct TriggerKeyHash : IEquatable<TriggerKeyHash>
@@ -132,7 +131,7 @@ namespace UsbInputMapper.UI
                                 if (_bezelHoverTime >= b.ConditionParam && _bezelHoverTime - _loopTimer.Interval < b.ConditionParam)
                                 {
                                     ExecuteAction(b.Action, true);
-                                    ExecuteAction(b.Action, false); // Tap
+                                    ExecuteAction(b.Action, false);
                                 }
                             }
                         }
@@ -276,13 +275,36 @@ namespace UsbInputMapper.UI
 
                 if (binding.Action.ActionType == ActionType.Gesture)
                 {
-                    // ★修正: UIスレッド (SynchronizationContext) 上で HUD フォームを生成・表示する
                     _syncContext.Post(_ => {
                         if (_hudForm == null || _hudForm.IsDisposed)
                         {
                             _currentGestureDef = binding.Action;
                             _hudForm = new GestureHudForm(_currentGestureDef);
                             _hudForm.Show();
+                            
+                            // ★追加: Clickモードの場合、マウスダウンを1回キャプチャさせるよう指示
+                            if (_currentGestureDef.GestureMode == 1)
+                            {
+                                _globalHookManager.IsGestureClickCapturing = true;
+                                _globalHookManager.OnGestureClickCaptured = () => {
+                                    _syncContext.Post(__ => {
+                                        if (_hudForm != null && !_hudForm.IsDisposed)
+                                        {
+                                            int selectedDir = _hudForm.SelectedDirectionIndex;
+                                            _hudForm.Hide(); _hudForm.Dispose(); _hudForm = null;
+                                            
+                                            if (selectedDir >= 0 && selectedDir < _currentGestureDef.GestureDirections.Count)
+                                            {
+                                                var act = _currentGestureDef.GestureDirections[selectedDir].Action;
+                                                if (act != null && act.ActionType != ActionType.None) 
+                                                { 
+                                                    ExecuteAction(act, true); ExecuteAction(act, false); 
+                                                }
+                                            }
+                                        }
+                                    }, null);
+                                };
+                            }
                         }
                     }, null);
                     return;
@@ -303,23 +325,26 @@ namespace UsbInputMapper.UI
             {
                 if (binding.Action.ActionType == ActionType.Gesture)
                 {
-                    // ★修正: UIスレッド (SynchronizationContext) 上で HUD フォームを破棄・処理する
-                    _syncContext.Post(_ => {
-                        if (_hudForm != null && !_hudForm.IsDisposed)
-                        {
-                            int selectedDir = _hudForm.SelectedDirectionIndex;
-                            _hudForm.Hide(); _hudForm.Dispose(); _hudForm = null;
-                            
-                            if (selectedDir >= 0 && selectedDir < _currentGestureDef.GestureDirections.Count)
+                    // ★追加: Holdモードの時のみ UP で実行。Clickモードは何もしない。
+                    if (binding.Action.GestureMode == 0)
+                    {
+                        _syncContext.Post(_ => {
+                            if (_hudForm != null && !_hudForm.IsDisposed)
                             {
-                                var act = _currentGestureDef.GestureDirections[selectedDir].Action;
-                                if (act != null && act.ActionType != ActionType.None) 
-                                { 
-                                    ExecuteAction(act, true); ExecuteAction(act, false); 
+                                int selectedDir = _hudForm.SelectedDirectionIndex;
+                                _hudForm.Hide(); _hudForm.Dispose(); _hudForm = null;
+                                
+                                if (selectedDir >= 0 && selectedDir < _currentGestureDef.GestureDirections.Count)
+                                {
+                                    var act = _currentGestureDef.GestureDirections[selectedDir].Action;
+                                    if (act != null && act.ActionType != ActionType.None) 
+                                    { 
+                                        ExecuteAction(act, true); ExecuteAction(act, false); 
+                                    }
                                 }
                             }
-                        }
-                    }, null);
+                        }, null);
+                    }
                     return;
                 }
 

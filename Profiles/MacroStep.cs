@@ -13,9 +13,13 @@ namespace UsbInputMapper.Profiles
         public string ArgumentStr { get; set; } 
         public int MouseX { get; set; }
         public int MouseY { get; set; }
-        public int DelayMs { get; set; }
         
-        public StepPressState PressState { get; set; } // ★追加: 押す/離す/タップ
+        public bool UseDelay { get; set; } = true;    // ★追加: 待機時間を使用するか
+        public int DelayMs { get; set; }
+        public bool UseFluctuation { get; set; } = false; // ★追加: 揺らぎを使用するか
+        public int FluctuationMs { get; set; } = 15;      // ★追加: 揺らぎ幅
+
+        public StepPressState PressState { get; set; } 
 
         public MacroStep()
         {

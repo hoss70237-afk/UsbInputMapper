@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using System.Windows.Forms;
+using Microsoft.Win32;
 using UsbInputMapper.Profiles;
 using UsbInputMapper.Core;
 
@@ -9,6 +11,7 @@ namespace UsbInputMapper.UI
     {
         private readonly ProfileManager _profileManager;
         private readonly DirectInputManager _diManager;
+        private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
 
         public MainForm(ProfileManager profileManager, DirectInputManager diManager)
         {
@@ -16,6 +19,11 @@ namespace UsbInputMapper.UI
             _profileManager = profileManager;
             _diManager = diManager;
             LoadProfiles();
+
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey, false))
+            {
+                chkStartup.Checked = (key.GetValue("UsbInputMapper") != null);
+            }
         }
 
         private void LoadProfiles()
@@ -37,7 +45,15 @@ namespace UsbInputMapper.UI
             if (lstProfiles.SelectedItem is Profile p) { p.EnableXInput = chkEnableXInput.Checked; _profileManager.Save(); }
         }
 
-        // ★ウィザードボタンに代わり、ベース画面を開く
+        private void chkStartup_CheckedChanged(object sender, EventArgs e)
+        {
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey, true))
+            {
+                if (chkStartup.Checked) key.SetValue("UsbInputMapper", Application.ExecutablePath);
+                else key.DeleteValue("UsbInputMapper", false);
+            }
+        }
+
         private void btnControllerBase_Click(object sender, EventArgs e)
         {
             using (var f = new ControllerBaseForm(_profileManager, _diManager)) { f.ShowDialog(this); }
@@ -68,20 +84,46 @@ namespace UsbInputMapper.UI
             if (!(lstProfiles.SelectedItem is Profile p)) return;
             using (var capture = new CaptureForm())
             {
-                if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedEvent != null)
+                var res = capture.ShowDialog(this);
+                if (res == DialogResult.OK && capture.CapturedEvent != null)
                 {
                     var evt = capture.CapturedEvent;
-                    using (var ed = new BindingEditorForm())
+                    using (var ed = new BindingEditorForm(null, _profileManager.Profiles.Select(x => x.Name).ToList()))
                     {
                         var b = ed.ResultBinding; b.DeviceIdentifier = evt.DeviceIdentifier; b.InputType = evt.Type; b.InputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags;
                         if (ed.ShowDialog(this) == DialogResult.OK) { p.Bindings.Add(b); _profileManager.Save(); RefreshBindings(); }
                     }
                 }
+                else if (res == DialogResult.Retry) // ★ジェスチャー・ベゼル設定
+                {
+                    using (var geForm = new GestureEdgeSetupForm(null, _profileManager.Profiles.Select(x => x.Name).ToList()))
+                    {
+                        if (geForm.ShowDialog(this) == DialogResult.OK) { p.Bindings.Add(geForm.ResultBinding); _profileManager.Save(); RefreshBindings(); }
+                    }
+                }
             }
         }
         
-        private void btnEditBinding_Click(object sender, EventArgs e) { if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b) { using (var ed = new BindingEditorForm(b)) { if (ed.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshBindings(); } } } }
-        private void btnDuplicateBinding_Click(object sender, EventArgs e) { /* 省略 */ }
+        private void btnEditBinding_Click(object sender, EventArgs e) 
+        { 
+            if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b) 
+            { 
+                if (b.InputType == 4 || b.InputType == 5 || b.Action.ActionType == ActionType.Gesture) // ジェスチャー/ベゼル
+                {
+                    using (var geForm = new GestureEdgeSetupForm(b, _profileManager.Profiles.Select(x => x.Name).ToList()))
+                    {
+                        if (geForm.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshBindings(); }
+                    }
+                }
+                else
+                {
+                    using (var ed = new BindingEditorForm(b, _profileManager.Profiles.Select(x => x.Name).ToList())) 
+                    { 
+                        if (ed.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshBindings(); } 
+                    } 
+                }
+            } 
+        }
         private void btnDeleteBinding_Click(object sender, EventArgs e) { if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b && lstProfiles.SelectedItem is Profile p) { p.Bindings.Remove(b); _profileManager.Save(); RefreshBindings(); } }
         private void btnUpBinding_Click(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedIndex > 0) { _profileManager.MoveBinding(p.Bindings, lstBindings.SelectedIndex, -1); RefreshBindings(); } }
         private void btnDownBinding_Click(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedIndex >= 0 && lstBindings.SelectedIndex < lstBindings.Items.Count - 1) { _profileManager.MoveBinding(p.Bindings, lstBindings.SelectedIndex, 1); RefreshBindings(); } }

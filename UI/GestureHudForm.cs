@@ -20,6 +20,9 @@ namespace UsbInputMapper.UI
             this.TopMost = true;
             this.ShowInTaskbar = false;
             
+            // ★修正: 表示位置をWindows任せにせず、プログラムで指定した座標を強制適用する
+            this.StartPosition = FormStartPosition.Manual;
+            
             // 背景透過
             this.BackColor = Color.Magenta;
             this.TransparencyKey = Color.Magenta;

@@ -20,7 +20,7 @@ namespace UsbInputMapper.UI
             this.TopMost = true;
             this.ShowInTaskbar = false;
             
-            // 背景を透過
+            // 背景透過
             this.BackColor = Color.Magenta;
             this.TransparencyKey = Color.Magenta;
 
@@ -30,12 +30,11 @@ namespace UsbInputMapper.UI
             if (SendInputNative.GetCursorPos(out var pt))
             {
                 _centerPoint = new Point(pt.X, pt.Y);
+                // マウスポインターが中心に来るように配置
                 this.Location = new Point(pt.X - size / 2, pt.Y - size / 2);
             }
 
             this.DoubleBuffered = true;
-
-            // 60FPS程度で描画更新
             _drawTimer = new Timer { Interval = 16 };
             _drawTimer.Tick += (s, e) => this.Invalidate();
             _drawTimer.Start();
@@ -48,6 +47,7 @@ namespace UsbInputMapper.UI
 
             int slices = _actionDef.GestureSlices;
             int radius = this.Width / 2;
+            int cancelRadius = (int)(radius * 0.3); // ★追加: 中心30%をキャンセル領域とする
 
             if (!SendInputNative.GetCursorPos(out var pt)) return;
 
@@ -56,12 +56,12 @@ namespace UsbInputMapper.UI
             double dist = Math.Sqrt(dx * dx + dy * dy);
 
             SelectedDirectionIndex = -1;
-            if (dist > 10) // センターのデッドゾーン
+            
+            // キャンセル領域（デッドゾーン）の外にいる場合のみ選択
+            if (dist > cancelRadius)
             {
                 double angle = Math.Atan2(dy, dx);
                 if (angle < 0) angle += 2 * Math.PI;
-                
-                // 右(0度)を中心としてスライスが配置されるようにオフセット
                 double sliceAngle = 2 * Math.PI / slices;
                 angle += sliceAngle / 2.0;
                 if (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
@@ -70,8 +70,8 @@ namespace UsbInputMapper.UI
 
             Rectangle rect = new Rectangle(0, 0, this.Width, this.Height);
 
-            // 背景の半透明円
-            using (Brush bgBrush = new SolidBrush(Color.FromArgb(128, 0, 0, 0)))
+            // 背景の半透明円（少し濃くして見やすくする）
+            using (Brush bgBrush = new SolidBrush(Color.FromArgb(160, 0, 0, 0)))
             {
                 e.Graphics.FillEllipse(bgBrush, rect);
             }
@@ -84,7 +84,6 @@ namespace UsbInputMapper.UI
                 {
                     float startAngle = i * sweep - sweep / 2f;
                     
-                    // 選択中のスライスをハイライト
                     if (i == SelectedDirectionIndex)
                     {
                         using (Brush selBrush = new SolidBrush(Color.FromArgb(180, 50, 150, 255)))
@@ -93,16 +92,15 @@ namespace UsbInputMapper.UI
                         }
                     }
                     
-                    // 境界線を描画
                     using (Pen p = new Pen(Color.FromArgb(200, 255, 255, 255), 1))
                     {
                         e.Graphics.DrawPie(p, rect, startAngle, sweep);
                     }
 
-                    // テキスト(ラベル)を描画
                     double midAngle = (i * sweep) * Math.PI / 180.0;
-                    float tx = radius + (float)(Math.Cos(midAngle) * radius * 0.7);
-                    float ty = radius + (float)(Math.Sin(midAngle) * radius * 0.7);
+                    // ラベル位置（キャンセル領域を避けるため外側に寄せる）
+                    float tx = radius + (float)(Math.Cos(midAngle) * radius * 0.65);
+                    float ty = radius + (float)(Math.Sin(midAngle) * radius * 0.65);
                     
                     string label = "";
                     if (i < _actionDef.GestureDirections.Count) label = _actionDef.GestureDirections[i].Label;
@@ -110,6 +108,21 @@ namespace UsbInputMapper.UI
                     {
                         e.Graphics.DrawString(label, f, Brushes.White, tx, ty, sf);
                     }
+                }
+
+                // ★追加: 中心キャンセル領域の描画
+                Rectangle cancelRect = new Rectangle(radius - cancelRadius, radius - cancelRadius, cancelRadius * 2, cancelRadius * 2);
+                using (Brush cancelBrush = new SolidBrush(Color.FromArgb(200, 60, 60, 60)))
+                {
+                    e.Graphics.FillEllipse(cancelBrush, cancelRect);
+                }
+                using (Pen cancelPen = new Pen(Color.FromArgb(200, 255, 255, 255), 2))
+                {
+                    e.Graphics.DrawEllipse(cancelPen, cancelRect);
+                }
+                using (Font fCancel = new Font("MS UI Gothic", 9, FontStyle.Bold))
+                {
+                    e.Graphics.DrawString("Cancel", fCancel, Brushes.White, radius, radius, sf);
                 }
             }
         }

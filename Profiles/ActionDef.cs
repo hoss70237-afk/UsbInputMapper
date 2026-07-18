@@ -12,7 +12,7 @@ namespace UsbInputMapper.Profiles
         MouseMoveContinuous,
         MouseMoveAbsoluteDesk,
         MouseMoveAbsoluteWin,
-        MouseMoveAbsoluteHoverWin, // ★追加: ポインターが乗っているウィンドウ
+        MouseMoveAbsoluteHoverWin, 
         MousePosSave,
         MousePosRestore,
         XboxController,
@@ -22,8 +22,8 @@ namespace UsbInputMapper.Profiles
         Macro,
         ToggleHold,
         ProfileSwitch,
-        StickToMouse, // ★追加: スティック入力のみマウス移動
-        Gesture       // ★追加: ジェスチャーHUD
+        StickToMouse, 
+        Gesture       
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }
@@ -50,14 +50,13 @@ namespace UsbInputMapper.Profiles
         public MacroPlaybackMode PlaybackMode { get; set; }
         public int StepTimeoutMs { get; set; }
 
-        // ★追加: スティック入力のみマウス移動
         public int StickDeadZone { get; set; } = 15;
         public int StickMaxSpeed { get; set; } = 20;
-        public int StickCurve { get; set; } = 0; // 0: リニア, 1: 早め, 2: 遅め
+        public int StickCurve { get; set; } = 0; 
 
-        // ★追加: ジェスチャー
         public int GestureSlices { get; set; } = 8;
         public int GestureSize { get; set; } = 200;
+        public int GestureMode { get; set; } = 0; // ★追加: 0=Hold, 1=Click
         public List<GestureDirection> GestureDirections { get; set; }
 
         public ActionDef()

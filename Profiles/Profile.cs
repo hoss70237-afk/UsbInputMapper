@@ -9,9 +9,8 @@ namespace UsbInputMapper.Profiles
         public List<string> TargetApplicationPaths { get; set; } 
         public bool IsDefault { get; set; }
         
-        // ★追加: プロファイルごとのXInput有効・無効フラグ
-        // 仮想コントローラー自体は切断せず、出力だけをスルーする。
         public bool EnableXInput { get; set; } = false;
+        public bool NotifyProfileChangeVibration { get; set; } = false; // ★追加: 振動通知
         
         public List<Binding> Bindings { get; set; }
 

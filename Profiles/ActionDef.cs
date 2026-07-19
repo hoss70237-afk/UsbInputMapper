@@ -23,7 +23,8 @@ namespace UsbInputMapper.Profiles
         ToggleHold,
         ProfileSwitch,
         StickToMouse, 
-        Gesture       
+        Gesture,
+        BackgroundControl // ★追加: バックグラウンド操作
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }
@@ -56,8 +57,19 @@ namespace UsbInputMapper.Profiles
 
         public int GestureSlices { get; set; } = 8;
         public int GestureSize { get; set; } = 200;
-        public int GestureMode { get; set; } = 0; // ★追加: 0=Hold, 1=Click
+        public int GestureMode { get; set; } = 0; 
         public List<GestureDirection> GestureDirections { get; set; }
+
+        // ★追加: バックグラウンド操作用プロパティ
+        public string BgWindowName { get; set; }
+        public string BgClassName { get; set; }
+        public int BgControlId { get; set; }
+        public int BgActionMode { get; set; } // 0:Click, 1:Key
+
+        // ★追加: 振動通知用プロパティ
+        public bool UseVibration { get; set; } = false;
+        public int VibrateDuration { get; set; } = 200;
+        public int VibrateTimes { get; set; } = 1;
 
         public ActionDef()
         {
@@ -90,6 +102,7 @@ namespace UsbInputMapper.Profiles
                 case ActionType.ProfileSwitch: return "プロファイル切替: " + ArgumentStr;
                 case ActionType.StickToMouse: return $"スティックマウス(最高速度:{StickMaxSpeed})";
                 case ActionType.Gesture: return $"ジェスチャーHUD({GestureSlices}分割)";
+                case ActionType.BackgroundControl: return $"バックグラウンド操作: {(string.IsNullOrEmpty(BgWindowName)?BgClassName:BgWindowName)}";
                 default: return ActionType.ToString();
             }
         }

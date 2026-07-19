@@ -66,9 +66,8 @@ namespace UsbInputMapper.Core
         private bool _waitingForRightUp = false;
         private POINT _capturePoint;
 
-        // ★追加: ジェスチャーの「クリックで選択」モード用
-        public bool IsGestureClickCapturing { get; set; }
-        public Action OnGestureClickCaptured;
+        public bool IsRadialMenuClickCapturing { get; set; }
+        public Action OnRadialMenuClickCaptured;
 
         public event EventHandler<HookInputEvent> OnRecordedInput;
 
@@ -136,12 +135,11 @@ namespace UsbInputMapper.Core
 
                 if (!isInjected)
                 {
-                    // ★追加: ジェスチャーのクリックブロック処理
-                    if (IsGestureClickCapturing && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN))
+                    if (IsRadialMenuClickCapturing && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN))
                     {
-                        IsGestureClickCapturing = false;
-                        OnGestureClickCaptured?.Invoke();
-                        return (IntPtr)1; // 本来のマウスクリックをブロック
+                        IsRadialMenuClickCapturing = false;
+                        OnRadialMenuClickCaptured?.Invoke();
+                        return (IntPtr)1; 
                     }
 
                     if (IsCoordinateCapturing)

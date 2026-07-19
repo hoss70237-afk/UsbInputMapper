@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace UsbInputMapper.Profiles
 {
@@ -23,18 +24,18 @@ namespace UsbInputMapper.Profiles
         ToggleHold,
         ProfileSwitch,
         StickToMouse, 
-        Gesture,
-        BackgroundControl // ★追加: バックグラウンド操作
+        RadialMenu,       
+        BackgroundControl 
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }
 
-    public class GestureDirection
+    public class RadialMenuDirection
     {
         public int DirectionIndex { get; set; }
         public string Label { get; set; }
         public ActionDef Action { get; set; }
-        public GestureDirection() { Action = new ActionDef(); Label = ""; }
+        public RadialMenuDirection() { Action = new ActionDef(); Label = ""; }
     }
 
     public class ActionDef
@@ -55,18 +56,24 @@ namespace UsbInputMapper.Profiles
         public int StickMaxSpeed { get; set; } = 20;
         public int StickCurve { get; set; } = 0; 
 
-        public int GestureSlices { get; set; } = 8;
-        public int GestureSize { get; set; } = 200;
-        public int GestureMode { get; set; } = 0; 
-        public List<GestureDirection> GestureDirections { get; set; }
+        // ★保存済JSON互換性を保ちつつ名前変更
+        [JsonProperty("GestureSlices")]
+        public int RadialMenuSlices { get; set; } = 8;
+        
+        [JsonProperty("GestureSize")]
+        public int RadialMenuSize { get; set; } = 200;
+        
+        [JsonProperty("GestureMode")]
+        public int RadialMenuMode { get; set; } = 0; 
+        
+        [JsonProperty("GestureDirections")]
+        public List<RadialMenuDirection> RadialMenuDirections { get; set; }
 
-        // ★追加: バックグラウンド操作用プロパティ
         public string BgWindowName { get; set; }
         public string BgClassName { get; set; }
         public int BgControlId { get; set; }
-        public int BgActionMode { get; set; } // 0:Click, 1:Key
+        public int BgActionMode { get; set; } 
 
-        // ★追加: 振動通知用プロパティ
         public bool UseVibration { get; set; } = false;
         public int VibrateDuration { get; set; } = 200;
         public int VibrateTimes { get; set; } = 1;
@@ -75,7 +82,7 @@ namespace UsbInputMapper.Profiles
         {
             MultipleKeys = new List<int>();
             MacroSteps = new List<MacroStep>();
-            GestureDirections = new List<GestureDirection>();
+            RadialMenuDirections = new List<RadialMenuDirection>();
             PlaybackMode = MacroPlaybackMode.Sequence;
             StepTimeoutMs = 1000;
         }
@@ -101,7 +108,7 @@ namespace UsbInputMapper.Profiles
                 case ActionType.Macro: return "マクロ実行";
                 case ActionType.ProfileSwitch: return "プロファイル切替: " + ArgumentStr;
                 case ActionType.StickToMouse: return $"スティックマウス(最高速度:{StickMaxSpeed})";
-                case ActionType.Gesture: return $"ジェスチャーHUD({GestureSlices}分割)";
+                case ActionType.RadialMenu: return $"ラジアルメニュー({RadialMenuSlices}分割)";
                 case ActionType.BackgroundControl: return $"バックグラウンド操作: {(string.IsNullOrEmpty(BgWindowName)?BgClassName:BgWindowName)}";
                 default: return ActionType.ToString();
             }

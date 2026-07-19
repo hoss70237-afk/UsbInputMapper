@@ -125,7 +125,7 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "Xboxアナログトリガー", Value = (int)ActionType.XboxTrigger });
             cmbActionType.Items.Add(new ComboItem { Text = "スティックでマウス移動", Value = (int)ActionType.StickToMouse });
             cmbActionType.Items.Add(new ComboItem { Text = "アプリケーション起動", Value = (int)ActionType.AppLaunch });
-            cmbActionType.Items.Add(new ComboItem { Text = "バックグラウンド操作", Value = (int)ActionType.BackgroundControl }); // ★追加
+            cmbActionType.Items.Add(new ComboItem { Text = "バックグラウンド操作", Value = (int)ActionType.BackgroundControl });
             cmbActionType.Items.Add(new ComboItem { Text = "トグル維持", Value = (int)ActionType.ToggleHold });
             cmbActionType.Items.Add(new ComboItem { Text = "マクロ実行", Value = (int)ActionType.Macro });
             cmbActionType.Items.Add(new ComboItem { Text = "プロファイル切り替え", Value = (int)ActionType.ProfileSwitch });

@@ -23,6 +23,18 @@ namespace UsbInputMapper.Core
             catch { IsInitialized = false; }
         }
 
+        public void Reset()
+        {
+            if (!IsInitialized) return;
+            foreach(Xbox360Button b in Enum.GetValues(typeof(Xbox360Button))) _controller.SetButtonState(b, false);
+            _controller.SetAxisValue(Xbox360Axis.LeftThumbX, 0);
+            _controller.SetAxisValue(Xbox360Axis.LeftThumbY, 0);
+            _controller.SetAxisValue(Xbox360Axis.RightThumbX, 0);
+            _controller.SetAxisValue(Xbox360Axis.RightThumbY, 0);
+            _controller.SetSliderValue(Xbox360Slider.LeftTrigger, 0);
+            _controller.SetSliderValue(Xbox360Slider.RightTrigger, 0);
+        }
+
         public void SetButton(Xbox360Button button, bool isPressed)
         {
             if (!IsInitialized) return;

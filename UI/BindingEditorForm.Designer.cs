@@ -36,11 +36,22 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Button btnOK;
         private System.Windows.Forms.Button btnCancel;
         
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing && (components != null)) components.Dispose();
-            base.Dispose(disposing);
-        }
+        // ★ BgUI
+        private System.Windows.Forms.Panel pnlBackground;
+        private System.Windows.Forms.TextBox txtBgClassName;
+        private System.Windows.Forms.TextBox txtBgWindowName;
+        private System.Windows.Forms.NumericUpDown numBgControlId;
+        private System.Windows.Forms.ComboBox cmbBgAction;
+        private System.Windows.Forms.ComboBox cmbBgKey;
+        private System.Windows.Forms.Label lblBgPicker;
+
+        // ★ 振動UI
+        private System.Windows.Forms.Panel pnlVibration;
+        private System.Windows.Forms.CheckBox chkVibrate;
+        private System.Windows.Forms.NumericUpDown numVibrateDuration;
+        private System.Windows.Forms.NumericUpDown numVibrateTimes;
+        
+        protected override void Dispose(bool disposing) { if (disposing && (components != null)) components.Dispose(); base.Dispose(disposing); }
 
         private void InitializeComponent()
         {
@@ -53,17 +64,24 @@ namespace UsbInputMapper.UI
             this.txtAppPath = new System.Windows.Forms.TextBox(); this.btnBrowseApp = new System.Windows.Forms.Button();
             this.pnlMouseMove = new System.Windows.Forms.Panel(); this.lblMouseX = new System.Windows.Forms.Label(); this.numMouseX = new System.Windows.Forms.NumericUpDown(); this.lblMouseY = new System.Windows.Forms.Label(); this.numMouseY = new System.Windows.Forms.NumericUpDown(); this.btnCaptureCoord = new System.Windows.Forms.Button();
             this.cmbProfileSwitchTarget = new System.Windows.Forms.ComboBox(); this.cmbProfileSwitchMode = new System.Windows.Forms.ComboBox(); this.btnEditMacro = new System.Windows.Forms.Button();
+            
+            this.pnlBackground = new System.Windows.Forms.Panel(); this.txtBgClassName = new System.Windows.Forms.TextBox(); this.txtBgWindowName = new System.Windows.Forms.TextBox(); this.numBgControlId = new System.Windows.Forms.NumericUpDown(); this.cmbBgAction = new System.Windows.Forms.ComboBox(); this.cmbBgKey = new System.Windows.Forms.ComboBox(); this.lblBgPicker = new System.Windows.Forms.Label();
+            this.pnlVibration = new System.Windows.Forms.Panel(); this.chkVibrate = new System.Windows.Forms.CheckBox(); this.numVibrateDuration = new System.Windows.Forms.NumericUpDown(); this.numVibrateTimes = new System.Windows.Forms.NumericUpDown();
+            
             this.btnOK = new System.Windows.Forms.Button(); this.btnCancel = new System.Windows.Forms.Button();
             
-            ((System.ComponentModel.ISupportInitialize)(this.numConditionParam)).BeginInit(); this.pnlMouseMove.SuspendLayout(); ((System.ComponentModel.ISupportInitialize)(this.numMouseX)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numMouseY)).BeginInit(); this.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numConditionParam)).BeginInit(); this.pnlMouseMove.SuspendLayout(); ((System.ComponentModel.ISupportInitialize)(this.numMouseX)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numMouseY)).BeginInit(); 
+            this.pnlBackground.SuspendLayout(); ((System.ComponentModel.ISupportInitialize)(this.numBgControlId)).BeginInit();
+            this.pnlVibration.SuspendLayout(); ((System.ComponentModel.ISupportInitialize)(this.numVibrateDuration)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numVibrateTimes)).BeginInit();
+            this.SuspendLayout();
             
             this.label0.AutoSize = true; this.label0.Location = new System.Drawing.Point(12, 15); this.label0.Text = "アイテム名:"; this.txtName.Location = new System.Drawing.Point(90, 12); this.txtName.Size = new System.Drawing.Size(150, 19);
             this.chkBlockOriginalInput.AutoSize = true; this.chkBlockOriginalInput.Location = new System.Drawing.Point(245, 14); this.chkBlockOriginalInput.Text = "本来の入力をブロック";
             this.lblMainTrigger.AutoSize = true; this.lblMainTrigger.Location = new System.Drawing.Point(12, 45); this.lblMainTrigger.Text = "メイン入力: -"; this.btnReCaptureMain.Location = new System.Drawing.Point(260, 40); this.btnReCaptureMain.Size = new System.Drawing.Size(70, 23); this.btnReCaptureMain.Text = "再登録"; this.btnReCaptureMain.Click += new System.EventHandler(this.btnReCaptureMain_Click);
-            this.lblSubTriggers.AutoSize = true; this.lblSubTriggers.Location = new System.Drawing.Point(12, 75); this.lblSubTriggers.Text = "同時押し条件:"; this.lstSubTriggers.Location = new System.Drawing.Point(90, 75); this.lstSubTriggers.Size = new System.Drawing.Size(160, 52);
+            this.lblSubTriggers.AutoSize = true; this.lblSubTriggers.Location = new System.Drawing.Point(12, 75); this.lblSubTriggers.Text = "同時押し:"; this.lstSubTriggers.Location = new System.Drawing.Point(90, 75); this.lstSubTriggers.Size = new System.Drawing.Size(160, 52);
             this.btnAddSubTrigger.Location = new System.Drawing.Point(260, 75); this.btnAddSubTrigger.Size = new System.Drawing.Size(70, 23); this.btnAddSubTrigger.Text = "追加(待機)"; this.btnAddSubTrigger.Click += new System.EventHandler(this.btnAddSubTrigger_Click);
             this.btnRemoveSubTrigger.Location = new System.Drawing.Point(260, 131); this.btnRemoveSubTrigger.Size = new System.Drawing.Size(70, 23); this.btnRemoveSubTrigger.Text = "削除"; this.btnRemoveSubTrigger.Click += new System.EventHandler(this.btnRemoveSubTrigger_Click);
-            this.cmbManualSubTrigger.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbManualSubTrigger.Location = new System.Drawing.Point(90, 133); this.cmbManualSubTrigger.Size = new System.Drawing.Size(100, 20); this.btnManualAddSub.Location = new System.Drawing.Point(195, 131); this.btnManualAddSub.Size = new System.Drawing.Size(55, 23); this.btnManualAddSub.Text = "手動追加"; this.btnManualAddSub.Click += new System.EventHandler(this.btnManualAddSub_Click);
+            this.cmbManualSubTrigger.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbManualSubTrigger.Location = new System.Drawing.Point(90, 133); this.cmbManualSubTrigger.Size = new System.Drawing.Size(100, 20); this.btnManualAddSub.Location = new System.Drawing.Point(195, 131); this.btnManualAddSub.Size = new System.Drawing.Size(55, 23); this.btnManualAddSub.Text = "手動"; this.btnManualAddSub.Click += new System.EventHandler(this.btnManualAddSub_Click);
             this.labelCond.AutoSize = true; this.labelCond.Location = new System.Drawing.Point(12, 170); this.labelCond.Text = "入力条件:"; this.cmbCondition.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbCondition.Location = new System.Drawing.Point(90, 167); this.cmbCondition.Size = new System.Drawing.Size(240, 20); this.cmbCondition.SelectedIndexChanged += new System.EventHandler(this.cmbCondition_SelectedIndexChanged);
             this.lblParam.AutoSize = true; this.lblParam.Location = new System.Drawing.Point(12, 200); this.lblParam.Text = "パラメータ:"; this.lblParam.Visible = false; this.numConditionParam.Location = new System.Drawing.Point(90, 198); this.numConditionParam.Maximum = new decimal(new int[] { 100000, 0, 0, 0 }); this.numConditionParam.Size = new System.Drawing.Size(100, 19); this.numConditionParam.Visible = false;
             this.label1.AutoSize = true; this.label1.Location = new System.Drawing.Point(12, 230); this.label1.Text = "エミュレート:"; this.cmbActionType.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbActionType.Location = new System.Drawing.Point(90, 227); this.cmbActionType.Size = new System.Drawing.Size(240, 20); this.cmbActionType.SelectedIndexChanged += new System.EventHandler(this.cmbActionType_SelectedIndexChanged);
@@ -73,28 +91,50 @@ namespace UsbInputMapper.UI
             this.pnlMouseMove.Location = new System.Drawing.Point(90, 255); this.pnlMouseMove.Size = new System.Drawing.Size(360, 30); this.pnlMouseMove.Visible = false;
             this.lblMouseX.AutoSize = true; this.lblMouseX.Location = new System.Drawing.Point(0, 5); this.lblMouseX.Text = "X:"; this.numMouseX.Location = new System.Drawing.Point(15, 3); this.numMouseX.Minimum = new decimal(new int[] { 9999, 0, 0, -2147483648 }); this.numMouseX.Maximum = new decimal(new int[] { 9999, 0, 0, 0 }); this.numMouseX.Size = new System.Drawing.Size(55, 19);
             this.lblMouseY.AutoSize = true; this.lblMouseY.Location = new System.Drawing.Point(75, 5); this.lblMouseY.Text = "Y:"; this.numMouseY.Location = new System.Drawing.Point(90, 3); this.numMouseY.Minimum = new decimal(new int[] { 9999, 0, 0, -2147483648 }); this.numMouseY.Maximum = new decimal(new int[] { 9999, 0, 0, 0 }); this.numMouseY.Size = new System.Drawing.Size(55, 19);
-            this.btnCaptureCoord.Location = new System.Drawing.Point(155, 1); this.btnCaptureCoord.Size = new System.Drawing.Size(195, 23); this.btnCaptureCoord.Text = "座標取得(右クリックでキャンセル)"; this.btnCaptureCoord.Click += new System.EventHandler(this.btnCaptureCoord_Click);
+            this.btnCaptureCoord.Location = new System.Drawing.Point(155, 1); this.btnCaptureCoord.Size = new System.Drawing.Size(195, 23); this.btnCaptureCoord.Text = "座標取得"; this.btnCaptureCoord.Click += new System.EventHandler(this.btnCaptureCoord_Click);
             this.pnlMouseMove.Controls.Add(this.lblMouseX); this.pnlMouseMove.Controls.Add(this.numMouseX); this.pnlMouseMove.Controls.Add(this.lblMouseY); this.pnlMouseMove.Controls.Add(this.numMouseY); this.pnlMouseMove.Controls.Add(this.btnCaptureCoord);
             
             this.cmbProfileSwitchTarget.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbProfileSwitchTarget.Location = new System.Drawing.Point(90, 257); this.cmbProfileSwitchTarget.Size = new System.Drawing.Size(130, 20); this.cmbProfileSwitchTarget.Visible = false;
             this.cmbProfileSwitchMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbProfileSwitchMode.Location = new System.Drawing.Point(225, 257); this.cmbProfileSwitchMode.Size = new System.Drawing.Size(105, 20); this.cmbProfileSwitchMode.Visible = false;
             this.btnEditMacro.Location = new System.Drawing.Point(90, 255); this.btnEditMacro.Size = new System.Drawing.Size(240, 23); this.btnEditMacro.Text = "マクロエディタを開く"; this.btnEditMacro.Visible = false; this.btnEditMacro.Click += new System.EventHandler(this.btnEditMacro_Click);
             
-            this.btnOK.Location = new System.Drawing.Point(264, 300); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "OK"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
-            this.btnCancel.Location = new System.Drawing.Point(345, 300); this.btnCancel.Size = new System.Drawing.Size(75, 23); this.btnCancel.Text = "キャンセル"; this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
+            // ★ Bg UI
+            this.pnlBackground.Location = new System.Drawing.Point(90, 255); this.pnlBackground.Size = new System.Drawing.Size(360, 60); this.pnlBackground.Visible = false;
+            this.lblBgPicker.AutoSize = true; this.lblBgPicker.Font = new System.Drawing.Font("MS UI Gothic", 16F); this.lblBgPicker.ForeColor = System.Drawing.Color.DodgerBlue; this.lblBgPicker.Location = new System.Drawing.Point(0, 5); this.lblBgPicker.Text = "◎"; this.lblBgPicker.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.txtBgClassName.Location = new System.Drawing.Point(30, 5); this.txtBgClassName.Size = new System.Drawing.Size(80, 19); this.txtBgWindowName.Location = new System.Drawing.Point(115, 5); this.txtBgWindowName.Size = new System.Drawing.Size(100, 19);
+            this.numBgControlId.Location = new System.Drawing.Point(220, 5); this.numBgControlId.Maximum = 65535; this.numBgControlId.Size = new System.Drawing.Size(50, 19);
+            this.cmbBgAction.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbBgAction.Location = new System.Drawing.Point(30, 30); this.cmbBgAction.Size = new System.Drawing.Size(80, 20); this.cmbBgAction.SelectedIndexChanged += new System.EventHandler(this.cmbBgAction_SelectedIndexChanged);
+            this.cmbBgKey.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbBgKey.Location = new System.Drawing.Point(115, 30); this.cmbBgKey.Size = new System.Drawing.Size(100, 20); this.cmbBgKey.Visible = false;
+            this.pnlBackground.Controls.Add(this.lblBgPicker); this.pnlBackground.Controls.Add(this.txtBgClassName); this.pnlBackground.Controls.Add(this.txtBgWindowName); this.pnlBackground.Controls.Add(this.numBgControlId); this.pnlBackground.Controls.Add(this.cmbBgAction); this.pnlBackground.Controls.Add(this.cmbBgKey);
             
-            this.ClientSize = new System.Drawing.Size(460, 340);
+            // ★ 振動UI
+            this.pnlVibration.Location = new System.Drawing.Point(12, 335); this.pnlVibration.Size = new System.Drawing.Size(360, 30);
+            this.chkVibrate.AutoSize = true; this.chkVibrate.Location = new System.Drawing.Point(0, 5); this.chkVibrate.Text = "実行時にコントローラー振動";
+            System.Windows.Forms.Label lblV1 = new System.Windows.Forms.Label { Text = "時間(ms):", Location = new System.Drawing.Point(155, 6), AutoSize = true };
+            this.numVibrateDuration.Location = new System.Drawing.Point(210, 4); this.numVibrateDuration.Maximum = 2000; this.numVibrateDuration.Size = new System.Drawing.Size(50, 19);
+            System.Windows.Forms.Label lblV2 = new System.Windows.Forms.Label { Text = "回数:", Location = new System.Drawing.Point(265, 6), AutoSize = true };
+            this.numVibrateTimes.Location = new System.Drawing.Point(300, 4); this.numVibrateTimes.Maximum = 10; this.numVibrateTimes.Size = new System.Drawing.Size(40, 19);
+            this.pnlVibration.Controls.Add(this.chkVibrate); this.pnlVibration.Controls.Add(lblV1); this.pnlVibration.Controls.Add(this.numVibrateDuration); this.pnlVibration.Controls.Add(lblV2); this.pnlVibration.Controls.Add(this.numVibrateTimes);
+
+            this.btnOK.Location = new System.Drawing.Point(264, 380); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "OK"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
+            this.btnCancel.Location = new System.Drawing.Point(345, 380); this.btnCancel.Size = new System.Drawing.Size(75, 23); this.btnCancel.Text = "キャンセル"; this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
+            
+            this.ClientSize = new System.Drawing.Size(460, 415);
             this.Controls.Add(this.chkBlockOriginalInput); this.Controls.Add(this.lblMainTrigger); this.Controls.Add(this.btnReCaptureMain);
             this.Controls.Add(this.lblSubTriggers); this.Controls.Add(this.lstSubTriggers); this.Controls.Add(this.btnAddSubTrigger); this.Controls.Add(this.btnRemoveSubTrigger);
             this.Controls.Add(this.cmbManualSubTrigger); this.Controls.Add(this.btnManualAddSub); this.Controls.Add(this.btnCancel); this.Controls.Add(this.btnOK);
-            this.Controls.Add(this.btnEditMacro); this.Controls.Add(this.pnlMouseMove); this.Controls.Add(this.cmbProfileSwitchTarget); this.Controls.Add(this.cmbProfileSwitchMode);
+            this.Controls.Add(this.btnEditMacro); this.Controls.Add(this.pnlMouseMove); this.Controls.Add(this.pnlBackground); this.Controls.Add(this.pnlVibration);
+            this.Controls.Add(this.cmbProfileSwitchTarget); this.Controls.Add(this.cmbProfileSwitchMode);
             this.Controls.Add(this.btnBrowseApp); this.Controls.Add(this.txtAppPath); this.Controls.Add(this.cmbKeyButton);
             this.Controls.Add(this.label2); this.Controls.Add(this.cmbActionType); this.Controls.Add(this.label1);
             this.Controls.Add(this.numConditionParam); this.Controls.Add(this.lblParam); this.Controls.Add(this.cmbCondition); this.Controls.Add(this.labelCond);
             this.Controls.Add(this.txtName); this.Controls.Add(this.label0);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog; this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent; this.Text = "入力アイテムの編集";
             
-            ((System.ComponentModel.ISupportInitialize)(this.numConditionParam)).EndInit(); this.pnlMouseMove.ResumeLayout(false); this.pnlMouseMove.PerformLayout(); ((System.ComponentModel.ISupportInitialize)(this.numMouseX)).EndInit(); ((System.ComponentModel.ISupportInitialize)(this.numMouseY)).EndInit(); this.ResumeLayout(false); this.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numConditionParam)).EndInit(); this.pnlMouseMove.ResumeLayout(false); this.pnlMouseMove.PerformLayout(); ((System.ComponentModel.ISupportInitialize)(this.numMouseX)).EndInit(); ((System.ComponentModel.ISupportInitialize)(this.numMouseY)).EndInit(); 
+            this.pnlBackground.ResumeLayout(false); this.pnlBackground.PerformLayout(); ((System.ComponentModel.ISupportInitialize)(this.numBgControlId)).EndInit();
+            this.pnlVibration.ResumeLayout(false); this.pnlVibration.PerformLayout(); ((System.ComponentModel.ISupportInitialize)(this.numVibrateDuration)).EndInit(); ((System.ComponentModel.ISupportInitialize)(this.numVibrateTimes)).EndInit();
+            this.ResumeLayout(false); this.PerformLayout();
         }
     }
 }

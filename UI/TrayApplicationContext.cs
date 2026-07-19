@@ -67,10 +67,9 @@ namespace UsbInputMapper.UI
         private int _currentBezelCode = -1;
         private int _bezelHoverTime = 0;
 
-        private GestureHudForm _hudForm;
-        private ActionDef _currentGestureDef;
+        private RadialMenuHudForm _radialMenuHudForm;
+        private ActionDef _currentRadialMenuDef;
 
-        // ★追加: HIDとキーボードの同時入力を判定・破棄するための仕組み
         private long _lastStandardInputTime = 0;
         private List<InputEvent> _pendingHidEvents = new List<InputEvent>();
 
@@ -176,29 +175,24 @@ namespace UsbInputMapper.UI
 
             long now = Environment.TickCount;
 
-            // ★追加: キーボード・マウスの入力があったら時間を記録し、保留中のHIDをクリア
             if (e.Type == 0 || e.Type == 1)
             {
                 _lastStandardInputTime = now;
                 _pendingHidEvents.Clear(); 
             }
 
-            // ★追加: HIDイベントの場合、単独か判別するためにフィルタリング＆遅延
             if (e.Type == 2)
             {
-                // 直近50ms以内に標準入力（キーボード等）があれば、このHIDデータはダミー/付随データとして破棄
                 if (now - _lastStandardInputTime < 50)
                 {
                     InputLogger.Log($"[HID Ignored] (Simultaneous with Standard Input) Code={(int)e.MouseButtonFlags}");
                     return;
                 }
                 
-                // HIDが単独で押されたのか見極めるため30ms保留する
                 _pendingHidEvents.Add(e);
                 Task.Run(async () => {
                     await Task.Delay(30);
                     _syncContext.Post(_ => {
-                        // 30ms経過しても破棄されていなければ、純粋なHID入力として処理を続行
                         if (_pendingHidEvents.Contains(e))
                         {
                             _pendingHidEvents.Remove(e);
@@ -289,17 +283,17 @@ namespace UsbInputMapper.UI
             if (isDown)
             {
                 if (binding.Condition == TriggerCondition.Release) return;
-                if (binding.Action.ActionType == ActionType.Gesture) {
+                if (binding.Action.ActionType == ActionType.RadialMenu) {
                     _syncContext.Post(_ => {
-                        if (_hudForm == null || _hudForm.IsDisposed) {
-                            _currentGestureDef = binding.Action; _hudForm = new GestureHudForm(_currentGestureDef); _hudForm.Show();
-                            if (_currentGestureDef.GestureMode == 1) {
-                                _globalHookManager.IsGestureClickCapturing = true;
-                                _globalHookManager.OnGestureClickCaptured = () => {
+                        if (_radialMenuHudForm == null || _radialMenuHudForm.IsDisposed) {
+                            _currentRadialMenuDef = binding.Action; _radialMenuHudForm = new RadialMenuHudForm(_currentRadialMenuDef); _radialMenuHudForm.Show();
+                            if (_currentRadialMenuDef.RadialMenuMode == 1) {
+                                _globalHookManager.IsRadialMenuClickCapturing = true;
+                                _globalHookManager.OnRadialMenuClickCaptured = () => {
                                     _syncContext.Post(__ => {
-                                        if (_hudForm != null && !_hudForm.IsDisposed) {
-                                            int sel = _hudForm.SelectedDirectionIndex; _hudForm.Hide(); _hudForm.Dispose(); _hudForm = null;
-                                            if (sel >= 0 && sel < _currentGestureDef.GestureDirections.Count) { var act = _currentGestureDef.GestureDirections[sel].Action; if (act != null && act.ActionType != ActionType.None) { ExecuteAction(act, true); ExecuteAction(act, false); } }
+                                        if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed) {
+                                            int sel = _radialMenuHudForm.SelectedDirectionIndex; _radialMenuHudForm.Hide(); _radialMenuHudForm.Dispose(); _radialMenuHudForm = null;
+                                            if (sel >= 0 && sel < _currentRadialMenuDef.RadialMenuDirections.Count) { var act = _currentRadialMenuDef.RadialMenuDirections[sel].Action; if (act != null && act.ActionType != ActionType.None) { ExecuteAction(act, true); ExecuteAction(act, false); } }
                                         }
                                     }, null);
                                 };
@@ -320,12 +314,12 @@ namespace UsbInputMapper.UI
             }
             else
             {
-                if (binding.Action.ActionType == ActionType.Gesture) {
-                    if (binding.Action.GestureMode == 0) {
+                if (binding.Action.ActionType == ActionType.RadialMenu) {
+                    if (binding.Action.RadialMenuMode == 0) {
                         _syncContext.Post(_ => {
-                            if (_hudForm != null && !_hudForm.IsDisposed) {
-                                int sel = _hudForm.SelectedDirectionIndex; _hudForm.Hide(); _hudForm.Dispose(); _hudForm = null;
-                                if (sel >= 0 && sel < _currentGestureDef.GestureDirections.Count) { var act = _currentGestureDef.GestureDirections[sel].Action; if (act != null && act.ActionType != ActionType.None) { ExecuteAction(act, true); ExecuteAction(act, false); } }
+                            if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed) {
+                                int sel = _radialMenuHudForm.SelectedDirectionIndex; _radialMenuHudForm.Hide(); _radialMenuHudForm.Dispose(); _radialMenuHudForm = null;
+                                if (sel >= 0 && sel < _currentRadialMenuDef.RadialMenuDirections.Count) { var act = _currentRadialMenuDef.RadialMenuDirections[sel].Action; if (act != null && act.ActionType != ActionType.None) { ExecuteAction(act, true); ExecuteAction(act, false); } }
                             }
                         }, null);
                     }

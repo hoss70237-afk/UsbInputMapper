@@ -58,7 +58,10 @@ namespace UsbInputMapper.UI
                 string stateStr = step.PressState == StepPressState.Down ? "[押す]" : (step.PressState == StepPressState.Up ? "[離す]" : "[タップ]");
                 string delayStr = step.UseDelay ? $"[{step.DelayMs}ms{(step.UseFluctuation ? "±"+step.FluctuationMs : "")}]" : "[待機無]";
                 
-                ActionDef dummyAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, MouseX = step.MouseX, MouseY = step.MouseY };
+                ActionDef dummyAct = new ActionDef { 
+                    ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, MouseX = step.MouseX, MouseY = step.MouseY, 
+                    BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName 
+                };
                 lstSteps.Items.Add($"{delayStr} {stateStr} {dummyAct.ToString()}");
             }
         }
@@ -73,6 +76,7 @@ namespace UsbInputMapper.UI
                     var a = editor.ResultBinding.Action;
                     var step = new MacroStep {
                         ActionType = a.ActionType, ArgumentNum = a.ArgumentNum, MultipleKeys = a.MultipleKeys, ArgumentStr = a.ArgumentStr, MouseX = a.MouseX, MouseY = a.MouseY, 
+                        BgActionMode = a.BgActionMode, BgClassName = a.BgClassName, BgControlId = a.BgControlId, BgWindowName = a.BgWindowName,
                         UseDelay = chkUseDelay.Checked, DelayMs = (int)numDelay.Value, UseFluctuation = chkUseFluctuation.Checked, FluctuationMs = (int)numFluctuation.Value,
                         PressState = (StepPressState)cmbPressState.SelectedIndex
                     };
@@ -91,6 +95,7 @@ namespace UsbInputMapper.UI
                 var dummyBinding = new UsbInputMapper.Profiles.Binding();
                 
                 dummyBinding.Action.ActionType = step.ActionType; dummyBinding.Action.ArgumentNum = step.ArgumentNum; dummyBinding.Action.MultipleKeys = step.MultipleKeys; dummyBinding.Action.ArgumentStr = step.ArgumentStr; dummyBinding.Action.MouseX = step.MouseX; dummyBinding.Action.MouseY = step.MouseY;
+                dummyBinding.Action.BgActionMode = step.BgActionMode; dummyBinding.Action.BgClassName = step.BgClassName; dummyBinding.Action.BgControlId = step.BgControlId; dummyBinding.Action.BgWindowName = step.BgWindowName;
                 
                 chkUseDelay.Checked = step.UseDelay; numDelay.Value = step.DelayMs;
                 chkUseFluctuation.Checked = step.UseFluctuation; numFluctuation.Value = step.FluctuationMs;
@@ -102,6 +107,7 @@ namespace UsbInputMapper.UI
                     {
                         var a = editor.ResultBinding.Action;
                         step.ActionType = a.ActionType; step.ArgumentNum = a.ArgumentNum; step.MultipleKeys = a.MultipleKeys; step.ArgumentStr = a.ArgumentStr; step.MouseX = a.MouseX; step.MouseY = a.MouseY;
+                        step.BgActionMode = a.BgActionMode; step.BgClassName = a.BgClassName; step.BgControlId = a.BgControlId; step.BgWindowName = a.BgWindowName;
                         step.UseDelay = chkUseDelay.Checked; step.DelayMs = (int)numDelay.Value;
                         step.UseFluctuation = chkUseFluctuation.Checked; step.FluctuationMs = (int)numFluctuation.Value;
                         step.PressState = (StepPressState)cmbPressState.SelectedIndex;

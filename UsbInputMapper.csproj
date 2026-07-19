@@ -61,6 +61,8 @@
     <Compile Include="Core\OutputDispatcher.cs" />
     <Compile Include="Core\PanicKeyWatcher.cs" />
     <Compile Include="Core\DirectInputManager.cs" />
+    <Compile Include="Core\InputLogger.cs" />
+    <Compile Include="Core\VibrationManager.cs" />
     <Compile Include="Profiles\ActionDef.cs" />
     <Compile Include="Profiles\Binding.cs" />
     <Compile Include="Profiles\MacroStep.cs" />
@@ -82,12 +84,9 @@
     <Compile Include="UI\ControllerSetupForm.Designer.cs"><DependentUpon>ControllerSetupForm.cs</DependentUpon></Compile>
     <Compile Include="UI\ControllerBaseForm.cs"><SubType>Form</SubType></Compile>
     <Compile Include="UI\ControllerBaseForm.Designer.cs"><DependentUpon>ControllerBaseForm.cs</DependentUpon></Compile>
-    
-    <!-- ★追加したファイルをビルド対象として登録 -->
     <Compile Include="UI\StickMouseSetupForm.cs"><SubType>Form</SubType></Compile>
     <Compile Include="UI\GestureEdgeSetupForm.cs"><SubType>Form</SubType></Compile>
     <Compile Include="UI\GestureHudForm.cs"><SubType>Form</SubType></Compile>
-
     <Compile Include="Util\StartupRegistrar.cs" />
     <Compile Include="Util\SingleInstance.cs" />
     <Compile Include="Util\PrerequisiteChecker.cs" />

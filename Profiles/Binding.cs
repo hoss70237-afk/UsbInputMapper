@@ -46,6 +46,7 @@ namespace UsbInputMapper.Profiles
         {
             if (type == 1) return "キーボード: " + ((Keys)code).ToString();
             else if (type == 0) return $"マウスボタン: {code}";
+            else if (type == 2) return $"HIDボタン: {code}"; // ★追加: HIDボタン不明問題解消
             else if (type == 10) return $"パッドボタン: {code}";
             else if (type == 11) return $"パッド軸: {code}";
             else if (type == 12) 
@@ -56,7 +57,6 @@ namespace UsbInputMapper.Profiles
                 if (code == 27000) return "POV 左";
                 return $"POV: {code}";
             }
-            // ★追加: ベゼルタッチ
             else if (type == 5)
             {
                 string[] bNames = { "左上隅", "上辺(左)", "上辺(中)", "上辺(右)", "右上隅", "右辺(上)", "右辺(中)", "右辺(下)", "右下隅", "下辺(右)", "下辺(中)", "下辺(左)", "左下隅", "左辺(下)", "左辺(中)", "左辺(上)" };

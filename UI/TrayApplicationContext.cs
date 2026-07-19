@@ -70,6 +70,10 @@ namespace UsbInputMapper.UI
         private GestureHudForm _hudForm;
         private ActionDef _currentGestureDef;
 
+        // ★追加: HIDとキーボードの同時入力を判定・破棄するための仕組み
+        private long _lastStandardInputTime = 0;
+        private List<InputEvent> _pendingHidEvents = new List<InputEvent>();
+
         public TrayApplicationContext() 
         {
             _syncContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
@@ -82,9 +86,9 @@ namespace UsbInputMapper.UI
             _profileManager = new ProfileManager(); _profileManager.Load();
             _profileManager.OnProfileChanged += (s, e) => {
                 UpdateHookBlockList(); UpdateBindingCache();
-                _dispatcher?.ReleaseAllInputs(); // ★ キースタック防止
+                _dispatcher?.ReleaseAllInputs(); 
                 var p = _profileManager.CurrentActiveProfile;
-                if (p != null && p.NotifyProfileChangeVibration) VibrationManager.Vibrate(300, 2); // ★ 振動通知
+                if (p != null && p.NotifyProfileChangeVibration) VibrationManager.Vibrate(300, 2); 
             };
             _profileManager.OnSettingsChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
 
@@ -96,7 +100,7 @@ namespace UsbInputMapper.UI
             
             _rawInputManager = new RawInputManager(); 
             _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
-            _rawInputManager.OnDeviceChanged += (s, e) => { _diManager?.RefreshDevices(); UpdateBindingCache(); }; // ★ ホットプラグ時再構築
+            _rawInputManager.OnDeviceChanged += (s, e) => { _diManager?.RefreshDevices(); UpdateBindingCache(); }; 
 
             _diManager = new DirectInputManager(); _diManager.OnInputEvent += DiManager_OnInputEvent;
 
@@ -169,6 +173,47 @@ namespace UsbInputMapper.UI
         private void RawInputManager_OnInputEvent(object sender, InputEvent e)
         {
             if (CaptureForm.IsCapturing) { CaptureForm.CurrentInstance?.ProcessInput(e); return; }
+
+            long now = Environment.TickCount;
+
+            // ★追加: キーボード・マウスの入力があったら時間を記録し、保留中のHIDをクリア
+            if (e.Type == 0 || e.Type == 1)
+            {
+                _lastStandardInputTime = now;
+                _pendingHidEvents.Clear(); 
+            }
+
+            // ★追加: HIDイベントの場合、単独か判別するためにフィルタリング＆遅延
+            if (e.Type == 2)
+            {
+                // 直近50ms以内に標準入力（キーボード等）があれば、このHIDデータはダミー/付随データとして破棄
+                if (now - _lastStandardInputTime < 50)
+                {
+                    InputLogger.Log($"[HID Ignored] (Simultaneous with Standard Input) Code={(int)e.MouseButtonFlags}");
+                    return;
+                }
+                
+                // HIDが単独で押されたのか見極めるため30ms保留する
+                _pendingHidEvents.Add(e);
+                Task.Run(async () => {
+                    await Task.Delay(30);
+                    _syncContext.Post(_ => {
+                        // 30ms経過しても破棄されていなければ、純粋なHID入力として処理を続行
+                        if (_pendingHidEvents.Contains(e))
+                        {
+                            _pendingHidEvents.Remove(e);
+                            ProcessRawInputEvent(e);
+                        }
+                    }, null);
+                });
+                return;
+            }
+
+            ProcessRawInputEvent(e);
+        }
+
+        private void ProcessRawInputEvent(InputEvent e)
+        {
             int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
             
             var tKey = new TriggerKeyHash(e.Type, inputCode);
@@ -182,7 +227,6 @@ namespace UsbInputMapper.UI
             bool hasBinding = _bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, inputCode), out var bindings);
             bool isBlocked = _globalHookManager.WasRecentlyBlocked(e.Type, inputCode);
 
-            // ★ 入力ログ
             InputLogger.Log($"Raw: {e.DeviceIdentifier} | {UsbInputMapper.Profiles.Binding.GetCodeName(e.Type, inputCode)} | {(e.IsKeyDown?"Down":"Up ")} | {mods} | Block:{isBlocked}");
 
             if (!hasBinding || bindings.Count == 0)
@@ -309,7 +353,7 @@ namespace UsbInputMapper.UI
 
         private void ExecuteAction(ActionDef action, bool isDown)
         {
-            if (isDown && action.UseVibration) VibrationManager.Vibrate(action.VibrateDuration, action.VibrateTimes); // ★ アイテム個別振動
+            if (isDown && action.UseVibration) VibrationManager.Vibrate(action.VibrateDuration, action.VibrateTimes); 
             if (action.ActionType == ActionType.XboxController) _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown);
             else _dispatcher.Dispatch(action, isDown);
         }

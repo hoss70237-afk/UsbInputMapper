@@ -8,6 +8,8 @@ namespace UsbInputMapper.Core
     public class RawInputManager : NativeWindow, IDisposable
     {
         public event EventHandler<InputEvent> OnInputEvent;
+        public event EventHandler OnDeviceChanged; // ★ ホットプラグ対応
+
         private readonly Dictionary<IntPtr, DeviceInfo> _devices = new Dictionary<IntPtr, DeviceInfo>();
         private readonly Dictionary<IntPtr, byte[]> _lastHidData = new Dictionary<IntPtr, byte[]>();
 
@@ -24,21 +26,18 @@ namespace UsbInputMapper.Core
                 var rid = new RawInputNative.RAWINPUTDEVICE[1];
                 rid[0].usUsagePage = page;
                 rid[0].usUsage = usage;
-                rid[0].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY;
+                rid[0].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY; // WM_INPUT_DEVICE_CHANGE受信用
                 rid[0].hwndTarget = this.Handle;
 
                 RawInputNative.RegisterRawInputDevices(rid, 1, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));
             }
 
-            // 標準的なデバイス
             TryRegister(0x01, 0x02); // Mouse
             TryRegister(0x01, 0x06); // Keyboard
-            TryRegister(0x0C, 0x01); // Consumer Control (メディアキー、一部の多ボタン)
+            TryRegister(0x0C, 0x01); // Consumer Control
             TryRegister(0x01, 0x05); // Gamepad
             TryRegister(0x01, 0x04); // Joystick
-            TryRegister(0x01, 0x00); // Generic Desktop (その他の生HID)
-
-            // ゲーミングマウスなどの「ベンダー固有 (Vendor Defined)」の通信を傍受するための拡張
+            TryRegister(0x01, 0x00); // Generic Desktop
             TryRegister(0xFF00, 0x01);
             TryRegister(0xFF00, 0x02);
             TryRegister(0xFF01, 0x01);
@@ -48,6 +47,11 @@ namespace UsbInputMapper.Core
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == RawInputNative.WM_INPUT) ProcessRawInput(m.LParam);
+            else if (m.Msg == RawInputNative.WM_INPUT_DEVICE_CHANGE)
+            {
+                // ★ デバイス構成の変更（ホットプラグ）を検知
+                OnDeviceChanged?.Invoke(this, EventArgs.Empty);
+            }
             base.WndProc(ref m);
         }
 
@@ -87,12 +91,11 @@ namespace UsbInputMapper.Core
                         EmitMouseEvent(evt, ms.usButtonFlags, 0x0040, 0x0080, 6); 
                         EmitMouseEvent(evt, ms.usButtonFlags, 0x0100, 0x0200, 7); 
 
-                        if ((ms.usButtonFlags & 0x0400) != 0) // ホイール
+                        if ((ms.usButtonFlags & 0x0400) != 0) 
                         {
                             evt.MouseButtonFlags = (uint)(ms.usButtonData > 0 ? 4 : 5);
                             evt.IsKeyDown = true;
                             OnInputEvent?.Invoke(this, evt);
-                            // ★修正: ホイールの擬似的なKeyUp送信を削除し、不安定挙動を解消
                         }
                     }
                     else if (header.dwType == RawInputNative.RIM_TYPEHID)
@@ -106,7 +109,6 @@ namespace UsbInputMapper.Core
                             IntPtr pHidData = new IntPtr(pRawData.ToInt64() + Marshal.SizeOf(typeof(RawInputNative.RAWHID)));
                             Marshal.Copy(pHidData, rawData, 0, size);
 
-                            // ★修正: 初回時(lastDataが無い時)は、すべて0の配列と比較することで初回の押し込みを検知する
                             if (!_lastHidData.TryGetValue(header.hDevice, out byte[] lastData) || lastData.Length != size)
                             {
                                 lastData = new byte[size];
@@ -134,7 +136,6 @@ namespace UsbInputMapper.Core
                                 }
                             }
                             
-                            // 状態を保存
                             _lastHidData[header.hDevice] = (byte[])rawData.Clone();
                         }
                     }

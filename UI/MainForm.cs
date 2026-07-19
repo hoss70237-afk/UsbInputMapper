@@ -32,7 +32,6 @@ namespace UsbInputMapper.UI
                 chkStartup.Checked = (key.GetValue("UsbInputMapper") != null);
             }
 
-            // ★ログ表示処理
             InputLogger.OnLog += LogMessage;
         }
 
@@ -116,7 +115,7 @@ namespace UsbInputMapper.UI
                 }
                 else if (res == DialogResult.Retry) 
                 {
-                    using (var geForm = new GestureEdgeSetupForm(null, _profileManager.Profiles.Select(x => x.Name).ToList())) { if (geForm.ShowDialog(this) == DialogResult.OK) { p.Bindings.Add(geForm.ResultBinding); _profileManager.Save(); RefreshBindings(); } }
+                    using (var geForm = new RadialMenuSetupForm(null, _profileManager.Profiles.Select(x => x.Name).ToList())) { if (geForm.ShowDialog(this) == DialogResult.OK) { p.Bindings.Add(geForm.ResultBinding); _profileManager.Save(); RefreshBindings(); } }
                 }
             }
         }
@@ -125,7 +124,7 @@ namespace UsbInputMapper.UI
         { 
             if (lstBindings.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b) 
             { 
-                if (b.InputType == 4 || b.InputType == 5 || b.Action.ActionType == ActionType.Gesture) { using (var geForm = new GestureEdgeSetupForm(b, _profileManager.Profiles.Select(x => x.Name).ToList())) { if (geForm.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshBindings(); } } }
+                if (b.InputType == 4 || b.InputType == 5 || b.Action.ActionType == ActionType.RadialMenu) { using (var geForm = new RadialMenuSetupForm(b, _profileManager.Profiles.Select(x => x.Name).ToList())) { if (geForm.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshBindings(); } } }
                 else { using (var ed = new BindingEditorForm(b, _profileManager.Profiles.Select(x => x.Name).ToList())) { if (ed.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshBindings(); } } }
             } 
         }

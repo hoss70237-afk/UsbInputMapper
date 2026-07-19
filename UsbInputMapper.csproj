@@ -85,8 +85,8 @@
     <Compile Include="UI\ControllerBaseForm.cs"><SubType>Form</SubType></Compile>
     <Compile Include="UI\ControllerBaseForm.Designer.cs"><DependentUpon>ControllerBaseForm.cs</DependentUpon></Compile>
     <Compile Include="UI\StickMouseSetupForm.cs"><SubType>Form</SubType></Compile>
-    <Compile Include="UI\GestureEdgeSetupForm.cs"><SubType>Form</SubType></Compile>
-    <Compile Include="UI\GestureHudForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\RadialMenuSetupForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\RadialMenuHudForm.cs"><SubType>Form</SubType></Compile>
     <Compile Include="Util\StartupRegistrar.cs" />
     <Compile Include="Util\SingleInstance.cs" />
     <Compile Include="Util\PrerequisiteChecker.cs" />

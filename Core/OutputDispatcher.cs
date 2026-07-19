@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using UsbInputMapper.Profiles;
@@ -15,12 +17,38 @@ namespace UsbInputMapper.Core
         [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(SendInputNative.POINT p);
         [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
         [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr hWnd, ref SendInputNative.POINT lpPoint);
+        
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumChildWindows(IntPtr hwndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+        [DllImport("user32.dll")]
+        private static extern int GetDlgCtrlID(IntPtr hwnd);
 
         private readonly ViGEmOutput _viGEmOutput;
         private readonly Stack<SendInputNative.POINT> _mousePositionStack = new Stack<SendInputNative.POINT>();
         private readonly Random _random = new Random();
 
+        // ★リセット用トラッキング
+        private HashSet<int> _pressedKeys = new HashSet<int>();
+        private HashSet<int> _pressedMouseButtons = new HashSet<int>();
+
         public OutputDispatcher(ViGEmOutput viGEmOutput) { _viGEmOutput = viGEmOutput; }
+
+        public void ReleaseAllInputs()
+        {
+            // 全ての仮想キー及びマウスクリックを離す
+            if (_pressedKeys.Count > 0) { SendKeyboardInputs(_pressedKeys.ToList(), false); _pressedKeys.Clear(); }
+            foreach (var mb in _pressedMouseButtons.ToList()) { SendMouseClick(mb, false); }
+            _pressedMouseButtons.Clear();
+            
+            // XInputのニュートラル化
+            _viGEmOutput.Reset();
+        }
 
         public void Dispatch(ActionDef action, bool isDown)
         {
@@ -38,15 +66,11 @@ namespace UsbInputMapper.Core
                 case ActionType.MouseMoveAbsoluteHoverWin: if (isDown) SendMouseMoveHover(action.MouseX, action.MouseY); break;
                 case ActionType.MousePosSave: if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt); break;
                 case ActionType.MousePosRestore:
-                    if (isDown && _mousePositionStack.Count > 0)
-                    {
-                        var popPt = _mousePositionStack.Pop();
-                        SendMouseMove(popPt.X, popPt.Y, true, false);
-                    }
-                    break;
+                    if (isDown && _mousePositionStack.Count > 0) { var popPt = _mousePositionStack.Pop(); SendMouseMove(popPt.X, popPt.Y, true, false); } break;
                 case ActionType.AppLaunch: if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
                 case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
-                case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; // ★追加: マクロ実行エンジン
+                case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
+                case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; // ★バックグラウンド操作
             }
         }
 
@@ -59,19 +83,15 @@ namespace UsbInputMapper.Core
                 if (step.UseDelay)
                 {
                     delay = step.DelayMs;
-                    if (step.UseFluctuation && step.FluctuationMs > 0)
-                    {
-                        delay += _random.Next(-step.FluctuationMs, step.FluctuationMs + 1);
-                    }
+                    if (step.UseFluctuation && step.FluctuationMs > 0) delay += _random.Next(-step.FluctuationMs, step.FluctuationMs + 1);
                     if (delay < 0) delay = 0;
                 }
-
                 if (delay > 0) await Task.Delay(delay);
 
                 bool isDown = step.PressState == StepPressState.Down || step.PressState == StepPressState.Tap;
                 bool isUp = step.PressState == StepPressState.Up || step.PressState == StepPressState.Tap;
 
-                ActionDef stepAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, MouseX = step.MouseX, MouseY = step.MouseY };
+                ActionDef stepAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, MouseX = step.MouseX, MouseY = step.MouseY, BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName };
                 if (isDown) Dispatch(stepAct, true);
                 if (step.PressState == StepPressState.Tap) await Task.Delay(10);
                 if (isUp) Dispatch(stepAct, false);
@@ -87,6 +107,8 @@ namespace UsbInputMapper.Core
             for (int i = 0; i < keysToProcess.Count; i++)
             {
                 ushort vKey = (ushort)keysToProcess[i];
+                if (isDown) _pressedKeys.Add(vKey); else _pressedKeys.Remove(vKey);
+
                 inputs[i].type = SendInputNative.INPUT_KEYBOARD;
                 inputs[i].u.ki.wVk = vKey;
                 uint flags = 0;
@@ -99,6 +121,8 @@ namespace UsbInputMapper.Core
 
         public void SendMouseClick(int buttonId, bool isDown)
         {
+            if (buttonId >= 1 && buttonId <= 3) { if (isDown) _pressedMouseButtons.Add(buttonId); else _pressedMouseButtons.Remove(buttonId); }
+
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
             if (buttonId == 1) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_LEFTDOWN : SendInputNative.MOUSEEVENTF_LEFTUP;
@@ -154,6 +178,31 @@ namespace UsbInputMapper.Core
                     ClientToScreen(root, ref ptScreen);
                     SendMouseMove(ptScreen.X + x, ptScreen.Y + y, true, false);
                 }
+            }
+        }
+
+        private void DispatchBackground(ActionDef action, bool isDown)
+        {
+            IntPtr hWndParent = FindWindow(string.IsNullOrEmpty(action.BgClassName) ? null : action.BgClassName, string.IsNullOrEmpty(action.BgWindowName) ? null : action.BgWindowName);
+            if (hWndParent == IntPtr.Zero) return;
+
+            IntPtr hWndTarget = hWndParent;
+            if (action.BgControlId != 0)
+            {
+                IntPtr found = IntPtr.Zero;
+                EnumChildWindows(hWndParent, (child, lParam) => {
+                    if (GetDlgCtrlID(child) == action.BgControlId) { found = child; return false; } return true;
+                }, IntPtr.Zero);
+                if (found != IntPtr.Zero) hWndTarget = found;
+            }
+
+            if (action.BgActionMode == 0) // Click
+            {
+                if (isDown) SendMessage(hWndTarget, 0x00F5 /* BM_CLICK */, IntPtr.Zero, IntPtr.Zero);
+            }
+            else if (action.BgActionMode == 1) // Key
+            {
+                SendMessage(hWndTarget, isDown ? 0x0100u /* WM_KEYDOWN */ : 0x0101u /* WM_KEYUP */, (IntPtr)action.ArgumentNum, IntPtr.Zero);
             }
         }
 

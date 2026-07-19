@@ -21,7 +21,6 @@ namespace UsbInputMapper.UI
         private int _downCount = 0;
         private bool _ignoreInput = false;
 
-        // ★追加: HIDとキーボードの同時入力を判定・破棄するための仕組み
         private long _lastStandardInputTime = 0;
         private List<InputEvent> _pendingHidEvents = new List<InputEvent>();
 
@@ -32,13 +31,13 @@ namespace UsbInputMapper.UI
             if (Mode == CaptureMode.MultiKeyboard)
             {
                 label1.Text = "キーボードのキーを押してください。\r\nすべてのキーを離すと確定します。";
-                btnGestureEdge.Visible = false;
+                btnRadialMenuEdge.Visible = false;
             }
 
             btnCancel.MouseEnter += (s, e) => _ignoreInput = true;
             btnCancel.MouseLeave += (s, e) => _ignoreInput = false;
-            btnGestureEdge.MouseEnter += (s, e) => _ignoreInput = true;
-            btnGestureEdge.MouseLeave += (s, e) => _ignoreInput = false;
+            btnRadialMenuEdge.MouseEnter += (s, e) => _ignoreInput = true;
+            btnRadialMenuEdge.MouseLeave += (s, e) => _ignoreInput = false;
         }
 
         private void CaptureForm_Load(object sender, EventArgs e) { IsCapturing = true; CurrentInstance = this; }
@@ -58,15 +57,13 @@ namespace UsbInputMapper.UI
             if (e.Type == 0 || e.Type == 1)
             {
                 _lastStandardInputTime = now;
-                _pendingHidEvents.Clear(); // キーボード等の入力が来たら、保留中のHIDデータを破棄
+                _pendingHidEvents.Clear(); 
             }
 
             if (e.Type == 2)
             {
-                // 直近50ms以内にキーボード等の入力があれば破棄
                 if (now - _lastStandardInputTime < 50) return;
                 
-                // HID単独か見極めるため30ms待機させる
                 _pendingHidEvents.Add(e);
                 Task.Run(async () => {
                     await Task.Delay(30);
@@ -112,7 +109,7 @@ namespace UsbInputMapper.UI
 
         private void btnCancel_Click(object sender, EventArgs e) { this.DialogResult = DialogResult.Cancel; this.Close(); }
         
-        private void btnGestureEdge_Click(object sender, EventArgs e)
+        private void btnRadialMenuEdge_Click(object sender, EventArgs e)
         {
             this.DialogResult = DialogResult.Retry;
             this.Close();

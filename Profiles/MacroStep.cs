@@ -14,6 +14,12 @@ namespace UsbInputMapper.Profiles
         public int MouseX { get; set; }
         public int MouseY { get; set; }
         
+        // ★追加: バックグラウンド操作用プロパティ
+        public string BgWindowName { get; set; }
+        public string BgClassName { get; set; }
+        public int BgControlId { get; set; }
+        public int BgActionMode { get; set; }
+
         public bool UseDelay { get; set; } = true;    // ★追加: 待機時間を使用するか
         public int DelayMs { get; set; }
         public bool UseFluctuation { get; set; } = false; // ★追加: 揺らぎを使用するか

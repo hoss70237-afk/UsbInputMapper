@@ -20,6 +20,8 @@ namespace UsbInputMapper.Profiles
         XboxAxis,     
         XboxTrigger,  
         AppLaunch,
+        FileOpen,         // ★追加: ファイルを開く
+        AhkRun,           // ★追加: AHKスクリプトを実行
         Macro,
         ToggleHold,
         ProfileSwitch,
@@ -44,7 +46,7 @@ namespace UsbInputMapper.Profiles
         public int ArgumentNum { get; set; }
         public List<int> MultipleKeys { get; set; }
         public string ArgumentStr { get; set; }
-        public string ArgumentExtraStr { get; set; }
+        public string ArgumentExtraStr { get; set; } // ★アプリ起動引数等に利用
         public int MouseX { get; set; }
         public int MouseY { get; set; }
 
@@ -56,7 +58,6 @@ namespace UsbInputMapper.Profiles
         public int StickMaxSpeed { get; set; } = 20;
         public int StickCurve { get; set; } = 0; 
 
-        // ★保存済JSON互換性を保ちつつ名前変更
         [JsonProperty("GestureSlices")]
         public int RadialMenuSlices { get; set; } = 8;
         
@@ -105,6 +106,8 @@ namespace UsbInputMapper.Profiles
                 case ActionType.XboxAxis: return "Xboxスティック軸: " + ArgumentNum;
                 case ActionType.XboxTrigger: return "Xboxトリガー: " + ArgumentNum;
                 case ActionType.AppLaunch: return "アプリ起動: " + System.IO.Path.GetFileName(ArgumentStr);
+                case ActionType.FileOpen: return "ファイルを開く: " + System.IO.Path.GetFileName(ArgumentStr);
+                case ActionType.AhkRun: return "AHKスクリプト実行: " + System.IO.Path.GetFileName(ArgumentStr);
                 case ActionType.Macro: return "マクロ実行";
                 case ActionType.ProfileSwitch: return "プロファイル切替: " + ArgumentStr;
                 case ActionType.StickToMouse: return $"スティックマウス(最高速度:{StickMaxSpeed})";

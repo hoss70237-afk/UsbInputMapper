@@ -5,7 +5,7 @@ namespace UsbInputMapper.UI
         private System.ComponentModel.IContainer components = null;
         private System.Windows.Forms.Label label0;
         private System.Windows.Forms.TextBox txtName;
-        private System.Windows.Forms.Button btnApplyToName; // ★追加
+        private System.Windows.Forms.Button btnApplyToName;
         private System.Windows.Forms.CheckBox chkBlockOriginalInput;
         private System.Windows.Forms.Label lblMainTrigger;
         private System.Windows.Forms.Button btnReCaptureMain;
@@ -25,8 +25,8 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.ComboBox cmbKeyButton;
         private System.Windows.Forms.TextBox txtAppPath;
         private System.Windows.Forms.Button btnBrowseApp;
-        private System.Windows.Forms.Label lblAppArgs; // ★追加
-        private System.Windows.Forms.TextBox txtAppArgs; // ★追加
+        private System.Windows.Forms.Label lblAppArgs; 
+        private System.Windows.Forms.TextBox txtAppArgs; 
         private System.Windows.Forms.Panel pnlMouseMove;
         private System.Windows.Forms.Label lblMouseX;
         private System.Windows.Forms.NumericUpDown numMouseX;
@@ -47,9 +47,9 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.ComboBox cmbBgKey;
         private System.Windows.Forms.Label lblBgPicker;
 
-        private System.Windows.Forms.Label lblWav; // ★追加
-        private System.Windows.Forms.TextBox txtWavPath; // ★追加
-        private System.Windows.Forms.Button btnBrowseWav; // ★追加
+        private System.Windows.Forms.Label lblWav; 
+        private System.Windows.Forms.TextBox txtWavPath; 
+        private System.Windows.Forms.Button btnBrowseWav; 
 
         private System.Windows.Forms.Panel pnlVibration;
         private System.Windows.Forms.CheckBox chkVibrate;

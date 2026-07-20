@@ -25,6 +25,8 @@ namespace UsbInputMapper.Profiles
         public bool InvertAxis { get; set; } = false;
         public int AxisRange { get; set; } = 0; 
         public int AccelerationCurve { get; set; } = 0; 
+        
+        public string PlayWavPath { get; set; } // ★追加: アイテム発動時のWAV再生
 
         public Binding()
         {
@@ -46,7 +48,7 @@ namespace UsbInputMapper.Profiles
         {
             if (type == 1) return "キーボード: " + ((Keys)code).ToString();
             else if (type == 0) return $"マウスボタン: {code}";
-            else if (type == 2) return $"HIDボタン: {code}"; // ★追加: HIDボタン不明問題解消
+            else if (type == 2) return $"HIDボタン: {code}"; 
             else if (type == 10) return $"パッドボタン: {code}";
             else if (type == 11) return $"パッド軸: {code}";
             else if (type == 12) 

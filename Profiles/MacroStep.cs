@@ -11,7 +11,7 @@ namespace UsbInputMapper.Profiles
         public int ArgumentNum { get; set; }
         public List<int> MultipleKeys { get; set; }
         public string ArgumentStr { get; set; }
-        public string ArgumentExtraStr { get; set; }
+        public string ArgumentExtraStr { get; set; } // ★引数追加
         public int MouseX { get; set; }
         public int MouseY { get; set; }
         public int BgActionMode { get; set; }
@@ -25,9 +25,9 @@ namespace UsbInputMapper.Profiles
         public int FluctuationMs { get; set; }
         public StepPressState PressState { get; set; }
 
-        public string PlayWavPathStart { get; set; }
-        public string PlayWavPathEnd { get; set; }
-        public bool WaitForExit { get; set; }
+        public string PlayWavPathStart { get; set; } // ★WAV開始
+        public string PlayWavPathEnd { get; set; }   // ★WAV終了
+        public bool WaitForExit { get; set; }        // ★プロセス終了待機 (AHKなど)
 
         public MacroStep()
         {

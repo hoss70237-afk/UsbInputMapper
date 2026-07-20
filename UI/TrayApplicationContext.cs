@@ -16,6 +16,7 @@ namespace UsbInputMapper.UI
     {
         private NotifyIcon _trayIcon;
         private MainForm _mainForm;
+        private bool _isSuspended = false; // ★追加
 
         private RawInputManager _rawInputManager;
         private DirectInputManager _diManager;
@@ -66,6 +67,8 @@ namespace UsbInputMapper.UI
         private volatile int _stickMouseDy = 0;
         private int _currentBezelCode = -1;
         private int _bezelHoverTime = 0;
+        
+        private bool _hasBezelBindings = false;
 
         private RadialMenuHudForm _radialMenuHudForm;
         private ActionDef _currentRadialMenuDef;
@@ -112,9 +115,12 @@ namespace UsbInputMapper.UI
 
         private void LoopTimer_Tick(object sender, EventArgs e)
         {
+            // ★CPU使用率軽減：ベゼル設定がなく、スティック入力がない場合は何もせず終了
+            if (!_hasBezelBindings && _stickMouseDx == 0 && _stickMouseDy == 0) return;
+
             if (_stickMouseDx != 0 || _stickMouseDy != 0) _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);
 
-            if (SendInputNative.GetCursorPos(out var pt))
+            if (_hasBezelBindings && SendInputNative.GetCursorPos(out var pt))
             {
                 int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
                 int x = pt.X; int y = pt.Y;
@@ -148,8 +154,11 @@ namespace UsbInputMapper.UI
         private void UpdateHookBlockList()
         {
             var blockList = new HashSet<long>();
-            var profile = _profileManager.CurrentActiveProfile;
-            if (profile != null) { foreach (var b in profile.Bindings) if (b.BlockOriginalInput) blockList.Add(((long)b.InputType << 32) | (uint)b.InputCode); }
+            if (!_isSuspended)
+            {
+                var profile = _profileManager.CurrentActiveProfile;
+                if (profile != null) { foreach (var b in profile.Bindings) if (b.BlockOriginalInput) blockList.Add(((long)b.InputType << 32) | (uint)b.InputCode); }
+            }
             _globalHookManager.SetBlockList(blockList);
         }
 
@@ -167,11 +176,13 @@ namespace UsbInputMapper.UI
                 }
             }
             if (_diManager != null) _diManager.HasAxisBindings = _bindingCache.Keys.Any(k => k.Type == 11);
+            _hasBezelBindings = _bindingCache.Keys.Any(k => k.Type == 5);
         }
 
         private void RawInputManager_OnInputEvent(object sender, InputEvent e)
         {
             if (CaptureForm.IsCapturing) { CaptureForm.CurrentInstance?.ProcessInput(e); return; }
+            if (_isSuspended) return;
 
             long now = Environment.TickCount;
 
@@ -234,6 +245,7 @@ namespace UsbInputMapper.UI
         private void DiManager_OnInputEvent(object sender, DirectInputEvent e)
         {
             if (CaptureForm.IsCapturing) return;
+            if (_isSuspended) return;
 
             if (e.Type == 12)
             {
@@ -347,7 +359,6 @@ namespace UsbInputMapper.UI
 
         private void ExecuteAction(ActionDef action, bool isDown)
         {
-            if (isDown && action.UseVibration) VibrationManager.Vibrate(action.VibrateDuration, action.VibrateTimes); 
             if (action.ActionType == ActionType.XboxController) _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown);
             else _dispatcher.Dispatch(action, isDown);
         }
@@ -357,7 +368,27 @@ namespace UsbInputMapper.UI
             switch(id) { case 1: return Xbox360Button.A; case 2: return Xbox360Button.B; case 3: return Xbox360Button.X; case 4: return Xbox360Button.Y; case 5: return Xbox360Button.LeftShoulder; case 6: return Xbox360Button.RightShoulder; case 7: return Xbox360Button.Back; case 8: return Xbox360Button.Start; case 9: return Xbox360Button.LeftThumb; case 10: return Xbox360Button.RightThumb; case 11: return Xbox360Button.Up; case 12: return Xbox360Button.Down; case 13: return Xbox360Button.Left; case 14: return Xbox360Button.Right; default: return Xbox360Button.A; }
         }
 
-        private void InitializeTrayIcon() { _trayIcon = new NotifyIcon { Icon = SystemIcons.Application, Text = "UsbInputMapper", Visible = true }; ContextMenuStrip menu = new ContextMenuStrip(); menu.Items.Add("設定を開く", null, ShowMainForm); menu.Items.Add("終了", null, ExitApp); _trayIcon.ContextMenuStrip = menu; _trayIcon.DoubleClick += ShowMainForm; }
+        private void InitializeTrayIcon() 
+        { 
+            _trayIcon = new NotifyIcon { Icon = SystemIcons.Application, Text = "UsbInputMapper", Visible = true }; 
+            ContextMenuStrip menu = new ContextMenuStrip(); 
+            menu.Items.Add("設定を開く", null, ShowMainForm);
+            
+            var mnuSuspend = new ToolStripMenuItem("停止 (Suspend)");
+            mnuSuspend.Click += (s, e) => {
+                _isSuspended = !_isSuspended;
+                mnuSuspend.Text = _isSuspended ? "再開 (Resume)" : "停止 (Suspend)";
+                _trayIcon.Text = _isSuspended ? "UsbInputMapper (停止中)" : "UsbInputMapper";
+                UpdateHookBlockList();
+                if (_isSuspended) _dispatcher?.ReleaseAllInputs();
+            };
+            menu.Items.Add(mnuSuspend);
+
+            menu.Items.Add("終了", null, ExitApp); 
+            _trayIcon.ContextMenuStrip = menu; 
+            _trayIcon.DoubleClick += ShowMainForm; 
+        }
+
         private void ShowMainForm(object sender, EventArgs e) { if (_mainForm == null || _mainForm.IsDisposed) _mainForm = new MainForm(_profileManager, _diManager); _mainForm.Show(); _mainForm.Activate(); }
         private void ExitApp(object sender, EventArgs e) { _loopTimer?.Stop(); _trayIcon.Visible = false; _dispatcher?.ReleaseAllInputs(); _globalHookManager?.Dispose(); _rawInputManager?.Dispose(); _diManager?.Dispose(); _viGEmOutput?.Dispose(); Application.Exit(); }
     }

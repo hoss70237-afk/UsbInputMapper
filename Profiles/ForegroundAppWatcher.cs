@@ -2,7 +2,6 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Timers;
-using UsbInputMapper.Core;
 
 namespace UsbInputMapper.Profiles
 {
@@ -58,54 +57,47 @@ namespace UsbInputMapper.Profiles
 
         private void Timer_Elapsed(object sender, ElapsedEventArgs e)
         {
-            try
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return;
+
+            // UWPアプリ（ApplicationFrameHost）対策
+            // ガワのウィンドウではなく、中身の実際のゲームプロセスのウィンドウを探す
+            StringBuilder className = new StringBuilder(256);
+            GetClassName(hwnd, className, className.Capacity);
+
+            if (className.ToString() == "ApplicationFrameWindow")
             {
-                IntPtr hwnd = GetForegroundWindow();
-                if (hwnd == IntPtr.Zero) return;
-
-                StringBuilder className = new StringBuilder(256);
-                GetClassName(hwnd, className, className.Capacity);
-
-                if (className.ToString() == "ApplicationFrameWindow")
+                IntPtr realHwnd = IntPtr.Zero;
+                EnumChildWindows(hwnd, (childHwnd, lParam) =>
                 {
-                    IntPtr realHwnd = IntPtr.Zero;
-                    EnumChildWindows(hwnd, (childHwnd, lParam) =>
+                    StringBuilder childClass = new StringBuilder(256);
+                    GetClassName(childHwnd, childClass, childClass.Capacity);
+                    if (childClass.ToString() == "Windows.UI.Core.CoreWindow")
                     {
-                        StringBuilder childClass = new StringBuilder(256);
-                        GetClassName(childHwnd, childClass, childClass.Capacity);
-                        if (childClass.ToString() == "Windows.UI.Core.CoreWindow")
-                        {
-                            realHwnd = childHwnd;
-                            return false; 
-                        }
-                        return true;
-                    }, IntPtr.Zero);
-
-                    if (realHwnd != IntPtr.Zero)
-                    {
-                        hwnd = realHwnd;
+                        realHwnd = childHwnd;
+                        return false; // 列挙終了
                     }
-                }
+                    return true;
+                }, IntPtr.Zero);
 
-                GetWindowThreadProcessId(hwnd, out uint pid);
-                if (pid == 0) return;
-
-                string currentAppPath = GetExecutablePathProcessId(pid);
-                
-                // ★パスが取得できない(null)場合は、ソフトウェアキーボードやUACなどのシステムプロセスであるため、
-                // プロファイル切り替えを無視して今のゲーム用プロファイルを「維持」します。
-                if (!string.IsNullOrEmpty(currentAppPath) && currentAppPath != _lastAppPath)
+                if (realHwnd != IntPtr.Zero)
                 {
-                    _lastAppPath = currentAppPath;
-                    OnForegroundAppChanged?.Invoke(this, currentAppPath);
+                    hwnd = realHwnd;
                 }
             }
-            catch (Exception ex)
+
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0) return;
+
+            string currentAppPath = GetExecutablePathProcessId(pid);
+            if (!string.IsNullOrEmpty(currentAppPath) && currentAppPath != _lastAppPath)
             {
-                InputLogger.Log($"[ForegroundAppWatcher Error] {ex.Message}");
+                _lastAppPath = currentAppPath;
+                OnForegroundAppChanged?.Invoke(this, currentAppPath);
             }
         }
 
+        // 32bit/64bitの壁や管理者権限の壁を越えてプロセスパスを取得する最強のメソッド
         private string GetExecutablePathProcessId(uint pid)
         {
             IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);

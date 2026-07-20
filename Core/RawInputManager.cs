@@ -15,8 +15,7 @@ namespace UsbInputMapper.Core
 
         public RawInputManager()
         {
-            // ★ 一番最初の正常に動いていたロジック（メッセージ専用ウィンドウ）に完全に戻しました。
-            // これにより他のアプリケーションにフォーカスが移っても確実にバックグラウンド入力を取得できます。
+            // ★ 一番最初のコードと完全一致のハンドル作成方法に戻しました
             CreateHandle(new CreateParams { Caption = "UsbInputMapper_RawInputMessageWindow", Parent = (IntPtr)(-3) });
             RegisterInputDevices();
         }

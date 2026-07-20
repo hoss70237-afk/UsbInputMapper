@@ -20,6 +20,8 @@ namespace UsbInputMapper.Profiles
         XboxAxis,     
         XboxTrigger,  
         AppLaunch,
+        FileLaunch,
+        AhkLaunch,
         Macro,
         ToggleHold,
         ProfileSwitch,
@@ -56,7 +58,6 @@ namespace UsbInputMapper.Profiles
         public int StickMaxSpeed { get; set; } = 20;
         public int StickCurve { get; set; } = 0; 
 
-        // ★保存済JSON互換性を保ちつつ名前変更
         [JsonProperty("GestureSlices")]
         public int RadialMenuSlices { get; set; } = 8;
         
@@ -77,6 +78,8 @@ namespace UsbInputMapper.Profiles
         public bool UseVibration { get; set; } = false;
         public int VibrateDuration { get; set; } = 200;
         public int VibrateTimes { get; set; } = 1;
+
+        public string PlayWavPath { get; set; } // ★追加: アイテム発動時のWAV再生
 
         public ActionDef()
         {
@@ -105,6 +108,8 @@ namespace UsbInputMapper.Profiles
                 case ActionType.XboxAxis: return "Xboxスティック軸: " + ArgumentNum;
                 case ActionType.XboxTrigger: return "Xboxトリガー: " + ArgumentNum;
                 case ActionType.AppLaunch: return "アプリ起動: " + System.IO.Path.GetFileName(ArgumentStr);
+                case ActionType.FileLaunch: return "ファイル起動: " + System.IO.Path.GetFileName(ArgumentStr);
+                case ActionType.AhkLaunch: return "AHK起動: " + System.IO.Path.GetFileName(ArgumentStr);
                 case ActionType.Macro: return "マクロ実行";
                 case ActionType.ProfileSwitch: return "プロファイル切替: " + ArgumentStr;
                 case ActionType.StickToMouse: return $"スティックマウス(最高速度:{StickMaxSpeed})";

@@ -19,7 +19,6 @@ namespace UsbInputMapper.Core
 
     public class DirectInputManager : IDisposable
     {
-        // ★ タイマー精度向上API
         [DllImport("winmm.dll")]
         private static extern uint timeBeginPeriod(uint uMilliseconds);
         [DllImport("winmm.dll")]
@@ -29,14 +28,13 @@ namespace UsbInputMapper.Core
         private DirectInput _directInput;
         private Thread _pollingThread;
         private bool _isRunning;
+        private IntPtr _hwnd; // ★バックグラウンド取得用ウィンドウハンドル
         
         private class DeviceState 
         { 
             public Joystick Joystick { get; set; } 
             public string Identifier { get; set; } 
-            // ★ GCスパイク防止: Stringキーをやめ、DeviceState内に辞書を持たせる
             public Dictionary<int, int> LastAxisValues { get; set; } = new Dictionary<int, int>();
-            // ★ 例外連打防止: エラー時のクールダウン用
             public long NextAcquireTime { get; set; } = 0;
         }
         private List<DeviceState> _devices = new List<DeviceState>();
@@ -44,9 +42,9 @@ namespace UsbInputMapper.Core
         public bool HasAxisBindings { get; set; } = true;
         public bool ForceEnableAxisEvents { get; set; } = false;
 
-        public DirectInputManager()
+        public DirectInputManager(IntPtr hwnd)
         {
-            // OSのタイマー精度を1msに向上
+            _hwnd = hwnd;
             timeBeginPeriod(1);
 
             _directInput = new DirectInput();
@@ -68,9 +66,13 @@ namespace UsbInputMapper.Core
                     {
                         var joystick = new Joystick(_directInput, instance.InstanceGuid);
                         joystick.Properties.BufferSize = 128;
+                        // ★バックグラウンド時でも入力を取得するため CooperativeLevel を設定
+                        joystick.SetCooperativeLevel(_hwnd, CooperativeLevel.Background | CooperativeLevel.NonExclusive);
                         joystick.Acquire();
                         _devices.Add(new DeviceState { Joystick = joystick, Identifier = instance.InstanceGuid.ToString() });
-                    } catch { }
+                    } catch (Exception ex) {
+                        InputLogger.Log($"[DirectInput] Failed to acquire joystick: {ex.Message}");
+                    }
                 }
             }
         }
@@ -83,7 +85,7 @@ namespace UsbInputMapper.Core
                 {
                     foreach (var d in _devices)
                     {
-                        if (Environment.TickCount < d.NextAcquireTime) continue; // クールダウン中
+                        if (Environment.TickCount < d.NextAcquireTime) continue; 
 
                         try
                         {
@@ -116,7 +118,6 @@ namespace UsbInputMapper.Core
                                         case JoystickOffset.Sliders0: code = 6; break; case JoystickOffset.Sliders1: code = 7; break;
                                     }
 
-                                    // ★ 改善版ジッターフィルター: アロケーションゼロ
                                     if (code != -1)
                                     {
                                         if (d.LastAxisValues.TryGetValue(code, out int lastVal))
@@ -135,13 +136,13 @@ namespace UsbInputMapper.Core
                             if (e.ResultCode == SharpDX.DirectInput.ResultCode.NotAcquired || e.ResultCode == SharpDX.DirectInput.ResultCode.InputLost)
                             {
                                 try { d.Joystick.Acquire(); } 
-                                catch { d.NextAcquireTime = Environment.TickCount + 1000; } // 失敗時は1秒休止
+                                catch { d.NextAcquireTime = Environment.TickCount + 1000; } 
                             }
                         }
                         catch { d.NextAcquireTime = Environment.TickCount + 1000; }
                     }
                 }
-                Thread.Sleep(5); // timeBeginPeriodのおかげで正確に5ms待機
+                Thread.Sleep(5); 
             }
         }
 
@@ -152,7 +153,6 @@ namespace UsbInputMapper.Core
             lock (_devices) { foreach (var d in _devices) d.Joystick.Dispose(); }
             _directInput?.Dispose();
             
-            // タイマー精度を元に戻す
             timeEndPeriod(1);
         }
     }

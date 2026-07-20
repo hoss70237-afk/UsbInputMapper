@@ -60,8 +60,6 @@ namespace UsbInputMapper.UI
         private ConcurrentDictionary<TriggerKeyHash, bool> _physicalKeysDown = new ConcurrentDictionary<TriggerKeyHash, bool>();
         private ConcurrentDictionary<LoopKey, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<LoopKey, CancellationTokenSource>();
         private Dictionary<PovKey, int> _lastPovStates = new Dictionary<PovKey, int>();
-        
-        // スレッドセーフな参照のためのキャッシュ
         private volatile Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
         private System.Windows.Forms.Timer _loopTimer;
@@ -145,7 +143,7 @@ namespace UsbInputMapper.UI
                 {
                     if (_currentBezelCode == code) { _bezelHoverTime += _loopTimer.Interval; } else { _currentBezelCode = code; _bezelHoverTime = 0; }
                     
-                    var currentCache = _bindingCache; // スレッドセーフ参照
+                    var currentCache = _bindingCache; 
                     if (currentCache.TryGetValue(new InputKey("Any", 5, code), out var bindings))
                     {
                         foreach (var b in bindings) {
@@ -172,8 +170,6 @@ namespace UsbInputMapper.UI
 
         private void UpdateBindingCache()
         {
-            // ★ キャッシュ衝突による無限ループ・例外（見失う現象）を完全に防止するため、
-            // 新しい辞書を作成してから最後に参照を一括で差し替えます（スレッドセーフ）
             var newCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
             var profile = _profileManager.CurrentActiveProfile;
             
@@ -240,7 +236,6 @@ namespace UsbInputMapper.UI
             var tKey = new TriggerKeyHash(e.Type, inputCode);
             if (e.IsKeyDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out _);
 
-            // スレッドセーフにキャッシュを参照
             var currentCache = _bindingCache;
 
             bool hasBinding = currentCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, inputCode), out var bindings);

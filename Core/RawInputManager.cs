@@ -8,14 +8,19 @@ namespace UsbInputMapper.Core
     public class RawInputManager : NativeWindow, IDisposable
     {
         public event EventHandler<InputEvent> OnInputEvent;
-        public event EventHandler OnDeviceChanged; // ★ ホットプラグ対応
+        public event EventHandler OnDeviceChanged;
 
         private readonly Dictionary<IntPtr, DeviceInfo> _devices = new Dictionary<IntPtr, DeviceInfo>();
         private readonly Dictionary<IntPtr, byte[]> _lastHidData = new Dictionary<IntPtr, byte[]>();
 
         public RawInputManager()
         {
-            CreateHandle(new CreateParams { Caption = "UsbInputMapper_RawInputMessageWindow", Parent = (IntPtr)(-3) });
+            // HWND_MESSAGE(Parent = -3)だとバックグラウンドで入力が取れなくなる環境があるため、
+            // 通常の非表示トップレベルウィンドウとしてハンドルを作成します。
+            var cp = new CreateParams();
+            cp.Caption = "UsbInputMapper_RawInputMessageWindow";
+            CreateHandle(cp);
+            
             RegisterInputDevices();
         }
 
@@ -29,7 +34,11 @@ namespace UsbInputMapper.Core
                 rid[0].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY; // WM_INPUT_DEVICE_CHANGE受信用
                 rid[0].hwndTarget = this.Handle;
 
-                RawInputNative.RegisterRawInputDevices(rid, 1, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));
+                bool success = RawInputNative.RegisterRawInputDevices(rid, 1, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));
+                if (!success)
+                {
+                    InputLogger.Log($"[RawInput Error] Register failed! Page:{page} Usage:{usage} ErrCode:{Marshal.GetLastWin32Error()}");
+                }
             }
 
             TryRegister(0x01, 0x02); // Mouse
@@ -49,7 +58,6 @@ namespace UsbInputMapper.Core
             if (m.Msg == RawInputNative.WM_INPUT) ProcessRawInput(m.LParam);
             else if (m.Msg == RawInputNative.WM_INPUT_DEVICE_CHANGE)
             {
-                // ★ デバイス構成の変更（ホットプラグ）を検知
                 OnDeviceChanged?.Invoke(this, EventArgs.Empty);
             }
             base.WndProc(ref m);

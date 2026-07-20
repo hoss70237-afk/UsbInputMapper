@@ -79,7 +79,7 @@ namespace UsbInputMapper.Profiles
         public int VibrateDuration { get; set; } = 200;
         public int VibrateTimes { get; set; } = 1;
 
-        public string PlayWavPath { get; set; } // ★追加: アイテム発動時のWAV再生
+        public string PlayWavPath { get; set; } 
 
         public ActionDef()
         {

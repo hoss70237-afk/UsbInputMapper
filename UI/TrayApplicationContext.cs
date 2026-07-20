@@ -107,7 +107,6 @@ namespace UsbInputMapper.UI
             _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
             _rawInputManager.OnDeviceChanged += (s, e) => { _diManager?.RefreshDevices(); UpdateBindingCache(); }; 
 
-            // ★ 初期化の呼び出し方も一番最初の正常な形に戻しました。
             _diManager = new DirectInputManager(); 
             _diManager.OnInputEvent += DiManager_OnInputEvent;
 

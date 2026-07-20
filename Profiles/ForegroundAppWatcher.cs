@@ -63,7 +63,6 @@ namespace UsbInputMapper.Profiles
                 IntPtr hwnd = GetForegroundWindow();
                 if (hwnd == IntPtr.Zero) return;
 
-                // UWPアプリ（ApplicationFrameHost）対策
                 StringBuilder className = new StringBuilder(256);
                 GetClassName(hwnd, className, className.Capacity);
 
@@ -77,7 +76,7 @@ namespace UsbInputMapper.Profiles
                         if (childClass.ToString() == "Windows.UI.Core.CoreWindow")
                         {
                             realHwnd = childHwnd;
-                            return false; // 列挙終了
+                            return false; 
                         }
                         return true;
                     }, IntPtr.Zero);

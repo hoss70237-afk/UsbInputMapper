@@ -33,7 +33,6 @@ namespace UsbInputMapper.Core
         private readonly Stack<SendInputNative.POINT> _mousePositionStack = new Stack<SendInputNative.POINT>();
         private readonly Random _random = new Random();
 
-        // ★リセット用トラッキング
         private HashSet<int> _pressedKeys = new HashSet<int>();
         private HashSet<int> _pressedMouseButtons = new HashSet<int>();
 
@@ -41,12 +40,9 @@ namespace UsbInputMapper.Core
 
         public void ReleaseAllInputs()
         {
-            // 全ての仮想キー及びマウスクリックを離す
             if (_pressedKeys.Count > 0) { SendKeyboardInputs(_pressedKeys.ToList(), false); _pressedKeys.Clear(); }
             foreach (var mb in _pressedMouseButtons.ToList()) { SendMouseClick(mb, false); }
             _pressedMouseButtons.Clear();
-            
-            // XInputのニュートラル化
             _viGEmOutput.Reset();
         }
 
@@ -67,11 +63,26 @@ namespace UsbInputMapper.Core
                 case ActionType.MousePosSave: if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt); break;
                 case ActionType.MousePosRestore:
                     if (isDown && _mousePositionStack.Count > 0) { var popPt = _mousePositionStack.Pop(); SendMouseMove(popPt.X, popPt.Y, true, false); } break;
-                case ActionType.AppLaunch: if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
+                case ActionType.AppLaunch: 
+                case ActionType.FileOpen:
+                case ActionType.AhkRun:
+                    if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
                 case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
                 case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
-                case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; // ★バックグラウンド操作
+                case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; 
             }
+        }
+
+        private void PlayWav(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
+            Task.Run(() => {
+                try {
+                    using (var player = new System.Media.SoundPlayer(path)) {
+                        player.PlaySync(); // スレッドで実行されるのでSyncで最後まで再生させる
+                    }
+                } catch { }
+            });
         }
 
         private async Task ExecuteMacroAsync(ActionDef action)
@@ -88,13 +99,37 @@ namespace UsbInputMapper.Core
                 }
                 if (delay > 0) await Task.Delay(delay);
 
+                if (!string.IsNullOrEmpty(step.PlayWavPathStart)) PlayWav(step.PlayWavPathStart);
+
                 bool isDown = step.PressState == StepPressState.Down || step.PressState == StepPressState.Tap;
                 bool isUp = step.PressState == StepPressState.Up || step.PressState == StepPressState.Tap;
 
-                ActionDef stepAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, MouseX = step.MouseX, MouseY = step.MouseY, BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName };
-                if (isDown) Dispatch(stepAct, true);
+                ActionDef stepAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, ArgumentExtraStr = step.ArgumentExtraStr, MouseX = step.MouseX, MouseY = step.MouseY, BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName };
+                
+                if (isDown) 
+                {
+                    if (step.ActionType == ActionType.AhkRun || step.ActionType == ActionType.AppLaunch || step.ActionType == ActionType.FileOpen)
+                    {
+                        var proc = LaunchApp(step.ArgumentStr, step.ArgumentExtraStr);
+                        if (proc != null && step.WaitForExit)
+                        {
+                            await Task.Run(() => { try { proc.WaitForExit(); } catch { } });
+                        }
+                    }
+                    else
+                    {
+                        Dispatch(stepAct, true);
+                    }
+                }
+                
                 if (step.PressState == StepPressState.Tap) await Task.Delay(10);
-                if (isUp) Dispatch(stepAct, false);
+                
+                if (isUp && step.ActionType != ActionType.AhkRun && step.ActionType != ActionType.AppLaunch && step.ActionType != ActionType.FileOpen) 
+                {
+                    Dispatch(stepAct, false);
+                }
+
+                if (!string.IsNullOrEmpty(step.PlayWavPathEnd)) PlayWav(step.PlayWavPathEnd);
             }
         }
 
@@ -206,9 +241,17 @@ namespace UsbInputMapper.Core
             }
         }
 
-        private void LaunchApp(string path, string args)
+        private Process LaunchApp(string path, string args)
         {
-            if (!string.IsNullOrEmpty(path)) try { Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = true }); } catch { }
+            if (!string.IsNullOrEmpty(path)) 
+            {
+                try 
+                { 
+                    bool useShell = path.ToLower().EndsWith(".ahk") || !path.ToLower().EndsWith(".exe");
+                    return Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = useShell }); 
+                } catch { }
+            }
+            return null;
         }
 
         private Xbox360Button GetXboxButton(int id)

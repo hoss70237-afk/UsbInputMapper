@@ -104,7 +104,7 @@ namespace UsbInputMapper.UI
             _dispatcher = new OutputDispatcher(_viGEmOutput);
             
             _globalHookManager = new GlobalHookManager(); 
-            _globalHookManager.OnBlockedInputFired += GlobalHookManager_OnBlockedInputFired; // ★ フックから直接通知を受け取る
+            _globalHookManager.OnBlockedInputFired += GlobalHookManager_OnBlockedInputFired;
             UpdateHookBlockList();
             
             _rawInputManager = new RawInputManager(); 
@@ -198,16 +198,14 @@ namespace UsbInputMapper.UI
             _hasBezelBindings = _bindingCache.Keys.Any(k => k.Type == 5);
         }
 
-        // ★ ブロックされたキーをフックから直接受け取るハンドラ
         private void GlobalHookManager_OnBlockedInputFired(object sender, GlobalHookManager.HookInputEvent e)
         {
             if (CaptureForm.IsCapturing || _isSuspended) return;
 
             _syncContext.Post(_ => {
                 var tKey = new TriggerKeyHash(e.Type, e.Code);
-                if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out _);
+                if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out bool _); // ★修正
 
-                // フックからはDeviceIdentifierが分からないため、キャッシュ内の合致する(Type, Code)を持つバインディングで、BlockOriginalInputがtrueのものを強制発火させる
                 foreach (var kvp in _bindingCache)
                 {
                     if (kvp.Key.Type == e.Type && kvp.Key.Code == e.Code)
@@ -266,7 +264,7 @@ namespace UsbInputMapper.UI
             int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
             
             var tKey = new TriggerKeyHash(e.Type, inputCode);
-            if (e.IsKeyDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out _);
+            if (e.IsKeyDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out bool _); // ★修正
 
             var currentCache = _bindingCache;
 
@@ -281,7 +279,6 @@ namespace UsbInputMapper.UI
 
             foreach (var b in bindings) 
             { 
-                // ★ BlockOriginalInputがtrueのものは、Hook側で処理済みなため二重発火を防ぐ
                 if (b.BlockOriginalInput && isBlocked)
                     continue;
 
@@ -321,7 +318,8 @@ namespace UsbInputMapper.UI
                 }
                 return;
             }
-            if (e.Type == 10) { var tKey = new TriggerKeyHash(e.Type, e.Code); if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out _); }
+            
+            if (e.Type == 10) { var tKey = new TriggerKeyHash(e.Type, e.Code); if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out bool _); } // ★修正
             
             if (currentCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Code), out var bindings)) {
                 foreach (var binding in bindings) {
@@ -378,7 +376,7 @@ namespace UsbInputMapper.UI
                 if (_activeLoops.TryGetValue(loopKey, out var oldCts))
                 {
                     oldCts.Cancel(); oldCts.Dispose();
-                    _activeLoops.TryRemove(loopKey, out _);
+                    _activeLoops.TryRemove(loopKey, out CancellationTokenSource _); // ★修正
                 }
                 
                 var cts = new CancellationTokenSource(); 
@@ -403,7 +401,7 @@ namespace UsbInputMapper.UI
                     }
                     return;
                 }
-                if (_activeLoops.TryRemove(loopKey, out var cts)) { cts.Cancel(); cts.Dispose(); }
+                if (_activeLoops.TryRemove(loopKey, out var cts)) { cts.Cancel(); cts.Dispose(); } // ★ out var はそのまま使用可。推論失敗しないため
                 if (binding.Condition == TriggerCondition.Release) { ExecuteAction(binding.Action, true); Thread.Sleep(20); ExecuteAction(binding.Action, false); }
                 else { ExecuteAction(binding.Action, false); }
             }

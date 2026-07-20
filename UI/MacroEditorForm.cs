@@ -46,8 +46,6 @@ namespace UsbInputMapper.UI
 
             cmbPlaybackMode.SelectedIndex = (int)_action.PlaybackMode;
 
-            lstSteps.SelectedIndexChanged += lstSteps_SelectedIndexChanged;
-
             RefreshMacroList();
             UpdateControlsByMode();
         }
@@ -68,23 +66,6 @@ namespace UsbInputMapper.UI
             }
         }
 
-        private void lstSteps_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            int idx = lstSteps.SelectedIndex;
-            if (idx >= 0)
-            {
-                var step = _action.MacroSteps[idx];
-                chkUseDelay.Checked = step.UseDelay;
-                numDelay.Value = step.DelayMs;
-                chkUseFluctuation.Checked = step.UseFluctuation;
-                numFluctuation.Value = step.FluctuationMs;
-                cmbPressState.SelectedIndex = (int)step.PressState;
-                txtWavStart.Text = step.PlayWavPathStart;
-                txtWavEnd.Text = step.PlayWavPathEnd;
-                chkWaitForExit.Checked = step.WaitForExit;
-            }
-        }
-
         private void btnAdd_Click(object sender, EventArgs e)
         {
             var dummyBinding = new UsbInputMapper.Profiles.Binding();
@@ -94,11 +75,10 @@ namespace UsbInputMapper.UI
                 {
                     var a = editor.ResultBinding.Action;
                     var step = new MacroStep {
-                        ActionType = a.ActionType, ArgumentNum = a.ArgumentNum, MultipleKeys = a.MultipleKeys, ArgumentStr = a.ArgumentStr, ArgumentExtraStr = a.ArgumentExtraStr, MouseX = a.MouseX, MouseY = a.MouseY, 
+                        ActionType = a.ActionType, ArgumentNum = a.ArgumentNum, MultipleKeys = a.MultipleKeys, ArgumentStr = a.ArgumentStr, MouseX = a.MouseX, MouseY = a.MouseY, 
                         BgActionMode = a.BgActionMode, BgClassName = a.BgClassName, BgControlId = a.BgControlId, BgWindowName = a.BgWindowName,
                         UseDelay = chkUseDelay.Checked, DelayMs = (int)numDelay.Value, UseFluctuation = chkUseFluctuation.Checked, FluctuationMs = (int)numFluctuation.Value,
-                        PressState = (StepPressState)cmbPressState.SelectedIndex,
-                        PlayWavPathStart = txtWavStart.Text, PlayWavPathEnd = txtWavEnd.Text, WaitForExit = chkWaitForExit.Checked
+                        PressState = (StepPressState)cmbPressState.SelectedIndex
                     };
                     _action.MacroSteps.Add(step);
                     RefreshMacroList();
@@ -114,20 +94,23 @@ namespace UsbInputMapper.UI
                 var step = _action.MacroSteps[idx];
                 var dummyBinding = new UsbInputMapper.Profiles.Binding();
                 
-                dummyBinding.Action.ActionType = step.ActionType; dummyBinding.Action.ArgumentNum = step.ArgumentNum; dummyBinding.Action.MultipleKeys = step.MultipleKeys; dummyBinding.Action.ArgumentStr = step.ArgumentStr; dummyBinding.Action.ArgumentExtraStr = step.ArgumentExtraStr; dummyBinding.Action.MouseX = step.MouseX; dummyBinding.Action.MouseY = step.MouseY;
+                dummyBinding.Action.ActionType = step.ActionType; dummyBinding.Action.ArgumentNum = step.ArgumentNum; dummyBinding.Action.MultipleKeys = step.MultipleKeys; dummyBinding.Action.ArgumentStr = step.ArgumentStr; dummyBinding.Action.MouseX = step.MouseX; dummyBinding.Action.MouseY = step.MouseY;
                 dummyBinding.Action.BgActionMode = step.BgActionMode; dummyBinding.Action.BgClassName = step.BgClassName; dummyBinding.Action.BgControlId = step.BgControlId; dummyBinding.Action.BgWindowName = step.BgWindowName;
+                
+                chkUseDelay.Checked = step.UseDelay; numDelay.Value = step.DelayMs;
+                chkUseFluctuation.Checked = step.UseFluctuation; numFluctuation.Value = step.FluctuationMs;
+                cmbPressState.SelectedIndex = (int)step.PressState;
                 
                 using (var editor = new BindingEditorForm(dummyBinding, _profileNames))
                 {
                     if (editor.ShowDialog(this) == DialogResult.OK)
                     {
                         var a = editor.ResultBinding.Action;
-                        step.ActionType = a.ActionType; step.ArgumentNum = a.ArgumentNum; step.MultipleKeys = a.MultipleKeys; step.ArgumentStr = a.ArgumentStr; step.ArgumentExtraStr = a.ArgumentExtraStr; step.MouseX = a.MouseX; step.MouseY = a.MouseY;
+                        step.ActionType = a.ActionType; step.ArgumentNum = a.ArgumentNum; step.MultipleKeys = a.MultipleKeys; step.ArgumentStr = a.ArgumentStr; step.MouseX = a.MouseX; step.MouseY = a.MouseY;
                         step.BgActionMode = a.BgActionMode; step.BgClassName = a.BgClassName; step.BgControlId = a.BgControlId; step.BgWindowName = a.BgWindowName;
                         step.UseDelay = chkUseDelay.Checked; step.DelayMs = (int)numDelay.Value;
                         step.UseFluctuation = chkUseFluctuation.Checked; step.FluctuationMs = (int)numFluctuation.Value;
                         step.PressState = (StepPressState)cmbPressState.SelectedIndex;
-                        step.PlayWavPathStart = txtWavStart.Text; step.PlayWavPathEnd = txtWavEnd.Text; step.WaitForExit = chkWaitForExit.Checked;
                         RefreshMacroList();
                     }
                 }
@@ -199,8 +182,5 @@ namespace UsbInputMapper.UI
 
         private void MacroEditorForm_FormClosed(object sender, FormClosedEventArgs e) { if (GlobalHookManager.Instance != null) { GlobalHookManager.Instance.IsRecording = false; GlobalHookManager.Instance.OnRecordedInput -= Hook_OnRecordedInput; } }
         private void btnOK_Click(object sender, EventArgs e) { _action.PlaybackMode = (MacroPlaybackMode)cmbPlaybackMode.SelectedIndex; _action.StepTimeoutMs = (int)numTimeout.Value; this.DialogResult = DialogResult.OK; this.Close(); }
-
-        private void btnWavStart_Click(object sender, EventArgs e) { using (var ofd = new OpenFileDialog { Filter = "WAVファイル|*.wav|全て|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) txtWavStart.Text = ofd.FileName; } }
-        private void btnWavEnd_Click(object sender, EventArgs e) { using (var ofd = new OpenFileDialog { Filter = "WAVファイル|*.wav|全て|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) txtWavEnd.Text = ofd.FileName; } }
     }
 }

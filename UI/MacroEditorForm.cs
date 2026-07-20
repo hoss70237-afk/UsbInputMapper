@@ -18,6 +18,7 @@ namespace UsbInputMapper.UI
         private readonly ActionDef _action;
         private List<string> _profileNames;
         private long _lastRecordTime = 0;
+        private bool _isUpdatingUI = false;
 
         public MacroEditorForm(ActionDef action, List<string> profileNames = null)
         {
@@ -46,12 +47,89 @@ namespace UsbInputMapper.UI
 
             cmbPlaybackMode.SelectedIndex = (int)_action.PlaybackMode;
 
+            lstSteps.SelectedIndexChanged += LstSteps_SelectedIndexChanged;
+
+            AttachPropertyEvents();
+
             RefreshMacroList();
             UpdateControlsByMode();
+            UpdateDetailPanelState();
         }
 
-        private void RefreshMacroList()
+        private void AttachPropertyEvents()
         {
+            chkUseDelay.CheckedChanged += SyncToStep;
+            numDelay.ValueChanged += SyncToStep;
+            chkUseFluctuation.CheckedChanged += SyncToStep;
+            numFluctuation.ValueChanged += SyncToStep;
+            cmbPressState.SelectedIndexChanged += SyncToStep;
+            txtWavStart.TextChanged += SyncToStep;
+            txtWavEnd.TextChanged += SyncToStep;
+            chkWaitForExit.CheckedChanged += SyncToStep;
+        }
+
+        private void SyncToStep(object sender, EventArgs e)
+        {
+            if (_isUpdatingUI) return;
+            int idx = lstSteps.SelectedIndex;
+            if (idx >= 0 && idx < _action.MacroSteps.Count)
+            {
+                var step = _action.MacroSteps[idx];
+                step.UseDelay = chkUseDelay.Checked;
+                step.DelayMs = (int)numDelay.Value;
+                step.UseFluctuation = chkUseFluctuation.Checked;
+                step.FluctuationMs = (int)numFluctuation.Value;
+                step.PressState = (StepPressState)cmbPressState.SelectedIndex;
+                step.PlayWavPathStart = txtWavStart.Text;
+                step.PlayWavPathEnd = txtWavEnd.Text;
+                step.WaitForExit = chkWaitForExit.Checked;
+
+                RefreshMacroList(idx);
+            }
+        }
+
+        private void LstSteps_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateDetailPanelState();
+        }
+
+        private void UpdateDetailPanelState()
+        {
+            int idx = lstSteps.SelectedIndex;
+            if (idx >= 0 && idx < _action.MacroSteps.Count)
+            {
+                pnlStepDetails.Enabled = true;
+                _isUpdatingUI = true;
+                var step = _action.MacroSteps[idx];
+                
+                chkUseDelay.Checked = step.UseDelay;
+                numDelay.Value = step.DelayMs;
+                chkUseFluctuation.Checked = step.UseFluctuation;
+                numFluctuation.Value = step.FluctuationMs;
+                cmbPressState.SelectedIndex = (int)step.PressState;
+                txtWavStart.Text = step.PlayWavPathStart;
+                txtWavEnd.Text = step.PlayWavPathEnd;
+                chkWaitForExit.Checked = step.WaitForExit;
+                
+                bool isAppAction = (step.ActionType == ActionType.AhkRun || step.ActionType == ActionType.AppLaunch || step.ActionType == ActionType.FileOpen);
+                chkWaitForExit.Visible = isAppAction;
+                
+                _isUpdatingUI = false;
+            }
+            else
+            {
+                pnlStepDetails.Enabled = false;
+                _isUpdatingUI = true;
+                txtWavStart.Text = ""; txtWavEnd.Text = ""; chkWaitForExit.Checked = false; chkWaitForExit.Visible = false;
+                _isUpdatingUI = false;
+            }
+        }
+
+        private void RefreshMacroList(int selectIndex = -1)
+        {
+            _isUpdatingUI = true;
+            if (selectIndex == -1) selectIndex = lstSteps.SelectedIndex;
+            
             lstSteps.Items.Clear();
             foreach (var step in _action.MacroSteps)
             {
@@ -59,11 +137,13 @@ namespace UsbInputMapper.UI
                 string delayStr = step.UseDelay ? $"[{step.DelayMs}ms{(step.UseFluctuation ? "±"+step.FluctuationMs : "")}]" : "[待機無]";
                 
                 ActionDef dummyAct = new ActionDef { 
-                    ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, MouseX = step.MouseX, MouseY = step.MouseY, 
+                    ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, ArgumentExtraStr = step.ArgumentExtraStr, MouseX = step.MouseX, MouseY = step.MouseY, 
                     BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName 
                 };
                 lstSteps.Items.Add($"{delayStr} {stateStr} {dummyAct.ToString()}");
             }
+            if (selectIndex >= 0 && selectIndex < lstSteps.Items.Count) lstSteps.SelectedIndex = selectIndex;
+            _isUpdatingUI = false;
         }
 
         private void btnAdd_Click(object sender, EventArgs e)
@@ -75,13 +155,13 @@ namespace UsbInputMapper.UI
                 {
                     var a = editor.ResultBinding.Action;
                     var step = new MacroStep {
-                        ActionType = a.ActionType, ArgumentNum = a.ArgumentNum, MultipleKeys = a.MultipleKeys, ArgumentStr = a.ArgumentStr, MouseX = a.MouseX, MouseY = a.MouseY, 
+                        ActionType = a.ActionType, ArgumentNum = a.ArgumentNum, MultipleKeys = a.MultipleKeys, ArgumentStr = a.ArgumentStr, ArgumentExtraStr = a.ArgumentExtraStr, MouseX = a.MouseX, MouseY = a.MouseY, 
                         BgActionMode = a.BgActionMode, BgClassName = a.BgClassName, BgControlId = a.BgControlId, BgWindowName = a.BgWindowName,
-                        UseDelay = chkUseDelay.Checked, DelayMs = (int)numDelay.Value, UseFluctuation = chkUseFluctuation.Checked, FluctuationMs = (int)numFluctuation.Value,
-                        PressState = (StepPressState)cmbPressState.SelectedIndex
+                        UseDelay = true, DelayMs = 50, UseFluctuation = false, FluctuationMs = 0,
+                        PressState = StepPressState.Tap
                     };
                     _action.MacroSteps.Add(step);
-                    RefreshMacroList();
+                    RefreshMacroList(_action.MacroSteps.Count - 1);
                 }
             }
         }
@@ -94,32 +174,26 @@ namespace UsbInputMapper.UI
                 var step = _action.MacroSteps[idx];
                 var dummyBinding = new UsbInputMapper.Profiles.Binding();
                 
-                dummyBinding.Action.ActionType = step.ActionType; dummyBinding.Action.ArgumentNum = step.ArgumentNum; dummyBinding.Action.MultipleKeys = step.MultipleKeys; dummyBinding.Action.ArgumentStr = step.ArgumentStr; dummyBinding.Action.MouseX = step.MouseX; dummyBinding.Action.MouseY = step.MouseY;
+                dummyBinding.Action.ActionType = step.ActionType; dummyBinding.Action.ArgumentNum = step.ArgumentNum; dummyBinding.Action.MultipleKeys = step.MultipleKeys; dummyBinding.Action.ArgumentStr = step.ArgumentStr; dummyBinding.Action.ArgumentExtraStr = step.ArgumentExtraStr; dummyBinding.Action.MouseX = step.MouseX; dummyBinding.Action.MouseY = step.MouseY;
                 dummyBinding.Action.BgActionMode = step.BgActionMode; dummyBinding.Action.BgClassName = step.BgClassName; dummyBinding.Action.BgControlId = step.BgControlId; dummyBinding.Action.BgWindowName = step.BgWindowName;
-                
-                chkUseDelay.Checked = step.UseDelay; numDelay.Value = step.DelayMs;
-                chkUseFluctuation.Checked = step.UseFluctuation; numFluctuation.Value = step.FluctuationMs;
-                cmbPressState.SelectedIndex = (int)step.PressState;
                 
                 using (var editor = new BindingEditorForm(dummyBinding, _profileNames))
                 {
                     if (editor.ShowDialog(this) == DialogResult.OK)
                     {
                         var a = editor.ResultBinding.Action;
-                        step.ActionType = a.ActionType; step.ArgumentNum = a.ArgumentNum; step.MultipleKeys = a.MultipleKeys; step.ArgumentStr = a.ArgumentStr; step.MouseX = a.MouseX; step.MouseY = a.MouseY;
+                        step.ActionType = a.ActionType; step.ArgumentNum = a.ArgumentNum; step.MultipleKeys = a.MultipleKeys; step.ArgumentStr = a.ArgumentStr; step.ArgumentExtraStr = a.ArgumentExtraStr; step.MouseX = a.MouseX; step.MouseY = a.MouseY;
                         step.BgActionMode = a.BgActionMode; step.BgClassName = a.BgClassName; step.BgControlId = a.BgControlId; step.BgWindowName = a.BgWindowName;
-                        step.UseDelay = chkUseDelay.Checked; step.DelayMs = (int)numDelay.Value;
-                        step.UseFluctuation = chkUseFluctuation.Checked; step.FluctuationMs = (int)numFluctuation.Value;
-                        step.PressState = (StepPressState)cmbPressState.SelectedIndex;
-                        RefreshMacroList();
+                        RefreshMacroList(idx);
+                        UpdateDetailPanelState();
                     }
                 }
             }
         }
 
-        private void btnRemove_Click(object sender, EventArgs e) { int idx = lstSteps.SelectedIndex; if (idx >= 0) { _action.MacroSteps.RemoveAt(idx); RefreshMacroList(); } }
-        private void btnUpStep_Click(object sender, EventArgs e) { int idx = lstSteps.SelectedIndex; if (idx > 0) { var item = _action.MacroSteps[idx]; _action.MacroSteps.RemoveAt(idx); _action.MacroSteps.Insert(idx - 1, item); RefreshMacroList(); lstSteps.SelectedIndex = idx - 1; } }
-        private void btnDownStep_Click(object sender, EventArgs e) { int idx = lstSteps.SelectedIndex; if (idx >= 0 && idx < _action.MacroSteps.Count - 1) { var item = _action.MacroSteps[idx]; _action.MacroSteps.RemoveAt(idx); _action.MacroSteps.Insert(idx + 1, item); RefreshMacroList(); lstSteps.SelectedIndex = idx + 1; } }
+        private void btnRemove_Click(object sender, EventArgs e) { int idx = lstSteps.SelectedIndex; if (idx >= 0) { _action.MacroSteps.RemoveAt(idx); RefreshMacroList(-1); UpdateDetailPanelState(); } }
+        private void btnUpStep_Click(object sender, EventArgs e) { int idx = lstSteps.SelectedIndex; if (idx > 0) { var item = _action.MacroSteps[idx]; _action.MacroSteps.RemoveAt(idx); _action.MacroSteps.Insert(idx - 1, item); RefreshMacroList(idx - 1); } }
+        private void btnDownStep_Click(object sender, EventArgs e) { int idx = lstSteps.SelectedIndex; if (idx >= 0 && idx < _action.MacroSteps.Count - 1) { var item = _action.MacroSteps[idx]; _action.MacroSteps.RemoveAt(idx); _action.MacroSteps.Insert(idx + 1, item); RefreshMacroList(idx + 1); } }
 
         private void cmbPlaybackMode_SelectedIndexChanged(object sender, EventArgs e)
         {
@@ -129,22 +203,26 @@ namespace UsbInputMapper.UI
             {
                 bool changed = false;
                 foreach (var step in _action.MacroSteps) if (step.PressState != StepPressState.Tap) { step.PressState = StepPressState.Tap; changed = true; }
-                if (changed) RefreshMacroList();
+                if (changed) RefreshMacroList(lstSteps.SelectedIndex);
             }
         }
 
         private void UpdateControlsByMode()
         {
             bool isStepMode = (cmbPlaybackMode.SelectedIndex == 3);
-            lblTimeout.Visible = numTimeout.Visible = cmbPressState.Enabled = isStepMode;
-            if (!isStepMode && cmbPressState.Items.Count > 0) cmbPressState.SelectedIndex = 0;
+            lblTimeout.Visible = numTimeout.Visible = isStepMode;
+            if (cmbPressState.Items.Count > 0) cmbPressState.Enabled = isStepMode;
+            if (!isStepMode && cmbPressState.Items.Count > 0) { _isUpdatingUI = true; cmbPressState.SelectedIndex = 0; _isUpdatingUI = false; }
         }
+
+        private void btnBrowseWavStart_Click(object sender, EventArgs e) { using (var ofd = new OpenFileDialog { Filter = "WAVファイル|*.wav|全て|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) { txtWavStart.Text = ofd.FileName; } } }
+        private void btnBrowseWavEnd_Click(object sender, EventArgs e) { using (var ofd = new OpenFileDialog { Filter = "WAVファイル|*.wav|全て|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) { txtWavEnd.Text = ofd.FileName; } } }
 
         private void chkRecord_CheckedChanged(object sender, EventArgs e)
         {
             if (GlobalHookManager.Instance == null) return;
             if (chkRecord.Checked) { chkRecord.Text = "レコーディング停止"; _lastRecordTime = Environment.TickCount; GlobalHookManager.Instance.OnRecordedInput += Hook_OnRecordedInput; GlobalHookManager.Instance.IsRecording = true; }
-            else { chkRecord.Text = "レコーディング開始"; GlobalHookManager.Instance.IsRecording = false; GlobalHookManager.Instance.OnRecordedInput -= Hook_OnRecordedInput; RefreshMacroList(); }
+            else { chkRecord.Text = "レコーディング開始"; GlobalHookManager.Instance.IsRecording = false; GlobalHookManager.Instance.OnRecordedInput -= Hook_OnRecordedInput; RefreshMacroList(_action.MacroSteps.Count - 1); }
         }
 
         private void Hook_OnRecordedInput(object sender, GlobalHookManager.HookInputEvent e)
@@ -177,7 +255,7 @@ namespace UsbInputMapper.UI
                     _action.MacroSteps.Add(clickStep);
                 }
             }
-            _lastRecordTime = now; RefreshMacroList(); lstSteps.SelectedIndex = lstSteps.Items.Count - 1;
+            _lastRecordTime = now; RefreshMacroList(_action.MacroSteps.Count - 1);
         }
 
         private void MacroEditorForm_FormClosed(object sender, FormClosedEventArgs e) { if (GlobalHookManager.Instance != null) { GlobalHookManager.Instance.IsRecording = false; GlobalHookManager.Instance.OnRecordedInput -= Hook_OnRecordedInput; } }

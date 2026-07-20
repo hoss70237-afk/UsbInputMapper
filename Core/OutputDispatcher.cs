@@ -139,17 +139,40 @@ namespace UsbInputMapper.Core
             if (vKeys == null || vKeys.Count == 0) return;
             var inputs = new SendInputNative.INPUT[vKeys.Count];
             var keysToProcess = new List<int>(vKeys);
+            
+            // キーを離すときは逆順に処理する
             if (!isDown) keysToProcess.Reverse();
+            
             for (int i = 0; i < keysToProcess.Count; i++)
             {
                 ushort vKey = (ushort)keysToProcess[i];
                 if (isDown) _pressedKeys.Add(vKey); else _pressedKeys.Remove(vKey);
 
                 inputs[i].type = SendInputNative.INPUT_KEYBOARD;
-                inputs[i].u.ki.wVk = vKey;
+                
+                // ★修正点: ゲーム(DirectInput)や半角英数モードでも認識されるよう、物理スキャンコードを取得
+                ushort wScan = (ushort)SendInputNative.MapVirtualKey(vKey, 0); 
                 uint flags = 0;
-                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
+
+                // スキャンコードが取得できた場合はスキャンコード優先で送信 (KEYEVENTF_SCANCODE を付与)
+                if (wScan > 0)
+                {
+                    inputs[i].u.ki.wVk = 0; // スキャンコード送信時は仮想キーコードを0にするのが安全
+                    inputs[i].u.ki.wScan = wScan;
+                    flags |= SendInputNative.KEYEVENTF_SCANCODE;
+                }
+                else
+                {
+                    inputs[i].u.ki.wVk = vKey;
+                    inputs[i].u.ki.wScan = 0;
+                }
+
+                // 拡張キー（矢印やテンキーの一部）の場合はフラグを立てる
+                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) 
+                    flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
+                
                 if (!isDown) flags |= SendInputNative.KEYEVENTF_KEYUP;
+                
                 inputs[i].u.ki.dwFlags = flags;
             }
             SendInputNative.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));

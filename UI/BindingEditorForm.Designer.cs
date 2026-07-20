@@ -84,7 +84,7 @@ namespace UsbInputMapper.UI
             this.SuspendLayout();
             
             this.label0.AutoSize = true; this.label0.Location = new System.Drawing.Point(12, 15); this.label0.Text = "アイテム名:"; this.txtName.Location = new System.Drawing.Point(90, 12); this.txtName.Size = new System.Drawing.Size(150, 19);
-            this.btnApplyToName.Location = new System.Drawing.Point(250, 10); this.btnApplyToName.Size = new System.Drawing.Size(90, 23); this.btnApplyToName.Text = "名前に反映"; this.btnApplyToName.Click += new System.EventHandler(this.btnApplyToName_Click);
+            this.btnApplyToName.Location = new System.Drawing.Point(180, 40); this.btnApplyToName.Size = new System.Drawing.Size(75, 23); this.btnApplyToName.Text = "名前に反映"; this.btnApplyToName.Click += new System.EventHandler(this.btnApplyToName_Click);
             this.chkBlockOriginalInput.AutoSize = true; this.chkBlockOriginalInput.Location = new System.Drawing.Point(345, 14); this.chkBlockOriginalInput.Text = "本来の入力をブロック";
             this.lblMainTrigger.AutoSize = true; this.lblMainTrigger.Location = new System.Drawing.Point(12, 45); this.lblMainTrigger.Text = "メイン入力: -"; this.btnReCaptureMain.Location = new System.Drawing.Point(260, 40); this.btnReCaptureMain.Size = new System.Drawing.Size(70, 23); this.btnReCaptureMain.Text = "再登録"; this.btnReCaptureMain.Click += new System.EventHandler(this.btnReCaptureMain_Click);
             this.lblSubTriggers.AutoSize = true; this.lblSubTriggers.Location = new System.Drawing.Point(12, 75); this.lblSubTriggers.Text = "同時押し:"; this.lstSubTriggers.Location = new System.Drawing.Point(90, 75); this.lstSubTriggers.Size = new System.Drawing.Size(160, 52);

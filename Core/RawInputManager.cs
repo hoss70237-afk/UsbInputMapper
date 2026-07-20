@@ -8,14 +8,13 @@ namespace UsbInputMapper.Core
     public class RawInputManager : NativeWindow, IDisposable
     {
         public event EventHandler<InputEvent> OnInputEvent;
-        public event EventHandler OnDeviceChanged;
+        public event EventHandler OnDeviceChanged; // ★ ホットプラグ対応
 
         private readonly Dictionary<IntPtr, DeviceInfo> _devices = new Dictionary<IntPtr, DeviceInfo>();
         private readonly Dictionary<IntPtr, byte[]> _lastHidData = new Dictionary<IntPtr, byte[]>();
 
         public RawInputManager()
         {
-            // ★ 一番最初のコードと完全一致のハンドル作成方法に戻しました
             CreateHandle(new CreateParams { Caption = "UsbInputMapper_RawInputMessageWindow", Parent = (IntPtr)(-3) });
             RegisterInputDevices();
         }
@@ -50,6 +49,7 @@ namespace UsbInputMapper.Core
             if (m.Msg == RawInputNative.WM_INPUT) ProcessRawInput(m.LParam);
             else if (m.Msg == RawInputNative.WM_INPUT_DEVICE_CHANGE)
             {
+                // ★ デバイス構成の変更（ホットプラグ）を検知
                 OnDeviceChanged?.Invoke(this, EventArgs.Empty);
             }
             base.WndProc(ref m);

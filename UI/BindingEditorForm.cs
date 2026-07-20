@@ -36,7 +36,7 @@ namespace UsbInputMapper.UI
             InitializeComponent();
             _profileNames = profileNames ?? new List<string>();
 
-            pnlAnalog = new Panel { Location = new Point(90, 285), Size = new Size(360, 40), Visible = false };
+            pnlAnalog = new Panel { Location = new Point(90, 315), Size = new Size(360, 40), Visible = false };
             pnlAnalog.Controls.Add(new Label { Text = "半軸:", Location = new Point(0, 5), AutoSize = true });
             cmbAxisRange = new ComboBox { Location = new Point(35, 3), Size = new Size(70, 20), DropDownStyle = ComboBoxStyle.DropDownList };
             cmbAxisRange.Items.AddRange(new[] { "Full", "正(>0)", "負(<0)" }); cmbAxisRange.SelectedIndex = 0;
@@ -89,6 +89,7 @@ namespace UsbInputMapper.UI
                 SetOutputTarget(existingBinding.Action);
                 
                 txtAppPath.Text = existingBinding.Action.ArgumentStr;
+                txtAppArgs.Text = existingBinding.Action.ArgumentExtraStr;
                 numMouseX.Value = existingBinding.Action.MouseX; numMouseY.Value = existingBinding.Action.MouseY;
 
                 txtBgClassName.Text = existingBinding.Action.BgClassName; txtBgWindowName.Text = existingBinding.Action.BgWindowName;
@@ -98,6 +99,7 @@ namespace UsbInputMapper.UI
                 numDeadZone.Value = existingBinding.DeadZone;
                 cmbCurve.SelectedIndex = existingBinding.AccelerationCurve;
 
+                txtWavPath.Text = existingBinding.PlayWavPath;
                 chkVibrate.Checked = existingBinding.Action.UseVibration;
                 numVibrateDuration.Value = existingBinding.Action.VibrateDuration;
                 numVibrateTimes.Value = existingBinding.Action.VibrateTimes;
@@ -125,6 +127,8 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "Xboxアナログトリガー", Value = (int)ActionType.XboxTrigger });
             cmbActionType.Items.Add(new ComboItem { Text = "スティックでマウス移動", Value = (int)ActionType.StickToMouse });
             cmbActionType.Items.Add(new ComboItem { Text = "アプリケーション起動", Value = (int)ActionType.AppLaunch });
+            cmbActionType.Items.Add(new ComboItem { Text = "ファイルを開く", Value = (int)ActionType.FileOpen });
+            cmbActionType.Items.Add(new ComboItem { Text = "AHKスクリプト実行", Value = (int)ActionType.AhkRun });
             cmbActionType.Items.Add(new ComboItem { Text = "バックグラウンド操作", Value = (int)ActionType.BackgroundControl });
             cmbActionType.Items.Add(new ComboItem { Text = "トグル維持", Value = (int)ActionType.ToggleHold });
             cmbActionType.Items.Add(new ComboItem { Text = "マクロ実行", Value = (int)ActionType.Macro });
@@ -149,12 +153,39 @@ namespace UsbInputMapper.UI
         private void SetActionTypeCombo(ActionType type) { for (int i = 0; i < cmbActionType.Items.Count; i++) if (((ComboItem)cmbActionType.Items[i]).Value == (int)type) { cmbActionType.SelectedIndex = i; break; } }
         private void UpdateMainTriggerLabel() { lblMainTrigger.Text = $"メイン入力: {UsbInputMapper.Profiles.Binding.GetCodeName(ResultBinding.InputType, ResultBinding.InputCode)}"; pnlAnalog.Visible = (ResultBinding.InputType == 11); }
 
+        private string GetRawCodeName(int type, int code)
+        {
+            if (type == 1) return ((Keys)code).ToString();
+            else if (type == 0) return $"Mouse{code}";
+            else if (type == 2) return $"HID{code}";
+            else if (type == 10) return $"PadBtn{code}";
+            else if (type == 11) return $"PadAxis{code}";
+            else if (type == 12) {
+                if (code == 0) return "POV_Up";
+                if (code == 9000) return "POV_Right";
+                if (code == 18000) return "POV_Down";
+                if (code == 27000) return "POV_Left";
+                return $"POV{code}";
+            }
+            else if (type == 5) return $"Bezel{code}";
+            return "Unknown";
+        }
+
+        private void btnReflectName_Click(object sender, EventArgs e)
+        {
+            var subs = new List<string>();
+            foreach (var item in lstSubTriggers.Items) if (item is TriggerKey tk) subs.Add(GetRawCodeName(tk.Type, tk.Code));
+            string name = subs.Count > 0 ? string.Join(" + ", subs) + " + " : "";
+            name += GetRawCodeName(ResultBinding.InputType, ResultBinding.InputCode);
+            txtName.Text = name;
+        }
+
         private void cmbActionType_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (!(cmbActionType.SelectedItem is ComboItem actItem)) return;
             var type = (ActionType)actItem.Value;
             
-            cmbKeyButton.Visible = txtAppPath.Visible = btnBrowseApp.Visible = pnlMouseMove.Visible = pnlBackground.Visible = btnEditMacro.Visible = cmbProfileSwitchTarget.Visible = cmbProfileSwitchMode.Visible = btnSetupStickMouse.Visible = false;
+            cmbKeyButton.Visible = txtAppPath.Visible = btnBrowseApp.Visible = txtAppArgs.Visible = lblAppArgs.Visible = pnlMouseMove.Visible = pnlBackground.Visible = btnEditMacro.Visible = cmbProfileSwitchTarget.Visible = cmbProfileSwitchMode.Visible = btnSetupStickMouse.Visible = false;
             cmbKeyButton.Items.Clear();
             cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged;
 
@@ -179,7 +210,8 @@ namespace UsbInputMapper.UI
                     break;
                 case ActionType.MouseMoveRelative: case ActionType.MouseMoveContinuous: case ActionType.MouseMoveAbsoluteDesk: case ActionType.MouseMoveAbsoluteWin: case ActionType.MouseMoveAbsoluteHoverWin:
                     pnlMouseMove.Visible = true; btnCaptureCoord.Visible = (type != ActionType.MouseMoveContinuous); break;
-                case ActionType.AppLaunch: txtAppPath.Visible = true; btnBrowseApp.Visible = true; break;
+                case ActionType.AppLaunch: case ActionType.FileOpen: case ActionType.AhkRun:
+                    txtAppPath.Visible = true; btnBrowseApp.Visible = true; txtAppArgs.Visible = true; lblAppArgs.Visible = true; break;
                 case ActionType.BackgroundControl: pnlBackground.Visible = true; break;
                 case ActionType.Macro: btnEditMacro.Visible = true; break;
                 case ActionType.ProfileSwitch: cmbProfileSwitchTarget.Visible = true; cmbProfileSwitchMode.Visible = true; break;
@@ -231,10 +263,11 @@ namespace UsbInputMapper.UI
                 ResultBinding.Action.BgControlId = (int)numBgControlId.Value; ResultBinding.Action.BgActionMode = cmbBgAction.SelectedIndex;
                 if (cmbBgAction.SelectedIndex == 1 && cmbBgKey.SelectedItem is ComboItem ki) ResultBinding.Action.ArgumentNum = ki.Value;
             }
-            else ResultBinding.Action.ArgumentStr = txtAppPath.Text;
+            else { ResultBinding.Action.ArgumentStr = txtAppPath.Text; ResultBinding.Action.ArgumentExtraStr = txtAppArgs.Text; }
 
             ResultBinding.Action.MouseX = (int)numMouseX.Value; ResultBinding.Action.MouseY = (int)numMouseY.Value;
             ResultBinding.Action.UseVibration = chkVibrate.Checked; ResultBinding.Action.VibrateDuration = (int)numVibrateDuration.Value; ResultBinding.Action.VibrateTimes = (int)numVibrateTimes.Value;
+            ResultBinding.PlayWavPath = txtWavPath.Text;
 
             this.DialogResult = DialogResult.OK; this.Close();
         }
@@ -247,7 +280,8 @@ namespace UsbInputMapper.UI
         private void btnManualAddSub_Click(object sender, EventArgs e) { if (cmbManualSubTrigger.SelectedItem is ComboItem item) { int type = (item.Value & 0x010000) != 0 ? 1 : 0; var key = new TriggerKey { DeviceIdentifier = "Any", Type = type, Code = item.Value & 0xFFFF }; lstSubTriggers.Items.Add(key); } }
         private void cmbCondition_SelectedIndexChanged(object sender, EventArgs e) { int idx = cmbCondition.SelectedIndex; lblParam.Visible = numConditionParam.Visible = (idx == 1 || idx == 2); if (idx == 1) lblParam.Text = "長押し(ms):"; if (idx == 2) lblParam.Text = "連打(ms):"; }
         private void cmbKeyButton_SelectedIndexChanged(object sender, EventArgs e) { if (cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value == -1) { using (var capture = new CaptureForm(CaptureMode.MultiKeyboard)) { if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedKeys.Count > 0) { ResultBinding.Action.MultipleKeys = new List<int>(capture.CapturedKeys); string keysStr = string.Join(" + ", capture.CapturedKeys.Select(k => ((Keys)k).ToString())); var customItem = new ComboItem { Text = $"[保存済] {keysStr}", Value = -2 }; cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged; cmbKeyButton.Items.Insert(0, customItem); cmbKeyButton.SelectedIndex = 0; cmbKeyButton.SelectedIndexChanged += cmbKeyButton_SelectedIndexChanged; } else cmbKeyButton.SelectedIndex = 0; } } }
-        private void btnBrowseApp_Click(object sender, EventArgs e) { using (var ofd = new OpenFileDialog { Filter = "実行ファイル|*.exe|全て|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) txtAppPath.Text = ofd.FileName; } }
+        private void btnBrowseApp_Click(object sender, EventArgs e) { using (var ofd = new OpenFileDialog { Filter = "実行ファイル等|*.exe;*.ahk;*.bat;*.cmd;*.vbs|全て|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) txtAppPath.Text = ofd.FileName; } }
+        private void btnBrowseWav_Click(object sender, EventArgs e) { using (var ofd = new OpenFileDialog { Filter = "WAVファイル|*.wav|全て|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) txtWavPath.Text = ofd.FileName; } }
         private void btnEditMacro_Click(object sender, EventArgs e) { using (var editor = new MacroEditorForm(ResultBinding.Action, _profileNames)) { editor.ShowDialog(this); } }
 
         private void cmbBgAction_SelectedIndexChanged(object sender, EventArgs e)

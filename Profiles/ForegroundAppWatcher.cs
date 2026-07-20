@@ -93,9 +93,9 @@ namespace UsbInputMapper.Profiles
 
                 string currentAppPath = GetExecutablePathProcessId(pid);
                 
-                // パスが取得できない場合（null等）であっても、前回のパスと違えばプロファイル変更を発火させる
-                // これにより、取得不可な別アプリにフォーカスが移った際、確実にデフォルトプロファイルへ戻るようになります。
-                if (currentAppPath != _lastAppPath)
+                // ★パスが取得できない(null)場合は、ソフトウェアキーボードやUACなどのシステムプロセスであるため、
+                // プロファイル切り替えを無視して今のゲーム用プロファイルを「維持」します。
+                if (!string.IsNullOrEmpty(currentAppPath) && currentAppPath != _lastAppPath)
                 {
                     _lastAppPath = currentAppPath;
                     OnForegroundAppChanged?.Invoke(this, currentAppPath);
@@ -107,7 +107,6 @@ namespace UsbInputMapper.Profiles
             }
         }
 
-        // 32bit/64bitの壁や管理者権限の壁を越えてプロセスパスを取得する
         private string GetExecutablePathProcessId(uint pid)
         {
             IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);

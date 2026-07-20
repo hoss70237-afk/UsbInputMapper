@@ -28,7 +28,6 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.CheckBox chkStartup;
         private System.Windows.Forms.Button btnControllerBase;
 
-        // ★ログ用
         private System.Windows.Forms.TextBox txtLog;
         private System.Windows.Forms.CheckBox chkLog;
 
@@ -64,7 +63,7 @@ namespace UsbInputMapper.UI
             this.tabControl1.Location = new System.Drawing.Point(0, 0);
             this.tabControl1.Size = new System.Drawing.Size(680, 360);
             
-            // tabPage1 (設定)
+            // tabPage1
             this.tabPage1.Text = "設定";
             this.tabPage1.Controls.Add(this.chkStartup);
             this.tabPage1.Controls.Add(this.btnControllerBase); this.tabPage1.Controls.Add(this.chkEnableXInput);
@@ -98,7 +97,7 @@ namespace UsbInputMapper.UI
             
             this.btnControllerBase.Location = new System.Drawing.Point(487, 22); this.btnControllerBase.Size = new System.Drawing.Size(172, 23); this.btnControllerBase.Text = "コントローラーベース設定..."; this.btnControllerBase.Click += new System.EventHandler(this.btnControllerBase_Click);
 
-            // tabPage2 (入力テスト)
+            // tabPage2
             this.tabPage2.Text = "入力テスト";
             this.tabPage2.Controls.Add(this.chkLog);
             this.tabPage2.Controls.Add(this.txtLog);

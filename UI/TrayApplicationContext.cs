@@ -102,7 +102,10 @@ namespace UsbInputMapper.UI
 
             _viGEmOutput = new ViGEmOutput(); _viGEmOutput.Initialize();
             _dispatcher = new OutputDispatcher(_viGEmOutput);
-            _globalHookManager = new GlobalHookManager(); UpdateHookBlockList();
+            
+            _globalHookManager = new GlobalHookManager(); 
+            _globalHookManager.OnBlockedInputFired += GlobalHookManager_OnBlockedInputFired; // ★ フックから直接通知を受け取る
+            UpdateHookBlockList();
             
             _rawInputManager = new RawInputManager(); 
             _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
@@ -195,6 +198,35 @@ namespace UsbInputMapper.UI
             _hasBezelBindings = _bindingCache.Keys.Any(k => k.Type == 5);
         }
 
+        // ★ ブロックされたキーをフックから直接受け取るハンドラ
+        private void GlobalHookManager_OnBlockedInputFired(object sender, GlobalHookManager.HookInputEvent e)
+        {
+            if (CaptureForm.IsCapturing || _isSuspended) return;
+
+            _syncContext.Post(_ => {
+                var tKey = new TriggerKeyHash(e.Type, e.Code);
+                if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out _);
+
+                // フックからはDeviceIdentifierが分からないため、キャッシュ内の合致する(Type, Code)を持つバインディングで、BlockOriginalInputがtrueのものを強制発火させる
+                foreach (var kvp in _bindingCache)
+                {
+                    if (kvp.Key.Type == e.Type && kvp.Key.Code == e.Code)
+                    {
+                        foreach (var b in kvp.Value)
+                        {
+                            if (b.BlockOriginalInput)
+                            {
+                                if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
+                                {
+                                    ProcessBindingExecution(b, kvp.Key.DeviceIdentifier, e.Type, e.Code, e.IsDown);
+                                }
+                            }
+                        }
+                    }
+                }
+            }, null);
+        }
+
         private void RawInputManager_OnInputEvent(object sender, InputEvent e)
         {
             if (CaptureForm.IsCapturing) { CaptureForm.CurrentInstance?.ProcessInput(e); return; }
@@ -246,7 +278,16 @@ namespace UsbInputMapper.UI
                 if (isBlocked) { if (e.Type == 1) _dispatcher.SendKeyboardInputs(new List<int> { inputCode }, e.IsKeyDown); else if (e.Type == 0) _dispatcher.SendMouseClick(inputCode, e.IsKeyDown); }
                 return;
             }
-            foreach (var b in bindings) { if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, inputCode, e.IsKeyDown); }
+
+            foreach (var b in bindings) 
+            { 
+                // ★ BlockOriginalInputがtrueのものは、Hook側で処理済みなため二重発火を防ぐ
+                if (b.BlockOriginalInput && isBlocked)
+                    continue;
+
+                if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) 
+                    ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, inputCode, e.IsKeyDown); 
+            }
         }
 
         private void DiManager_OnInputEvent(object sender, DirectInputEvent e)
@@ -311,7 +352,7 @@ namespace UsbInputMapper.UI
 
             if (isDown)
             {
-                if (!string.IsNullOrEmpty(binding.PlayWavPath)) PlayWav(binding.PlayWavPath); // ★追加: アイテム発動時のWAV再生
+                if (!string.IsNullOrEmpty(binding.PlayWavPath)) PlayWav(binding.PlayWavPath);
 
                 if (binding.Condition == TriggerCondition.Release) return;
                 if (binding.Action.ActionType == ActionType.RadialMenu) {
@@ -399,7 +440,6 @@ namespace UsbInputMapper.UI
             ContextMenuStrip menu = new ContextMenuStrip(); 
             menu.Items.Add("設定を開く", null, ShowMainForm);
             
-            // ★メニューの停止・再開分割
             var mnuSuspend = new ToolStripMenuItem("停止");
             var mnuResume = new ToolStripMenuItem("再開") { Enabled = false };
             mnuSuspend.Click += (s, e) => {

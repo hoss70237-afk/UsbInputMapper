@@ -15,15 +15,9 @@ namespace UsbInputMapper.Core
 
         public RawInputManager()
         {
-            // バックグラウンドでも WM_INPUT を確実に受け取るため、
-            // HWND_MESSAGE ではなく、非表示のトップレベル(Popup)ウィンドウとして作成
-            var cp = new CreateParams();
-            cp.Caption = "UsbInputMapper_RawInputWindow";
-            cp.Style = unchecked((int)0x80000000); // WS_POPUP
-            cp.ExStyle = 0x08000000; // WS_EX_NOACTIVATE
-            cp.X = 0; cp.Y = 0; cp.Width = 0; cp.Height = 0;
-            CreateHandle(cp);
-
+            // ★ 一番最初の正常に動いていたロジック（メッセージ専用ウィンドウ）に完全に戻しました。
+            // これにより他のアプリケーションにフォーカスが移っても確実にバックグラウンド入力を取得できます。
+            CreateHandle(new CreateParams { Caption = "UsbInputMapper_RawInputMessageWindow", Parent = (IntPtr)(-3) });
             RegisterInputDevices();
         }
 
@@ -34,14 +28,10 @@ namespace UsbInputMapper.Core
                 var rid = new RawInputNative.RAWINPUTDEVICE[1];
                 rid[0].usUsagePage = page;
                 rid[0].usUsage = usage;
-                rid[0].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY;
+                rid[0].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY; // WM_INPUT_DEVICE_CHANGE受信用
                 rid[0].hwndTarget = this.Handle;
 
-                bool success = RawInputNative.RegisterRawInputDevices(rid, 1, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));
-                if (!success)
-                {
-                    InputLogger.Log($"[RawInput Error] Register failed! Page:{page} Usage:{usage} ErrCode:{Marshal.GetLastWin32Error()}");
-                }
+                RawInputNative.RegisterRawInputDevices(rid, 1, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));
             }
 
             TryRegister(0x01, 0x02); // Mouse

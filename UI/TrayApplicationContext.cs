@@ -107,8 +107,8 @@ namespace UsbInputMapper.UI
             _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
             _rawInputManager.OnDeviceChanged += (s, e) => { _diManager?.RefreshDevices(); UpdateBindingCache(); }; 
 
-            // ★DirectInputManagerの初期化時にRawInputManagerのHandleを渡し、バックグラウンド取得を有効化する
-            _diManager = new DirectInputManager(_rawInputManager.Handle); 
+            // ★ 初期化の呼び出し方も一番最初の正常な形に戻しました。
+            _diManager = new DirectInputManager(); 
             _diManager.OnInputEvent += DiManager_OnInputEvent;
 
             UpdateBindingCache();
@@ -120,7 +120,7 @@ namespace UsbInputMapper.UI
 
         private void LoopTimer_Tick(object sender, EventArgs e)
         {
-            // ★CPU使用率軽減：ベゼル設定がなく、スティック入力がない場合は何もせず終了
+            // CPU使用率軽減：ベゼル設定がなく、スティック入力がない場合は何もせず終了
             if (!_hasBezelBindings && _stickMouseDx == 0 && _stickMouseDy == 0) return;
 
             if (_stickMouseDx != 0 || _stickMouseDy != 0) _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);

@@ -16,6 +16,7 @@ namespace UsbInputMapper.UI
         private TabControl _tabs;
         private TabPage _tabRadialMenu, _tabBezel;
 
+        // RadialMenu UI
         private Button _btnCaptureTrigger;
         private Label _lblTrigger;
         private ComboBox _cmbSlices;
@@ -23,12 +24,12 @@ namespace UsbInputMapper.UI
         private ListBox _lstDirs;
         private Button _btnEditDir;
         private NumericUpDown _numSize;
-        private CheckBox _chkBlockOriginalInput; 
 
         private int _triggerType = -1;
         private int _triggerCode = -1;
         private string _triggerDevId = "Any";
 
+        // Bezel UI
         private ComboBox _cmbBezelPos;
         private NumericUpDown _numHoverTime;
         private Label _lblBezelAction;
@@ -80,7 +81,6 @@ namespace UsbInputMapper.UI
                     _cmbSlices.SelectedIndex = existingBinding.Action.RadialMenuSlices == 12 ? 1 : 0;
                     _cmbMode.SelectedIndex = existingBinding.Action.RadialMenuMode;
                     _numSize.Value = existingBinding.Action.RadialMenuSize;
-                    _chkBlockOriginalInput.Checked = existingBinding.BlockOriginalInput;
                     
                     _bezelAction = new ActionDef(); 
                 }
@@ -126,13 +126,10 @@ namespace UsbInputMapper.UI
             _btnEditDir = new Button { Text = "割当編集", Location = new Point(270, 100), Size = new Size(70, 23) };
             _btnEditDir.Click += BtnEditDir_Click;
 
-            _chkBlockOriginalInput = new CheckBox { Text = "本来の入力をブロック", Location = new Point(10, 250), AutoSize = true };
-
             _tabRadialMenu.Controls.Add(_btnCaptureTrigger); _tabRadialMenu.Controls.Add(_lblTrigger);
             _tabRadialMenu.Controls.Add(l0); _tabRadialMenu.Controls.Add(_cmbMode);
             _tabRadialMenu.Controls.Add(l1); _tabRadialMenu.Controls.Add(_cmbSlices); _tabRadialMenu.Controls.Add(l2); _tabRadialMenu.Controls.Add(_numSize);
             _tabRadialMenu.Controls.Add(_lstDirs); _tabRadialMenu.Controls.Add(_btnEditDir);
-            _tabRadialMenu.Controls.Add(_chkBlockOriginalInput);
             RefreshDirList();
         }
 
@@ -146,6 +143,7 @@ namespace UsbInputMapper.UI
                 for (int i = 0; i < slices; i++)
                 {
                     var existing = ResultBinding.Action.RadialMenuDirections.FirstOrDefault(x => x.DirectionIndex == i);
+                    // ★修正: 方向の初期ラベルを上(1)から時計回りに
                     newList.Add(existing ?? new RadialMenuDirection { DirectionIndex = i, Label = $"方向 {i + 1}" });
                 }
                 ResultBinding.Action.RadialMenuDirections = newList;
@@ -153,7 +151,7 @@ namespace UsbInputMapper.UI
             int idx = _lstDirs.SelectedIndex;
             _lstDirs.Items.Clear();
             foreach (var d in ResultBinding.Action.RadialMenuDirections) 
-                _lstDirs.Items.Add($"[{d.DirectionIndex + 1}] {d.Label} -> {d.Action.ToString()}"); 
+                _lstDirs.Items.Add($"[{d.DirectionIndex + 1}] {d.Label} -> {d.Action.ToString()}"); // ★表示も1始まり
             
             if (idx >= 0 && idx < _lstDirs.Items.Count) _lstDirs.SelectedIndex = idx;
         }
@@ -218,7 +216,6 @@ namespace UsbInputMapper.UI
                 ResultBinding.Action.RadialMenuMode = _cmbMode.SelectedIndex;
                 ResultBinding.Action.RadialMenuSlices = _cmbSlices.SelectedIndex == 1 ? 12 : 8;
                 ResultBinding.Action.RadialMenuSize = (int)_numSize.Value;
-                ResultBinding.BlockOriginalInput = _chkBlockOriginalInput.Checked;
             }
             else
             {

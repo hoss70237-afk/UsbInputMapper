@@ -15,12 +15,15 @@ namespace UsbInputMapper.Core
 
         public RawInputManager()
         {
-            // HWND_MESSAGE(Parent = -3)だとバックグラウンドで入力が取れなくなる環境があるため、
-            // 通常の非表示トップレベルウィンドウとしてハンドルを作成します。
+            // バックグラウンドでも WM_INPUT を確実に受け取るため、
+            // HWND_MESSAGE ではなく、非表示のトップレベル(Popup)ウィンドウとして作成
             var cp = new CreateParams();
-            cp.Caption = "UsbInputMapper_RawInputMessageWindow";
+            cp.Caption = "UsbInputMapper_RawInputWindow";
+            cp.Style = unchecked((int)0x80000000); // WS_POPUP
+            cp.ExStyle = 0x08000000; // WS_EX_NOACTIVATE
+            cp.X = 0; cp.Y = 0; cp.Width = 0; cp.Height = 0;
             CreateHandle(cp);
-            
+
             RegisterInputDevices();
         }
 
@@ -31,7 +34,7 @@ namespace UsbInputMapper.Core
                 var rid = new RawInputNative.RAWINPUTDEVICE[1];
                 rid[0].usUsagePage = page;
                 rid[0].usUsage = usage;
-                rid[0].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY; // WM_INPUT_DEVICE_CHANGE受信用
+                rid[0].dwFlags = RawInputNative.RIDEV_INPUTSINK | RawInputNative.RIDEV_DEVNOTIFY;
                 rid[0].hwndTarget = this.Handle;
 
                 bool success = RawInputNative.RegisterRawInputDevices(rid, 1, (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTDEVICE)));

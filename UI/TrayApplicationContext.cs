@@ -60,7 +60,9 @@ namespace UsbInputMapper.UI
         private ConcurrentDictionary<TriggerKeyHash, bool> _physicalKeysDown = new ConcurrentDictionary<TriggerKeyHash, bool>();
         private ConcurrentDictionary<LoopKey, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<LoopKey, CancellationTokenSource>();
         private Dictionary<PovKey, int> _lastPovStates = new Dictionary<PovKey, int>();
-        private Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
+        
+        // スレッドセーフな参照のためのキャッシュ
+        private volatile Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
         private System.Windows.Forms.Timer _loopTimer;
         private volatile int _stickMouseDx = 0;
@@ -87,7 +89,6 @@ namespace UsbInputMapper.UI
         {
             _profileManager = new ProfileManager(); _profileManager.Load();
             _profileManager.OnProfileChanged += (s, e) => {
-                // プロファイル切り替え時に内部の押下状態を完全にリセットし、デッドロックを防ぐ
                 _physicalKeysDown.Clear();
                 foreach(var cts in _activeLoops.Values) { cts.Cancel(); cts.Dispose(); }
                 _activeLoops.Clear();
@@ -95,9 +96,6 @@ namespace UsbInputMapper.UI
                 UpdateHookBlockList(); UpdateBindingCache();
                 _dispatcher?.ReleaseAllInputs(); 
                 var p = _profileManager.CurrentActiveProfile;
-                
-                InputLogger.Log($"[Profile Switched] Active Profile: {(p != null ? p.Name : "None")}");
-                
                 if (p != null && p.NotifyProfileChangeVibration) VibrationManager.Vibrate(300, 2); 
             };
             _profileManager.OnSettingsChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
@@ -124,7 +122,6 @@ namespace UsbInputMapper.UI
 
         private void LoopTimer_Tick(object sender, EventArgs e)
         {
-            // ★CPU使用率軽減：ベゼル設定がなく、スティック入力がない場合は何もせず即終了（0%化）
             if (!_hasBezelBindings && _stickMouseDx == 0 && _stickMouseDy == 0) return;
 
             if (_stickMouseDx != 0 || _stickMouseDy != 0) _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);
@@ -147,7 +144,9 @@ namespace UsbInputMapper.UI
                 if (code != -1)
                 {
                     if (_currentBezelCode == code) { _bezelHoverTime += _loopTimer.Interval; } else { _currentBezelCode = code; _bezelHoverTime = 0; }
-                    if (_bindingCache.TryGetValue(new InputKey("Any", 5, code), out var bindings))
+                    
+                    var currentCache = _bindingCache; // スレッドセーフ参照
+                    if (currentCache.TryGetValue(new InputKey("Any", 5, code), out var bindings))
                     {
                         foreach (var b in bindings) {
                             if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) {
@@ -173,17 +172,29 @@ namespace UsbInputMapper.UI
 
         private void UpdateBindingCache()
         {
-            _bindingCache.Clear();
+            // ★ キャッシュ衝突による無限ループ・例外（見失う現象）を完全に防止するため、
+            // 新しい辞書を作成してから最後に参照を一括で差し替えます（スレッドセーフ）
+            var newCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
             var profile = _profileManager.CurrentActiveProfile;
-            if (profile == null) return;
-            foreach (var b in profile.Bindings) { var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode); if (!_bindingCache.TryGetValue(key, out var list)) { list = new List<UsbInputMapper.Profiles.Binding>(); _bindingCache[key] = list; } list.Add(b); }
-            if (profile.EnableXInput) {
-                foreach (var b in _profileManager.ControllerBaseBindings) {
-                    var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode);
-                    if (!_bindingCache.TryGetValue(key, out var list)) { list = new List<UsbInputMapper.Profiles.Binding>(); _bindingCache[key] = list; }
-                    if (!profile.Bindings.Any(pb => pb.DeviceIdentifier == b.DeviceIdentifier && pb.InputType == b.InputType && pb.InputCode == b.InputCode)) list.Add(b);
+            
+            if (profile != null) 
+            {
+                foreach (var b in profile.Bindings) { 
+                    var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode); 
+                    if (!newCache.TryGetValue(key, out var list)) { list = new List<UsbInputMapper.Profiles.Binding>(); newCache[key] = list; } 
+                    list.Add(b); 
+                }
+                if (profile.EnableXInput) {
+                    foreach (var b in _profileManager.ControllerBaseBindings) {
+                        var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode);
+                        if (!newCache.TryGetValue(key, out var list)) { list = new List<UsbInputMapper.Profiles.Binding>(); newCache[key] = list; }
+                        if (!profile.Bindings.Any(pb => pb.DeviceIdentifier == b.DeviceIdentifier && pb.InputType == b.InputType && pb.InputCode == b.InputCode)) list.Add(b);
+                    }
                 }
             }
+            
+            _bindingCache = newCache;
+            
             if (_diManager != null) _diManager.HasAxisBindings = _bindingCache.Keys.Any(k => k.Type == 11);
             _hasBezelBindings = _bindingCache.Keys.Any(k => k.Type == 5);
         }
@@ -203,11 +214,7 @@ namespace UsbInputMapper.UI
 
             if (e.Type == 2)
             {
-                if (now - _lastStandardInputTime < 50)
-                {
-                    InputLogger.Log($"[HID Ignored] (Simultaneous with Standard Input) Code={(int)e.MouseButtonFlags}");
-                    return;
-                }
+                if (now - _lastStandardInputTime < 50) return;
                 
                 _pendingHidEvents.Add(e);
                 Task.Run(async () => {
@@ -233,15 +240,11 @@ namespace UsbInputMapper.UI
             var tKey = new TriggerKeyHash(e.Type, inputCode);
             if (e.IsKeyDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out _);
 
-            bool ctrl = _physicalKeysDown.ContainsKey(new TriggerKeyHash(1, (int)Keys.LControlKey)) || _physicalKeysDown.ContainsKey(new TriggerKeyHash(1, (int)Keys.RControlKey));
-            bool shift = _physicalKeysDown.ContainsKey(new TriggerKeyHash(1, (int)Keys.LShiftKey)) || _physicalKeysDown.ContainsKey(new TriggerKeyHash(1, (int)Keys.RShiftKey));
-            bool alt = _physicalKeysDown.ContainsKey(new TriggerKeyHash(1, (int)Keys.LMenu)) || _physicalKeysDown.ContainsKey(new TriggerKeyHash(1, (int)Keys.RMenu));
-            string mods = $"[Ctrl:{ctrl} Shift:{shift} Alt:{alt}]";
+            // スレッドセーフにキャッシュを参照
+            var currentCache = _bindingCache;
 
-            bool hasBinding = _bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, inputCode), out var bindings);
+            bool hasBinding = currentCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, inputCode), out var bindings);
             bool isBlocked = _globalHookManager.WasRecentlyBlocked(e.Type, inputCode);
-
-            InputLogger.Log($"Raw: {e.DeviceIdentifier} | {UsbInputMapper.Profiles.Binding.GetCodeName(e.Type, inputCode)} | {(e.IsKeyDown?"Down":"Up ")} | {mods} | Block:{isBlocked}");
 
             if (!hasBinding || bindings.Count == 0)
             {
@@ -256,12 +259,14 @@ namespace UsbInputMapper.UI
             if (CaptureForm.IsCapturing) return;
             if (_isSuspended) return;
 
+            var currentCache = _bindingCache;
+
             if (e.Type == 12)
             {
                 var povKey = new PovKey(e.DeviceIdentifier, e.Code);
                 if (e.Value == -1) {
                     if (_lastPovStates.TryGetValue(povKey, out int lastVal)) {
-                        if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, lastVal), out var rBindings)) {
+                        if (currentCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, lastVal), out var rBindings)) {
                             foreach(var b in rBindings) if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
                         }
                         _lastPovStates.Remove(povKey);
@@ -269,12 +274,12 @@ namespace UsbInputMapper.UI
                 }
                 else {
                     if (_lastPovStates.TryGetValue(povKey, out int lastVal) && lastVal != e.Value) {
-                        if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, lastVal), out var rBindings)) {
+                        if (currentCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, lastVal), out var rBindings)) {
                             foreach(var b in rBindings) if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, lastVal, false);
                         }
                     }
                     _lastPovStates[povKey] = e.Value;
-                    if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Value), out var dBindings)) {
+                    if (currentCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Value), out var dBindings)) {
                         foreach(var b in dBindings) if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) ProcessBindingExecution(b, e.DeviceIdentifier, e.Type, e.Value, true);
                     }
                 }
@@ -282,7 +287,7 @@ namespace UsbInputMapper.UI
             }
             if (e.Type == 10) { var tKey = new TriggerKeyHash(e.Type, e.Code); if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out _); }
             
-            if (_bindingCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Code), out var bindings)) {
+            if (currentCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Code), out var bindings)) {
                 foreach (var binding in bindings) {
                     if (binding.SubTriggers != null && !binding.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) continue;
                     var profile = _profileManager.CurrentActiveProfile;
@@ -324,12 +329,9 @@ namespace UsbInputMapper.UI
                     return;
                 }
 
-                // ★OSからのKeyUpメッセージが漏れて見失った場合の救済措置
-                // 同じキーのKeyDownが来たのにループが残っていた場合、古いループを破棄して再実行する
                 if (_activeLoops.TryGetValue(loopKey, out var oldCts))
                 {
-                    oldCts.Cancel();
-                    oldCts.Dispose();
+                    oldCts.Cancel(); oldCts.Dispose();
                     _activeLoops.TryRemove(loopKey, out _);
                 }
                 

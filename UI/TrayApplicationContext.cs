@@ -16,7 +16,7 @@ namespace UsbInputMapper.UI
     {
         private NotifyIcon _trayIcon;
         private MainForm _mainForm;
-        private bool _isSuspended = false; // ★追加
+        private bool _isSuspended = false;
 
         private RawInputManager _rawInputManager;
         private DirectInputManager _diManager;
@@ -90,6 +90,9 @@ namespace UsbInputMapper.UI
                 UpdateHookBlockList(); UpdateBindingCache();
                 _dispatcher?.ReleaseAllInputs(); 
                 var p = _profileManager.CurrentActiveProfile;
+                
+                InputLogger.Log($"[Profile Switched] Active Profile: {(p != null ? p.Name : "None")}");
+                
                 if (p != null && p.NotifyProfileChangeVibration) VibrationManager.Vibrate(300, 2); 
             };
             _profileManager.OnSettingsChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
@@ -115,7 +118,7 @@ namespace UsbInputMapper.UI
 
         private void LoopTimer_Tick(object sender, EventArgs e)
         {
-            // ★CPU使用率軽減：ベゼル設定がなく、スティック入力がない場合は何もせず終了
+            // ベゼル設定がなく、スティック入力がない場合は何もせず終了し、CPU負荷を最小限に抑えます。
             if (!_hasBezelBindings && _stickMouseDx == 0 && _stickMouseDy == 0) return;
 
             if (_stickMouseDx != 0 || _stickMouseDy != 0) _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);

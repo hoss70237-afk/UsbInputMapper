@@ -23,7 +23,7 @@ namespace UsbInputMapper.UI
         private ListBox _lstDirs;
         private Button _btnEditDir;
         private NumericUpDown _numSize;
-        private CheckBox _chkBlockOriginalInput; // ★追加
+        private CheckBox _chkBlockOriginalInput; 
 
         private int _triggerType = -1;
         private int _triggerCode = -1;

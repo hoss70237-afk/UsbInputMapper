@@ -28,7 +28,6 @@ namespace UsbInputMapper.Core
         private DirectInput _directInput;
         private Thread _pollingThread;
         private bool _isRunning;
-        private IntPtr _hwnd; // ★バックグラウンド取得用ウィンドウハンドル
         
         private class DeviceState 
         { 
@@ -42,9 +41,9 @@ namespace UsbInputMapper.Core
         public bool HasAxisBindings { get; set; } = true;
         public bool ForceEnableAxisEvents { get; set; } = false;
 
-        public DirectInputManager(IntPtr hwnd)
+        public DirectInputManager()
         {
-            _hwnd = hwnd;
+            // ★ 一番最初の正常に動いていたロジック（不要な協調レベル設定を行わない）に完全に戻しました。
             timeBeginPeriod(1);
 
             _directInput = new DirectInput();
@@ -66,13 +65,9 @@ namespace UsbInputMapper.Core
                     {
                         var joystick = new Joystick(_directInput, instance.InstanceGuid);
                         joystick.Properties.BufferSize = 128;
-                        // ★バックグラウンド時でも入力を取得するため CooperativeLevel を設定
-                        joystick.SetCooperativeLevel(_hwnd, CooperativeLevel.Background | CooperativeLevel.NonExclusive);
                         joystick.Acquire();
                         _devices.Add(new DeviceState { Joystick = joystick, Identifier = instance.InstanceGuid.ToString() });
-                    } catch (Exception ex) {
-                        InputLogger.Log($"[DirectInput] Failed to acquire joystick: {ex.Message}");
-                    }
+                    } catch { }
                 }
             }
         }

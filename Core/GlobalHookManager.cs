@@ -70,6 +70,7 @@ namespace UsbInputMapper.Core
         public Action OnRadialMenuClickCaptured;
 
         public event EventHandler<HookInputEvent> OnRecordedInput;
+        public event EventHandler<HookInputEvent> OnBlockedInputFired; // ★追加: ブロックしたキーを通知
 
         public class HookInputEvent
         {
@@ -111,11 +112,19 @@ namespace UsbInputMapper.Core
                 int msg = wParam.ToInt32();
                 bool isDown = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
                 int vkCode = (int)kb.vkCode;
+                
                 if (IsRecording) OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = Environment.TickCount });
+                
                 if (!isInjected)
                 {
                     long key = GetHookKey(1, vkCode);
-                    if (_blockList.Contains(key)) { _recentBlocked[key] = Environment.TickCount; return (IntPtr)1; }
+                    if (_blockList.Contains(key)) 
+                    { 
+                        _recentBlocked[key] = Environment.TickCount;
+                        // ★ ブロックと同時に自前のロジックを発火させるための通知
+                        OnBlockedInputFired?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = Environment.TickCount });
+                        return (IntPtr)1; 
+                    }
                 }
             }
             return CallNextHookEx(_keyboardHookID, nCode, wParam, lParam);
@@ -154,7 +163,13 @@ namespace UsbInputMapper.Core
                     {
                         if (IsRecording) OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = Environment.TickCount });
                         long key = GetHookKey(0, code);
-                        if (_blockList.Contains(key)) { _recentBlocked[key] = Environment.TickCount; return (IntPtr)1; }
+                        if (_blockList.Contains(key)) 
+                        { 
+                            _recentBlocked[key] = Environment.TickCount; 
+                            // ★ ブロックと同時に自前のロジックを発火させるための通知
+                            OnBlockedInputFired?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = Environment.TickCount });
+                            return (IntPtr)1; 
+                        }
                     }
                 }
             }

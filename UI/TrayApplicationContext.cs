@@ -297,12 +297,22 @@ namespace UsbInputMapper.UI
             }
         }
 
+        private void PlayWav(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
+            Task.Run(() => {
+                try { using (var player = new System.Media.SoundPlayer(path)) { player.PlaySync(); } } catch { }
+            });
+        }
+
         private void ProcessBindingExecution(UsbInputMapper.Profiles.Binding binding, string deviceId, int type, int inputCode, bool isDown)
         {
             var loopKey = new LoopKey(deviceId, type, inputCode, binding.GetHashCode());
 
             if (isDown)
             {
+                if (!string.IsNullOrEmpty(binding.PlayWavPath)) PlayWav(binding.PlayWavPath); // ★追加: アイテム発動時のWAV再生
+
                 if (binding.Condition == TriggerCondition.Release) return;
                 if (binding.Action.ActionType == ActionType.RadialMenu) {
                     _syncContext.Post(_ => {
@@ -389,20 +399,27 @@ namespace UsbInputMapper.UI
             ContextMenuStrip menu = new ContextMenuStrip(); 
             menu.Items.Add("設定を開く", null, ShowMainForm);
             
-            var mnuSuspend = new ToolStripMenuItem("停止 (Suspend)");
+            // ★メニューの停止・再開分割
+            var mnuSuspend = new ToolStripMenuItem("停止");
+            var mnuResume = new ToolStripMenuItem("再開") { Enabled = false };
             mnuSuspend.Click += (s, e) => {
-                _isSuspended = !_isSuspended;
-                mnuSuspend.Text = _isSuspended ? "再開 (Resume)" : "停止 (Suspend)";
-                _trayIcon.Text = _isSuspended ? "UsbInputMapper (停止中)" : "UsbInputMapper";
+                _isSuspended = true;
+                mnuSuspend.Enabled = false; mnuResume.Enabled = true;
+                _trayIcon.Text = "UsbInputMapper (停止中)";
                 UpdateHookBlockList();
-                if (_isSuspended) {
-                    _physicalKeysDown.Clear();
-                    foreach(var cts in _activeLoops.Values) { cts.Cancel(); cts.Dispose(); }
-                    _activeLoops.Clear();
-                    _dispatcher?.ReleaseAllInputs();
-                }
+                _physicalKeysDown.Clear();
+                foreach(var cts in _activeLoops.Values) { cts.Cancel(); cts.Dispose(); }
+                _activeLoops.Clear();
+                _dispatcher?.ReleaseAllInputs();
+            };
+            mnuResume.Click += (s, e) => {
+                _isSuspended = false;
+                mnuSuspend.Enabled = true; mnuResume.Enabled = false;
+                _trayIcon.Text = "UsbInputMapper";
+                UpdateHookBlockList();
             };
             menu.Items.Add(mnuSuspend);
+            menu.Items.Add(mnuResume);
 
             menu.Items.Add("終了", null, ExitApp); 
             _trayIcon.ContextMenuStrip = menu; 

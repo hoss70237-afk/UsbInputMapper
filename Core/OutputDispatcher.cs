@@ -33,6 +33,7 @@ namespace UsbInputMapper.Core
         private readonly Stack<SendInputNative.POINT> _mousePositionStack = new Stack<SendInputNative.POINT>();
         private readonly Random _random = new Random();
 
+        // ★リセット用トラッキング
         private HashSet<int> _pressedKeys = new HashSet<int>();
         private HashSet<int> _pressedMouseButtons = new HashSet<int>();
 
@@ -40,28 +41,17 @@ namespace UsbInputMapper.Core
 
         public void ReleaseAllInputs()
         {
+            // 全ての仮想キー及びマウスクリックを離す
             if (_pressedKeys.Count > 0) { SendKeyboardInputs(_pressedKeys.ToList(), false); _pressedKeys.Clear(); }
             foreach (var mb in _pressedMouseButtons.ToList()) { SendMouseClick(mb, false); }
             _pressedMouseButtons.Clear();
+            
+            // XInputのニュートラル化
             _viGEmOutput.Reset();
-        }
-
-        private void PlayWav(string path)
-        {
-            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
-            Task.Run(() => {
-                try {
-                    using (var player = new System.Media.SoundPlayer(path)) {
-                        player.Play();
-                    }
-                } catch { }
-            });
         }
 
         public void Dispatch(ActionDef action, bool isDown)
         {
-            if (isDown && !string.IsNullOrEmpty(action.PlayWavPath)) PlayWav(action.PlayWavPath);
-
             switch (action.ActionType)
             {
                 case ActionType.Keyboard:
@@ -77,13 +67,10 @@ namespace UsbInputMapper.Core
                 case ActionType.MousePosSave: if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt); break;
                 case ActionType.MousePosRestore:
                     if (isDown && _mousePositionStack.Count > 0) { var popPt = _mousePositionStack.Pop(); SendMouseMove(popPt.X, popPt.Y, true, false); } break;
-                case ActionType.AppLaunch: 
-                case ActionType.FileLaunch:
-                case ActionType.AhkLaunch:
-                    if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
+                case ActionType.AppLaunch: if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
                 case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
                 case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
-                case ActionType.BackgroundControl: DispatchBackground(action, isDown); break;
+                case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; // ★バックグラウンド操作
             }
         }
 
@@ -92,8 +79,6 @@ namespace UsbInputMapper.Core
             if (action.MacroSteps == null) return;
             foreach (var step in action.MacroSteps)
             {
-                if (!string.IsNullOrEmpty(step.PlayWavPathStart)) PlayWav(step.PlayWavPathStart);
-
                 int delay = 0;
                 if (step.UseDelay)
                 {
@@ -106,32 +91,10 @@ namespace UsbInputMapper.Core
                 bool isDown = step.PressState == StepPressState.Down || step.PressState == StepPressState.Tap;
                 bool isUp = step.PressState == StepPressState.Up || step.PressState == StepPressState.Tap;
 
-                ActionDef stepAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, ArgumentExtraStr = step.ArgumentExtraStr, MouseX = step.MouseX, MouseY = step.MouseY, BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName };
-                
-                Task launchTask = null;
-
-                if (isDown) 
-                {
-                    if (stepAct.ActionType == ActionType.AhkLaunch || stepAct.ActionType == ActionType.AppLaunch || stepAct.ActionType == ActionType.FileLaunch) 
-                        launchTask = LaunchAppAsync(stepAct.ArgumentStr, stepAct.ArgumentExtraStr, step.WaitForExit);
-                    else Dispatch(stepAct, true);
-                }
-                
+                ActionDef stepAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, MouseX = step.MouseX, MouseY = step.MouseY, BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName };
+                if (isDown) Dispatch(stepAct, true);
                 if (step.PressState == StepPressState.Tap) await Task.Delay(10);
-                
-                if (isUp) 
-                {
-                    if (stepAct.ActionType == ActionType.AhkLaunch || stepAct.ActionType == ActionType.AppLaunch || stepAct.ActionType == ActionType.FileLaunch) {
-                        if (launchTask == null) launchTask = LaunchAppAsync(stepAct.ArgumentStr, stepAct.ArgumentExtraStr, step.WaitForExit);
-                    } else Dispatch(stepAct, false);
-                }
-
-                if (step.WaitForExit && launchTask != null)
-                {
-                    await launchTask;
-                }
-
-                if (!string.IsNullOrEmpty(step.PlayWavPathEnd)) PlayWav(step.PlayWavPathEnd);
+                if (isUp) Dispatch(stepAct, false);
             }
         }
 
@@ -140,44 +103,18 @@ namespace UsbInputMapper.Core
             if (vKeys == null || vKeys.Count == 0) return;
             var inputs = new SendInputNative.INPUT[vKeys.Count];
             var keysToProcess = new List<int>(vKeys);
-            
             if (!isDown) keysToProcess.Reverse();
-            
             for (int i = 0; i < keysToProcess.Count; i++)
             {
                 ushort vKey = (ushort)keysToProcess[i];
                 if (isDown) _pressedKeys.Add(vKey); else _pressedKeys.Remove(vKey);
 
                 inputs[i].type = SendInputNative.INPUT_KEYBOARD;
-                
-                ushort wScan = (ushort)SendInputNative.MapVirtualKey(vKey, 0); 
+                inputs[i].u.ki.wVk = vKey;
                 uint flags = 0;
-
-                // 拡張キーの判定
-                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || 
-                    vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || 
-                    vKey == 45 || vKey == 46 || vKey == 111 || vKey == 144) 
-                {
-                    flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
-                }
-
-                if (wScan > 0)
-                {
-                    inputs[i].u.ki.wVk = vKey;
-                    inputs[i].u.ki.wScan = wScan;
-                    flags |= SendInputNative.KEYEVENTF_SCANCODE;
-                }
-                else
-                {
-                    inputs[i].u.ki.wVk = vKey;
-                    inputs[i].u.ki.wScan = 0;
-                }
-
+                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
                 if (!isDown) flags |= SendInputNative.KEYEVENTF_KEYUP;
-                
                 inputs[i].u.ki.dwFlags = flags;
-                inputs[i].u.ki.time = 0;
-                inputs[i].u.ki.dwExtraInfo = IntPtr.Zero;
             }
             SendInputNative.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }
@@ -272,17 +209,6 @@ namespace UsbInputMapper.Core
         private void LaunchApp(string path, string args)
         {
             if (!string.IsNullOrEmpty(path)) try { Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = true }); } catch { }
-        }
-
-        private async Task LaunchAppAsync(string path, string args, bool waitForExit)
-        {
-            if (string.IsNullOrEmpty(path)) return;
-            try {
-                var p = Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = true });
-                if (waitForExit && p != null) {
-                    await Task.Run(() => p.WaitForExit());
-                }
-            } catch { }
         }
 
         private Xbox360Button GetXboxButton(int id)

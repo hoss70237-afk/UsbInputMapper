@@ -141,45 +141,19 @@ namespace UsbInputMapper.Core
             var inputs = new SendInputNative.INPUT[vKeys.Count];
             var keysToProcess = new List<int>(vKeys);
             
-            // キーを離すときは逆順に処理する
+            // ★ キーボード送信の処理は、互換性が最も高かった「一番最初のコード」と全く同じ状態に復元
             if (!isDown) keysToProcess.Reverse();
-            
             for (int i = 0; i < keysToProcess.Count; i++)
             {
                 ushort vKey = (ushort)keysToProcess[i];
                 if (isDown) _pressedKeys.Add(vKey); else _pressedKeys.Remove(vKey);
 
                 inputs[i].type = SendInputNative.INPUT_KEYBOARD;
-                
-                // ★修正点: ゲーム(DirectX)や半角英数モードでも認識されるよう、物理スキャンコードを取得
-                ushort wScan = (ushort)SendInputNative.MapVirtualKey(vKey, 0); 
+                inputs[i].u.ki.wVk = vKey;
                 uint flags = 0;
-
-                // 拡張キーの判定
-                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || 
-                    vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || 
-                    vKey == 45 || vKey == 46 || vKey == 111 || vKey == 144) 
-                {
-                    flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
-                }
-
-                if (wScan > 0)
-                {
-                    inputs[i].u.ki.wVk = 0;
-                    inputs[i].u.ki.wScan = wScan;
-                    flags |= SendInputNative.KEYEVENTF_SCANCODE;
-                }
-                else
-                {
-                    inputs[i].u.ki.wVk = vKey;
-                    inputs[i].u.ki.wScan = 0;
-                }
-
+                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
                 if (!isDown) flags |= SendInputNative.KEYEVENTF_KEYUP;
-                
                 inputs[i].u.ki.dwFlags = flags;
-                inputs[i].u.ki.time = 0;
-                inputs[i].u.ki.dwExtraInfo = IntPtr.Zero;
             }
             SendInputNative.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }

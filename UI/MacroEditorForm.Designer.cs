@@ -16,13 +16,13 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Label lblPressState;
         private System.Windows.Forms.ComboBox cmbPressState;
 
-        private System.Windows.Forms.CheckBox chkWaitForExit; // ★追加
-        private System.Windows.Forms.Label lblWavStart; // ★追加
-        private System.Windows.Forms.TextBox txtWavStart; // ★追加
-        private System.Windows.Forms.Button btnWavStart; // ★追加
-        private System.Windows.Forms.Label lblWavEnd; // ★追加
-        private System.Windows.Forms.TextBox txtWavEnd; // ★追加
-        private System.Windows.Forms.Button btnWavEnd; // ★追加
+        private System.Windows.Forms.CheckBox chkWaitForExit;
+        private System.Windows.Forms.Label lblWavStart;
+        private System.Windows.Forms.TextBox txtWavStart;
+        private System.Windows.Forms.Button btnWavStart;
+        private System.Windows.Forms.Label lblWavEnd;
+        private System.Windows.Forms.TextBox txtWavEnd;
+        private System.Windows.Forms.Button btnWavEnd;
 
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.ComboBox cmbPlaybackMode;

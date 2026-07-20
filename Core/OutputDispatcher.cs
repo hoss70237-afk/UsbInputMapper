@@ -112,7 +112,8 @@ namespace UsbInputMapper.Core
 
                 if (isDown) 
                 {
-                    if (stepAct.ActionType == ActionType.AhkLaunch) launchTask = LaunchAppAsync(stepAct.ArgumentStr, stepAct.ArgumentExtraStr, step.WaitForExit);
+                    if (stepAct.ActionType == ActionType.AhkLaunch || stepAct.ActionType == ActionType.AppLaunch || stepAct.ActionType == ActionType.FileLaunch) 
+                        launchTask = LaunchAppAsync(stepAct.ArgumentStr, stepAct.ArgumentExtraStr, step.WaitForExit);
                     else Dispatch(stepAct, true);
                 }
                 
@@ -120,7 +121,7 @@ namespace UsbInputMapper.Core
                 
                 if (isUp) 
                 {
-                    if (stepAct.ActionType == ActionType.AhkLaunch) {
+                    if (stepAct.ActionType == ActionType.AhkLaunch || stepAct.ActionType == ActionType.AppLaunch || stepAct.ActionType == ActionType.FileLaunch) {
                         if (launchTask == null) launchTask = LaunchAppAsync(stepAct.ArgumentStr, stepAct.ArgumentExtraStr, step.WaitForExit);
                     } else Dispatch(stepAct, false);
                 }
@@ -150,14 +151,21 @@ namespace UsbInputMapper.Core
 
                 inputs[i].type = SendInputNative.INPUT_KEYBOARD;
                 
-                // ★修正点: ゲーム(DirectInput)や半角英数モードでも認識されるよう、物理スキャンコードを取得
+                // ★修正点: ゲーム(DirectX)や半角英数モードでも認識されるよう、物理スキャンコードを取得
                 ushort wScan = (ushort)SendInputNative.MapVirtualKey(vKey, 0); 
                 uint flags = 0;
 
-                // スキャンコードが取得できた場合はスキャンコード優先で送信 (KEYEVENTF_SCANCODE を付与)
+                // 拡張キーの判定
+                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || 
+                    vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || 
+                    vKey == 45 || vKey == 46 || vKey == 111 || vKey == 144) 
+                {
+                    flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
+                }
+
                 if (wScan > 0)
                 {
-                    inputs[i].u.ki.wVk = 0; // スキャンコード送信時は仮想キーコードを0にするのが安全
+                    inputs[i].u.ki.wVk = 0;
                     inputs[i].u.ki.wScan = wScan;
                     flags |= SendInputNative.KEYEVENTF_SCANCODE;
                 }
@@ -167,13 +175,11 @@ namespace UsbInputMapper.Core
                     inputs[i].u.ki.wScan = 0;
                 }
 
-                // 拡張キー（矢印やテンキーの一部）の場合はフラグを立てる
-                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) 
-                    flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
-                
                 if (!isDown) flags |= SendInputNative.KEYEVENTF_KEYUP;
                 
                 inputs[i].u.ki.dwFlags = flags;
+                inputs[i].u.ki.time = 0;
+                inputs[i].u.ki.dwExtraInfo = IntPtr.Zero;
             }
             SendInputNative.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }

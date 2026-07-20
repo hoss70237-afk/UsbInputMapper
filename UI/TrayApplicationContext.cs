@@ -87,6 +87,11 @@ namespace UsbInputMapper.UI
         {
             _profileManager = new ProfileManager(); _profileManager.Load();
             _profileManager.OnProfileChanged += (s, e) => {
+                // プロファイル切り替え時に内部の押下状態を完全にリセットし、デッドロックを防ぐ
+                _physicalKeysDown.Clear();
+                foreach(var cts in _activeLoops.Values) { cts.Cancel(); cts.Dispose(); }
+                _activeLoops.Clear();
+                
                 UpdateHookBlockList(); UpdateBindingCache();
                 _dispatcher?.ReleaseAllInputs(); 
                 var p = _profileManager.CurrentActiveProfile;
@@ -119,7 +124,7 @@ namespace UsbInputMapper.UI
 
         private void LoopTimer_Tick(object sender, EventArgs e)
         {
-            // CPU使用率軽減：ベゼル設定がなく、スティック入力がない場合は何もせず終了
+            // ★CPU使用率軽減：ベゼル設定がなく、スティック入力がない場合は何もせず即終了（0%化）
             if (!_hasBezelBindings && _stickMouseDx == 0 && _stickMouseDy == 0) return;
 
             if (_stickMouseDx != 0 || _stickMouseDy != 0) _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);
@@ -319,8 +324,17 @@ namespace UsbInputMapper.UI
                     return;
                 }
 
-                if (_activeLoops.ContainsKey(loopKey)) return;
-                var cts = new CancellationTokenSource(); _activeLoops[loopKey] = cts;
+                // ★OSからのKeyUpメッセージが漏れて見失った場合の救済措置
+                // 同じキーのKeyDownが来たのにループが残っていた場合、古いループを破棄して再実行する
+                if (_activeLoops.TryGetValue(loopKey, out var oldCts))
+                {
+                    oldCts.Cancel();
+                    oldCts.Dispose();
+                    _activeLoops.TryRemove(loopKey, out _);
+                }
+                
+                var cts = new CancellationTokenSource(); 
+                _activeLoops[loopKey] = cts;
                 Task.Run(async () => {
                     try {
                         if (binding.Condition == TriggerCondition.RapidFire) { while (!cts.Token.IsCancellationRequested) { ExecuteAction(binding.Action, true); await Task.Delay(20); ExecuteAction(binding.Action, false); await Task.Delay(Math.Max(10, binding.ConditionParam), cts.Token); } }
@@ -384,7 +398,12 @@ namespace UsbInputMapper.UI
                 mnuSuspend.Text = _isSuspended ? "再開 (Resume)" : "停止 (Suspend)";
                 _trayIcon.Text = _isSuspended ? "UsbInputMapper (停止中)" : "UsbInputMapper";
                 UpdateHookBlockList();
-                if (_isSuspended) _dispatcher?.ReleaseAllInputs();
+                if (_isSuspended) {
+                    _physicalKeysDown.Clear();
+                    foreach(var cts in _activeLoops.Values) { cts.Cancel(); cts.Dispose(); }
+                    _activeLoops.Clear();
+                    _dispatcher?.ReleaseAllInputs();
+                }
             };
             menu.Items.Add(mnuSuspend);
 

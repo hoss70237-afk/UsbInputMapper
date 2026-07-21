@@ -62,7 +62,7 @@ namespace UsbInputMapper.UI
         private Dictionary<PovKey, int> _lastPovStates = new Dictionary<PovKey, int>();
         private volatile Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
-        private System.Windows.Forms.Timer _loopTimer;
+        private System.Windows.Forms.Timer _loopTimer; // ★ オンデマンドタイマーに降格
         private volatile int _stickMouseDx = 0;
         private volatile int _stickMouseDy = 0;
         private int _currentBezelCode = -1;
@@ -105,6 +105,7 @@ namespace UsbInputMapper.UI
             
             _globalHookManager = new GlobalHookManager(); 
             _globalHookManager.OnBlockedInputFired += GlobalHookManager_OnBlockedInputFired;
+            _globalHookManager.OnMouseMove += GlobalHookManager_OnMouseMove; // ★ マウス移動イベントのサブスクライブ
             UpdateHookBlockList();
             
             _rawInputManager = new RawInputManager(); 
@@ -118,45 +119,87 @@ namespace UsbInputMapper.UI
 
             _loopTimer = new System.Windows.Forms.Timer { Interval = 10 };
             _loopTimer.Tick += LoopTimer_Tick;
-            _loopTimer.Start();
+            // ★ 起動時は停止しておく。必要な時だけ回す。
+        }
+
+        private void TryStartActiveTimer()
+        {
+            if (!_loopTimer.Enabled) _loopTimer.Start();
+        }
+
+        private void TryStopActiveTimer()
+        {
+            // 動かす理由がなくなったら止める（CPU負荷0へ）
+            if (_stickMouseDx == 0 && _stickMouseDy == 0 && _currentBezelCode == -1)
+            {
+                _loopTimer.Stop();
+            }
+        }
+
+        // ★ マウスが動いた瞬間だけベゼル判定を行う
+        private void GlobalHookManager_OnMouseMove(object sender, GlobalHookManager.POINT pt)
+        {
+            if (!_hasBezelBindings || _isSuspended) return;
+
+            int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
+            int x = pt.x; int y = pt.y;
+            int code = -1;
+
+            if (x <= 3 && y <= 3) code = 0;
+            else if (x >= sW - 4 && y <= 3) code = 4;
+            else if (x >= sW - 4 && y >= sH - 4) code = 8;
+            else if (x <= 3 && y >= sH - 4) code = 12;
+            else if (y <= 0) { if (x < sW / 3) code = 1; else if (x < sW * 2 / 3) code = 2; else code = 3; }
+            else if (x >= sW - 1) { if (y < sH / 3) code = 5; else if (y < sH * 2 / 3) code = 6; else code = 7; }
+            else if (y >= sH - 1) { if (x >= sW * 2 / 3) code = 9; else if (x >= sW / 3) code = 10; else code = 11; }
+            else if (x <= 0) { if (y >= sH * 2 / 3) code = 13; else if (y >= sH / 3) code = 14; else code = 15; }
+
+            if (code != -1)
+            {
+                // ベゼル領域に入った
+                if (_currentBezelCode != code)
+                {
+                    _currentBezelCode = code;
+                    _bezelHoverTime = 0;
+                    TryStartActiveTimer(); // 滞在時間を計測するためにタイマー起動
+                }
+            }
+            else
+            {
+                // 領域から出た
+                if (_currentBezelCode != -1)
+                {
+                    _currentBezelCode = -1;
+                    _bezelHoverTime = 0;
+                    TryStopActiveTimer(); // 用済みなのでタイマー停止
+                }
+            }
         }
 
         private void LoopTimer_Tick(object sender, EventArgs e)
         {
-            if (!_hasBezelBindings && _stickMouseDx == 0 && _stickMouseDy == 0) return;
-
-            if (_stickMouseDx != 0 || _stickMouseDy != 0) _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);
-
-            if (_hasBezelBindings && SendInputNative.GetCursorPos(out var pt))
+            if (_stickMouseDx != 0 || _stickMouseDy != 0) 
             {
-                int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
-                int x = pt.X; int y = pt.Y;
-                int code = -1;
+                _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);
+            }
 
-                if (x <= 3 && y <= 3) code = 0;
-                else if (x >= sW - 4 && y <= 3) code = 4;
-                else if (x >= sW - 4 && y >= sH - 4) code = 8;
-                else if (x <= 3 && y >= sH - 4) code = 12;
-                else if (y <= 0) { if (x < sW / 3) code = 1; else if (x < sW * 2 / 3) code = 2; else code = 3; }
-                else if (x >= sW - 1) { if (y < sH / 3) code = 5; else if (y < sH * 2 / 3) code = 6; else code = 7; }
-                else if (y >= sH - 1) { if (x >= sW * 2 / 3) code = 9; else if (x >= sW / 3) code = 10; else code = 11; }
-                else if (x <= 0) { if (y >= sH * 2 / 3) code = 13; else if (y >= sH / 3) code = 14; else code = 15; }
-
-                if (code != -1)
+            // ベゼル領域に滞在している間の時間計測と発火
+            if (_currentBezelCode != -1)
+            {
+                _bezelHoverTime += _loopTimer.Interval;
+                
+                var currentCache = _bindingCache; 
+                if (currentCache.TryGetValue(new InputKey("Any", 5, _currentBezelCode), out var bindings))
                 {
-                    if (_currentBezelCode == code) { _bezelHoverTime += _loopTimer.Interval; } else { _currentBezelCode = code; _bezelHoverTime = 0; }
-                    
-                    var currentCache = _bindingCache; 
-                    if (currentCache.TryGetValue(new InputKey("Any", 5, code), out var bindings))
-                    {
-                        foreach (var b in bindings) {
-                            if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) {
-                                if (_bezelHoverTime >= b.ConditionParam && _bezelHoverTime - _loopTimer.Interval < b.ConditionParam) { ExecuteAction(b.Action, true); ExecuteAction(b.Action, false); }
+                    foreach (var b in bindings) {
+                        if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) {
+                            if (_bezelHoverTime >= b.ConditionParam && _bezelHoverTime - _loopTimer.Interval < b.ConditionParam) 
+                            { 
+                                ExecuteAction(b.Action, true); ExecuteAction(b.Action, false); 
                             }
                         }
                     }
                 }
-                else { _currentBezelCode = -1; _bezelHoverTime = 0; }
             }
         }
 
@@ -204,7 +247,7 @@ namespace UsbInputMapper.UI
 
             _syncContext.Post(_ => {
                 var tKey = new TriggerKeyHash(e.Type, e.Code);
-                if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out bool _); // ★修正
+                if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out bool _);
 
                 foreach (var kvp in _bindingCache)
                 {
@@ -264,7 +307,7 @@ namespace UsbInputMapper.UI
             int inputCode = (e.Type == 1) ? e.VKey : (int)e.MouseButtonFlags;
             
             var tKey = new TriggerKeyHash(e.Type, inputCode);
-            if (e.IsKeyDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out bool _); // ★修正
+            if (e.IsKeyDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out bool _);
 
             var currentCache = _bindingCache;
 
@@ -319,7 +362,7 @@ namespace UsbInputMapper.UI
                 return;
             }
             
-            if (e.Type == 10) { var tKey = new TriggerKeyHash(e.Type, e.Code); if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out bool _); } // ★修正
+            if (e.Type == 10) { var tKey = new TriggerKeyHash(e.Type, e.Code); if (e.IsDown) _physicalKeysDown[tKey] = true; else _physicalKeysDown.TryRemove(tKey, out bool _); }
             
             if (currentCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, e.Code), out var bindings)) {
                 foreach (var binding in bindings) {
@@ -376,7 +419,7 @@ namespace UsbInputMapper.UI
                 if (_activeLoops.TryGetValue(loopKey, out var oldCts))
                 {
                     oldCts.Cancel(); oldCts.Dispose();
-                    _activeLoops.TryRemove(loopKey, out CancellationTokenSource _); // ★修正
+                    _activeLoops.TryRemove(loopKey, out CancellationTokenSource _);
                 }
                 
                 var cts = new CancellationTokenSource(); 
@@ -401,7 +444,7 @@ namespace UsbInputMapper.UI
                     }
                     return;
                 }
-                if (_activeLoops.TryRemove(loopKey, out var cts)) { cts.Cancel(); cts.Dispose(); } // ★ out var はそのまま使用可。推論失敗しないため
+                if (_activeLoops.TryRemove(loopKey, out var cts)) { cts.Cancel(); cts.Dispose(); } 
                 if (binding.Condition == TriggerCondition.Release) { ExecuteAction(binding.Action, true); Thread.Sleep(20); ExecuteAction(binding.Action, false); }
                 else { ExecuteAction(binding.Action, false); }
             }
@@ -418,7 +461,17 @@ namespace UsbInputMapper.UI
 
             if (binding.Action.ActionType == ActionType.XboxAxis) { short outValue = (short)(normalized * 32767); Xbox360Axis axis = Xbox360Axis.LeftThumbX; switch(binding.Action.ArgumentNum) { case 1: axis = Xbox360Axis.LeftThumbX; break; case 2: axis = Xbox360Axis.LeftThumbY; outValue = (short)-outValue; break; case 3: axis = Xbox360Axis.RightThumbX; break; case 4: axis = Xbox360Axis.RightThumbY; outValue = (short)-outValue; break; } _viGEmOutput.SetAxis(axis, outValue); }
             else if (binding.Action.ActionType == ActionType.XboxTrigger) { double trigNorm = (binding.AxisRange == 0) ? (normalized + 1.0) / 2.0 : Math.Abs(normalized); _viGEmOutput.SetSlider(binding.Action.ArgumentNum == 1 ? Xbox360Slider.LeftTrigger : Xbox360Slider.RightTrigger, (byte)(trigNorm * 255)); }
-            else if (binding.Action.ActionType == ActionType.StickToMouse) { double szDZ = binding.Action.StickDeadZone / 100.0; double spd = binding.Action.StickMaxSpeed; double norm2 = (rawValue - 32767.5) / 32767.5; if (Math.Abs(norm2) < szDZ) norm2 = 0; else norm2 = Math.Sign(norm2) * ((Math.Abs(norm2) - szDZ) / (1.0 - szDZ)); if (binding.Action.StickCurve == 1) norm2 = Math.Sign(norm2) * Math.Sqrt(Math.Abs(norm2)); else if (binding.Action.StickCurve == 2) norm2 = Math.Sign(norm2) * Math.Pow(Math.Abs(norm2), 2); int dVal = (int)(norm2 * spd); if (binding.InputCode == 0 || binding.InputCode == 3) _stickMouseDx = dVal; else if (binding.InputCode == 1 || binding.InputCode == 4) _stickMouseDy = dVal; }
+            else if (binding.Action.ActionType == ActionType.StickToMouse) { 
+                double szDZ = binding.Action.StickDeadZone / 100.0; double spd = binding.Action.StickMaxSpeed; double norm2 = (rawValue - 32767.5) / 32767.5; 
+                if (Math.Abs(norm2) < szDZ) norm2 = 0; else norm2 = Math.Sign(norm2) * ((Math.Abs(norm2) - szDZ) / (1.0 - szDZ)); 
+                if (binding.Action.StickCurve == 1) norm2 = Math.Sign(norm2) * Math.Sqrt(Math.Abs(norm2)); else if (binding.Action.StickCurve == 2) norm2 = Math.Sign(norm2) * Math.Pow(Math.Abs(norm2), 2); 
+                int dVal = (int)(norm2 * spd); 
+                
+                if (binding.InputCode == 0 || binding.InputCode == 3) _stickMouseDx = dVal; else if (binding.InputCode == 1 || binding.InputCode == 4) _stickMouseDy = dVal;
+                
+                // ★ スティック入力がある時だけタイマーを回す
+                if (_stickMouseDx != 0 || _stickMouseDy != 0) TryStartActiveTimer(); else TryStopActiveTimer();
+            }
         }
 
         private void ExecuteAction(ActionDef action, bool isDown)
@@ -465,6 +518,6 @@ namespace UsbInputMapper.UI
         }
 
         private void ShowMainForm(object sender, EventArgs e) { if (_mainForm == null || _mainForm.IsDisposed) _mainForm = new MainForm(_profileManager, _diManager); _mainForm.Show(); _mainForm.Activate(); }
-        private void ExitApp(object sender, EventArgs e) { _loopTimer?.Stop(); _trayIcon.Visible = false; _dispatcher?.ReleaseAllInputs(); _globalHookManager?.Dispose(); _rawInputManager?.Dispose(); _diManager?.Dispose(); _viGEmOutput?.Dispose(); Application.Exit(); }
+        private void ExitApp(object sender, EventArgs e) { _loopTimer?.Stop(); _trayIcon.Visible = false; _dispatcher?.ReleaseAllInputs(); _globalHookManager?.Dispose(); _rawInputManager?.Dispose(); _diManager?.Dispose(); _appWatcher?.Dispose(); _viGEmOutput?.Dispose(); Application.Exit(); }
     }
 }

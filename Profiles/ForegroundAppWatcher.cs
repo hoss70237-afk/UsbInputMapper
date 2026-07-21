@@ -1,13 +1,11 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Timers;
 
 namespace UsbInputMapper.Profiles
 {
     public class ForegroundAppWatcher : IDisposable
     {
-        // --- Windows API 宣言 ---
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
 
@@ -31,37 +29,60 @@ namespace UsbInputMapper.Profiles
         private static extern bool EnumChildWindows(IntPtr hwndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
+        // ★ WinEventHook 用の定義
+        private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+        
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc, WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
+        [DllImport("user32.dll")]
+        private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+        private const uint EVENT_SYSTEM_FOREGROUND = 3;
+        private const uint WINEVENT_OUTOFCONTEXT = 0;
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
-        // --- メンバ変数 ---
         public event EventHandler<string> OnForegroundAppChanged;
-        private Timer _timer;
+        
+        private WinEventDelegate _winEventProc;
+        private IntPtr _hWinEventHook = IntPtr.Zero;
         private string _lastAppPath = string.Empty;
 
         public ForegroundAppWatcher()
         {
-            // 500ミリ秒間隔でフォアグラウンドウィンドウを監視
-            _timer = new Timer(500); 
-            _timer.Elapsed += Timer_Elapsed;
+            // デリゲートがGCに回収されないように保持
+            _winEventProc = new WinEventDelegate(WinEventCallback);
         }
 
         public void Start()
         {
-            _timer.Start();
+            if (_hWinEventHook == IntPtr.Zero)
+            {
+                // アクティブウィンドウが変わった瞬間だけOSから通知を受け取る (タイマー不要、CPU 0%)
+                _hWinEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+                CheckCurrentForeground(); // 起動時の初回チェック
+            }
         }
 
         public void Stop()
         {
-            _timer.Stop();
+            if (_hWinEventHook != IntPtr.Zero)
+            {
+                UnhookWinEvent(_hWinEventHook);
+                _hWinEventHook = IntPtr.Zero;
+            }
         }
 
-        private void Timer_Elapsed(object sender, ElapsedEventArgs e)
+        private void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+        {
+            CheckCurrentForeground();
+        }
+
+        private void CheckCurrentForeground()
         {
             IntPtr hwnd = GetForegroundWindow();
             if (hwnd == IntPtr.Zero) return;
 
-            // UWPアプリ（ApplicationFrameHost）対策
-            // ガワのウィンドウではなく、中身の実際のゲームプロセスのウィンドウを探す
             StringBuilder className = new StringBuilder(256);
             GetClassName(hwnd, className, className.Capacity);
 
@@ -75,15 +96,12 @@ namespace UsbInputMapper.Profiles
                     if (childClass.ToString() == "Windows.UI.Core.CoreWindow")
                     {
                         realHwnd = childHwnd;
-                        return false; // 列挙終了
+                        return false; 
                     }
                     return true;
                 }, IntPtr.Zero);
 
-                if (realHwnd != IntPtr.Zero)
-                {
-                    hwnd = realHwnd;
-                }
+                if (realHwnd != IntPtr.Zero) hwnd = realHwnd;
             }
 
             GetWindowThreadProcessId(hwnd, out uint pid);
@@ -97,7 +115,6 @@ namespace UsbInputMapper.Profiles
             }
         }
 
-        // 32bit/64bitの壁や管理者権限の壁を越えてプロセスパスを取得する最強のメソッド
         private string GetExecutablePathProcessId(uint pid)
         {
             IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
@@ -121,12 +138,7 @@ namespace UsbInputMapper.Profiles
 
         public void Dispose()
         {
-            if (_timer != null)
-            {
-                _timer.Stop();
-                _timer.Dispose();
-                _timer = null;
-            }
+            Stop();
         }
     }
 }

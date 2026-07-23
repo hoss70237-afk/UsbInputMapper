@@ -8,7 +8,7 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.CheckBox chkBlockOriginalInput;
         private System.Windows.Forms.Label lblMainTrigger;
         private System.Windows.Forms.Button btnReCaptureMain;
-        private System.Windows.Forms.Button btnReflectName; // ★追加
+        private System.Windows.Forms.Button btnReflectName;
         private System.Windows.Forms.Label lblSubTriggers;
         private System.Windows.Forms.ListBox lstSubTriggers;
         private System.Windows.Forms.Button btnAddSubTrigger;
@@ -25,8 +25,8 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.ComboBox cmbKeyButton;
         private System.Windows.Forms.TextBox txtAppPath;
         private System.Windows.Forms.Button btnBrowseApp;
-        private System.Windows.Forms.Label lblAppArgs; // ★追加
-        private System.Windows.Forms.TextBox txtAppArgs; // ★追加
+        private System.Windows.Forms.Label lblAppArgs; 
+        private System.Windows.Forms.TextBox txtAppArgs;
         private System.Windows.Forms.Panel pnlMouseMove;
         private System.Windows.Forms.Label lblMouseX;
         private System.Windows.Forms.NumericUpDown numMouseX;
@@ -36,8 +36,6 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.ComboBox cmbProfileSwitchTarget;
         private System.Windows.Forms.ComboBox cmbProfileSwitchMode;
         private System.Windows.Forms.Button btnEditMacro;
-        private System.Windows.Forms.Button btnOK;
-        private System.Windows.Forms.Button btnCancel;
         
         private System.Windows.Forms.Panel pnlBackground;
         private System.Windows.Forms.TextBox txtBgClassName;
@@ -52,10 +50,21 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.NumericUpDown numVibrateDuration;
         private System.Windows.Forms.NumericUpDown numVibrateTimes;
         
-        // ★WAV追加
         private System.Windows.Forms.Label lblWav;
         private System.Windows.Forms.TextBox txtWavPath;
         private System.Windows.Forms.Button btnBrowseWav;
+        
+        // ★追加UI
+        private System.Windows.Forms.ComboBox cmbCursorVis;
+        private System.Windows.Forms.Panel pnlCursorOffset;
+        private System.Windows.Forms.NumericUpDown numOffsetX;
+        private System.Windows.Forms.NumericUpDown numOffsetY;
+        private System.Windows.Forms.Panel pnlSysMouse;
+        private System.Windows.Forms.NumericUpDown numSysMouseSpd;
+        private System.Windows.Forms.NumericUpDown numSysScroll;
+
+        private System.Windows.Forms.Button btnOK;
+        private System.Windows.Forms.Button btnCancel;
 
         protected override void Dispose(bool disposing) { if (disposing && (components != null)) components.Dispose(); base.Dispose(disposing); }
 
@@ -75,12 +84,18 @@ namespace UsbInputMapper.UI
             this.pnlVibration = new System.Windows.Forms.Panel(); this.chkVibrate = new System.Windows.Forms.CheckBox(); this.numVibrateDuration = new System.Windows.Forms.NumericUpDown(); this.numVibrateTimes = new System.Windows.Forms.NumericUpDown();
             
             this.lblWav = new System.Windows.Forms.Label(); this.txtWavPath = new System.Windows.Forms.TextBox(); this.btnBrowseWav = new System.Windows.Forms.Button();
+            
+            this.cmbCursorVis = new System.Windows.Forms.ComboBox();
+            this.pnlCursorOffset = new System.Windows.Forms.Panel(); this.numOffsetX = new System.Windows.Forms.NumericUpDown(); this.numOffsetY = new System.Windows.Forms.NumericUpDown();
+            this.pnlSysMouse = new System.Windows.Forms.Panel(); this.numSysMouseSpd = new System.Windows.Forms.NumericUpDown(); this.numSysScroll = new System.Windows.Forms.NumericUpDown();
 
             this.btnOK = new System.Windows.Forms.Button(); this.btnCancel = new System.Windows.Forms.Button();
             
             ((System.ComponentModel.ISupportInitialize)(this.numConditionParam)).BeginInit(); this.pnlMouseMove.SuspendLayout(); ((System.ComponentModel.ISupportInitialize)(this.numMouseX)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numMouseY)).BeginInit(); 
             this.pnlBackground.SuspendLayout(); ((System.ComponentModel.ISupportInitialize)(this.numBgControlId)).BeginInit();
             this.pnlVibration.SuspendLayout(); ((System.ComponentModel.ISupportInitialize)(this.numVibrateDuration)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numVibrateTimes)).BeginInit();
+            this.pnlCursorOffset.SuspendLayout(); ((System.ComponentModel.ISupportInitialize)(this.numOffsetX)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numOffsetY)).BeginInit();
+            this.pnlSysMouse.SuspendLayout(); ((System.ComponentModel.ISupportInitialize)(this.numSysMouseSpd)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numSysScroll)).BeginInit();
             this.SuspendLayout();
             
             this.label0.AutoSize = true; this.label0.Location = new System.Drawing.Point(12, 15); this.label0.Text = "アイテム名:"; this.txtName.Location = new System.Drawing.Point(90, 12); this.txtName.Size = new System.Drawing.Size(150, 19);
@@ -119,6 +134,23 @@ namespace UsbInputMapper.UI
             this.cmbBgKey.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbBgKey.Location = new System.Drawing.Point(115, 30); this.cmbBgKey.Size = new System.Drawing.Size(100, 20); this.cmbBgKey.Visible = false;
             this.pnlBackground.Controls.Add(this.lblBgPicker); this.pnlBackground.Controls.Add(this.txtBgClassName); this.pnlBackground.Controls.Add(this.txtBgWindowName); this.pnlBackground.Controls.Add(this.numBgControlId); this.pnlBackground.Controls.Add(this.cmbBgAction); this.pnlBackground.Controls.Add(this.cmbBgKey);
             
+            // ★追加UI群
+            this.cmbCursorVis.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbCursorVis.Location = new System.Drawing.Point(90, 257); this.cmbCursorVis.Size = new System.Drawing.Size(120, 20); this.cmbCursorVis.Visible = false;
+            
+            this.pnlCursorOffset.Location = new System.Drawing.Point(90, 255); this.pnlCursorOffset.Size = new System.Drawing.Size(240, 30); this.pnlCursorOffset.Visible = false;
+            System.Windows.Forms.Label lOffX = new System.Windows.Forms.Label { Text = "X補正:", Location = new System.Drawing.Point(0, 5), AutoSize = true };
+            this.numOffsetX.Location = new System.Drawing.Point(40, 3); this.numOffsetX.Minimum = -9999; this.numOffsetX.Maximum = 9999; this.numOffsetX.Size = new System.Drawing.Size(50, 19);
+            System.Windows.Forms.Label lOffY = new System.Windows.Forms.Label { Text = "Y補正:", Location = new System.Drawing.Point(100, 5), AutoSize = true };
+            this.numOffsetY.Location = new System.Drawing.Point(140, 3); this.numOffsetY.Minimum = -9999; this.numOffsetY.Maximum = 9999; this.numOffsetY.Size = new System.Drawing.Size(50, 19);
+            this.pnlCursorOffset.Controls.Add(lOffX); this.pnlCursorOffset.Controls.Add(this.numOffsetX); this.pnlCursorOffset.Controls.Add(lOffY); this.pnlCursorOffset.Controls.Add(this.numOffsetY);
+            
+            this.pnlSysMouse.Location = new System.Drawing.Point(90, 255); this.pnlSysMouse.Size = new System.Drawing.Size(240, 30); this.pnlSysMouse.Visible = false;
+            System.Windows.Forms.Label lSpd = new System.Windows.Forms.Label { Text = "ポインタ速度:", Location = new System.Drawing.Point(0, 5), AutoSize = true };
+            this.numSysMouseSpd.Location = new System.Drawing.Point(70, 3); this.numSysMouseSpd.Minimum = 1; this.numSysMouseSpd.Maximum = 20; this.numSysMouseSpd.Value = 10; this.numSysMouseSpd.Size = new System.Drawing.Size(40, 19);
+            System.Windows.Forms.Label lScr = new System.Windows.Forms.Label { Text = "スクロール:", Location = new System.Drawing.Point(120, 5), AutoSize = true };
+            this.numSysScroll.Location = new System.Drawing.Point(180, 3); this.numSysScroll.Minimum = 1; this.numSysScroll.Maximum = 100; this.numSysScroll.Value = 3; this.numSysScroll.Size = new System.Drawing.Size(40, 19);
+            this.pnlSysMouse.Controls.Add(lSpd); this.pnlSysMouse.Controls.Add(this.numSysMouseSpd); this.pnlSysMouse.Controls.Add(lScr); this.pnlSysMouse.Controls.Add(this.numSysScroll);
+
             this.lblWav.AutoSize = true; this.lblWav.Location = new System.Drawing.Point(12, 365); this.lblWav.Text = "発動時WAV:";
             this.txtWavPath.Location = new System.Drawing.Point(90, 362); this.txtWavPath.Size = new System.Drawing.Size(200, 19);
             this.btnBrowseWav.Location = new System.Drawing.Point(296, 360); this.btnBrowseWav.Size = new System.Drawing.Size(34, 23); this.btnBrowseWav.Text = "..."; this.btnBrowseWav.Click += new System.EventHandler(this.btnBrowseWav_Click);
@@ -139,6 +171,10 @@ namespace UsbInputMapper.UI
             this.Controls.Add(this.lblSubTriggers); this.Controls.Add(this.lstSubTriggers); this.Controls.Add(this.btnAddSubTrigger); this.Controls.Add(this.btnRemoveSubTrigger);
             this.Controls.Add(this.cmbManualSubTrigger); this.Controls.Add(this.btnManualAddSub); this.Controls.Add(this.btnCancel); this.Controls.Add(this.btnOK);
             this.Controls.Add(this.btnEditMacro); this.Controls.Add(this.pnlMouseMove); this.Controls.Add(this.pnlBackground); this.Controls.Add(this.pnlVibration);
+            
+            // ★追加UI配置
+            this.Controls.Add(this.cmbCursorVis); this.Controls.Add(this.pnlCursorOffset); this.Controls.Add(this.pnlSysMouse);
+
             this.Controls.Add(this.cmbProfileSwitchTarget); this.Controls.Add(this.cmbProfileSwitchMode);
             this.Controls.Add(this.lblAppArgs); this.Controls.Add(this.txtAppArgs);
             this.Controls.Add(this.btnBrowseApp); this.Controls.Add(this.txtAppPath); this.Controls.Add(this.cmbKeyButton);
@@ -151,6 +187,8 @@ namespace UsbInputMapper.UI
             ((System.ComponentModel.ISupportInitialize)(this.numConditionParam)).EndInit(); this.pnlMouseMove.ResumeLayout(false); this.pnlMouseMove.PerformLayout(); ((System.ComponentModel.ISupportInitialize)(this.numMouseX)).EndInit(); ((System.ComponentModel.ISupportInitialize)(this.numMouseY)).EndInit(); 
             this.pnlBackground.ResumeLayout(false); this.pnlBackground.PerformLayout(); ((System.ComponentModel.ISupportInitialize)(this.numBgControlId)).EndInit();
             this.pnlVibration.ResumeLayout(false); this.pnlVibration.PerformLayout(); ((System.ComponentModel.ISupportInitialize)(this.numVibrateDuration)).EndInit(); ((System.ComponentModel.ISupportInitialize)(this.numVibrateTimes)).EndInit();
+            this.pnlCursorOffset.ResumeLayout(false); this.pnlCursorOffset.PerformLayout(); ((System.ComponentModel.ISupportInitialize)(this.numOffsetX)).EndInit(); ((System.ComponentModel.ISupportInitialize)(this.numOffsetY)).EndInit();
+            this.pnlSysMouse.ResumeLayout(false); this.pnlSysMouse.PerformLayout(); ((System.ComponentModel.ISupportInitialize)(this.numSysMouseSpd)).EndInit(); ((System.ComponentModel.ISupportInitialize)(this.numSysScroll)).EndInit();
             this.ResumeLayout(false); this.PerformLayout();
         }
     }

@@ -70,6 +70,11 @@ namespace UsbInputMapper.Core
                 case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
                 case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
                 case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; 
+                
+                // ★追加: カーソル制御とシステムマウス設定
+                case ActionType.CursorVisibility: if (isDown) { if (action.IsCursorVisible) SystemMouseManager.ShowCursor(); else SystemMouseManager.HideCursor(); } break;
+                case ActionType.CursorOffset: if (isDown) { SystemMouseManager.SetCursorOffset(action.CursorOffsetX, action.CursorOffsetY); } break;
+                case ActionType.SystemMouseSettings: if (isDown) { SystemMouseManager.SetMouseSpeed(action.SystemMouseSpeed); SystemMouseManager.SetScrollLines(action.SystemScrollLines); } break;
             }
         }
 
@@ -79,7 +84,7 @@ namespace UsbInputMapper.Core
             Task.Run(() => {
                 try {
                     using (var player = new System.Media.SoundPlayer(path)) {
-                        player.PlaySync(); // スレッドで実行されるのでSyncで最後まで再生させる
+                        player.PlaySync();
                     }
                 } catch { }
             });
@@ -104,7 +109,11 @@ namespace UsbInputMapper.Core
                 bool isDown = step.PressState == StepPressState.Down || step.PressState == StepPressState.Tap;
                 bool isUp = step.PressState == StepPressState.Up || step.PressState == StepPressState.Tap;
 
-                ActionDef stepAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, ArgumentExtraStr = step.ArgumentExtraStr, MouseX = step.MouseX, MouseY = step.MouseY, BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName };
+                ActionDef stepAct = new ActionDef { 
+                    ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, ArgumentExtraStr = step.ArgumentExtraStr, MouseX = step.MouseX, MouseY = step.MouseY, BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName,
+                    // ★追加パラメータ引き継ぎ
+                    IsCursorVisible = true, CursorOffsetX = 0, CursorOffsetY = 0, SystemMouseSpeed = 10, SystemScrollLines = 3
+                };
                 
                 if (isDown) 
                 {
@@ -189,6 +198,14 @@ namespace UsbInputMapper.Core
                         targetX = pt.X + x; targetY = pt.Y + y;
                     }
                 }
+                
+                // ★追加: カーソルずらし指定があればここで補正（マウス実機自体がずれた位置に飛ぶのを防ぐのではなく、送る座標そのものをずらす）
+                if (SystemMouseManager.IsOffsetActive)
+                {
+                    targetX -= SystemMouseManager.OffsetX;
+                    targetY -= SystemMouseManager.OffsetY;
+                }
+
                 int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
                 inputs[0].u.mi.dx = (targetX * 65535) / sW; inputs[0].u.mi.dy = (targetY * 65535) / sH;
                 inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE | SendInputNative.MOUSEEVENTF_ABSOLUTE | SendInputNative.MOUSEEVENTF_VIRTUALDESK;

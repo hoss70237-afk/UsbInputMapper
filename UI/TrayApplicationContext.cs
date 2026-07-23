@@ -62,7 +62,7 @@ namespace UsbInputMapper.UI
         private Dictionary<PovKey, int> _lastPovStates = new Dictionary<PovKey, int>();
         private volatile Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
-        private System.Windows.Forms.Timer _loopTimer; // ★ オンデマンドタイマーに降格
+        private System.Windows.Forms.Timer _loopTimer;
         private volatile int _stickMouseDx = 0;
         private volatile int _stickMouseDy = 0;
         private int _currentBezelCode = -1;
@@ -93,8 +93,28 @@ namespace UsbInputMapper.UI
                 
                 UpdateHookBlockList(); UpdateBindingCache();
                 _dispatcher?.ReleaseAllInputs(); 
+                
                 var p = _profileManager.CurrentActiveProfile;
-                if (p != null && p.NotifyProfileChangeVibration) VibrationManager.Vibrate(300, 2); 
+                if (p != null)
+                {
+                    if (p.NotifyProfileChangeVibration) VibrationManager.Vibrate(300, 2); 
+                    
+                    // ★追加: チャタリング設定の適用
+                    if (_globalHookManager != null)
+                    {
+                        _globalHookManager.EnableChatteringCanceler = p.EnableChatteringCanceler;
+                        _globalHookManager.ChatteringThresholdMs = p.ChatteringThresholdMs;
+                    }
+                    
+                    // ★追加: オーバーレイ表示
+                    if (p.OverlayShowMark || p.OverlayShowName)
+                    {
+                        _syncContext.Post(_ => {
+                            var overlay = new ProfileOverlayForm(p);
+                            overlay.Show();
+                        }, null);
+                    }
+                }
             };
             _profileManager.OnSettingsChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
 
@@ -105,8 +125,16 @@ namespace UsbInputMapper.UI
             
             _globalHookManager = new GlobalHookManager(); 
             _globalHookManager.OnBlockedInputFired += GlobalHookManager_OnBlockedInputFired;
-            _globalHookManager.OnMouseMove += GlobalHookManager_OnMouseMove; // ★ マウス移動イベントのサブスクライブ
+            _globalHookManager.OnMouseMove += GlobalHookManager_OnMouseMove;
             UpdateHookBlockList();
+            
+            // ★起動時のチャタリング設定適用
+            var initialProfile = _profileManager.CurrentActiveProfile;
+            if (initialProfile != null)
+            {
+                _globalHookManager.EnableChatteringCanceler = initialProfile.EnableChatteringCanceler;
+                _globalHookManager.ChatteringThresholdMs = initialProfile.ChatteringThresholdMs;
+            }
             
             _rawInputManager = new RawInputManager(); 
             _rawInputManager.OnInputEvent += RawInputManager_OnInputEvent;
@@ -119,7 +147,19 @@ namespace UsbInputMapper.UI
 
             _loopTimer = new System.Windows.Forms.Timer { Interval = 10 };
             _loopTimer.Tick += LoopTimer_Tick;
-            // ★ 起動時は停止しておく。必要な時だけ回す。
+        }
+
+        private void ShutdownCore()
+        {
+            _loopTimer?.Stop(); 
+            _dispatcher?.ReleaseAllInputs(); 
+            SystemMouseManager.RestoreAllSafely(); // OSマウス設定のリセット
+            
+            _globalHookManager?.Dispose(); _globalHookManager = null;
+            _rawInputManager?.Dispose(); _rawInputManager = null;
+            _diManager?.Dispose(); _diManager = null;
+            _appWatcher?.Dispose(); _appWatcher = null;
+            _viGEmOutput?.Dispose(); _viGEmOutput = null;
         }
 
         private void TryStartActiveTimer()
@@ -129,14 +169,12 @@ namespace UsbInputMapper.UI
 
         private void TryStopActiveTimer()
         {
-            // 動かす理由がなくなったら止める（CPU負荷0へ）
             if (_stickMouseDx == 0 && _stickMouseDy == 0 && _currentBezelCode == -1)
             {
                 _loopTimer.Stop();
             }
         }
 
-        // ★ マウスが動いた瞬間だけベゼル判定を行う
         private void GlobalHookManager_OnMouseMove(object sender, GlobalHookManager.POINT pt)
         {
             if (!_hasBezelBindings || _isSuspended) return;
@@ -156,22 +194,20 @@ namespace UsbInputMapper.UI
 
             if (code != -1)
             {
-                // ベゼル領域に入った
                 if (_currentBezelCode != code)
                 {
                     _currentBezelCode = code;
                     _bezelHoverTime = 0;
-                    TryStartActiveTimer(); // 滞在時間を計測するためにタイマー起動
+                    TryStartActiveTimer();
                 }
             }
             else
             {
-                // 領域から出た
                 if (_currentBezelCode != -1)
                 {
                     _currentBezelCode = -1;
                     _bezelHoverTime = 0;
-                    TryStopActiveTimer(); // 用済みなのでタイマー停止
+                    TryStopActiveTimer(); 
                 }
             }
         }
@@ -183,7 +219,6 @@ namespace UsbInputMapper.UI
                 _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);
             }
 
-            // ベゼル領域に滞在している間の時間計測と発火
             if (_currentBezelCode != -1)
             {
                 _bezelHoverTime += _loopTimer.Interval;
@@ -206,12 +241,12 @@ namespace UsbInputMapper.UI
         private void UpdateHookBlockList()
         {
             var blockList = new HashSet<long>();
-            if (!_isSuspended)
+            if (!_isSuspended && _globalHookManager != null)
             {
                 var profile = _profileManager.CurrentActiveProfile;
                 if (profile != null) { foreach (var b in profile.Bindings) if (b.BlockOriginalInput) blockList.Add(((long)b.InputType << 32) | (uint)b.InputCode); }
             }
-            _globalHookManager.SetBlockList(blockList);
+            if (_globalHookManager != null) _globalHookManager.SetBlockList(blockList);
         }
 
         private void UpdateBindingCache()
@@ -312,7 +347,7 @@ namespace UsbInputMapper.UI
             var currentCache = _bindingCache;
 
             bool hasBinding = currentCache.TryGetValue(new InputKey(e.DeviceIdentifier, e.Type, inputCode), out var bindings);
-            bool isBlocked = _globalHookManager.WasRecentlyBlocked(e.Type, inputCode);
+            bool isBlocked = _globalHookManager != null && _globalHookManager.WasRecentlyBlocked(e.Type, inputCode);
 
             if (!hasBinding || bindings.Count == 0)
             {
@@ -401,8 +436,8 @@ namespace UsbInputMapper.UI
                         if (_radialMenuHudForm == null || _radialMenuHudForm.IsDisposed) {
                             _currentRadialMenuDef = binding.Action; _radialMenuHudForm = new RadialMenuHudForm(_currentRadialMenuDef); _radialMenuHudForm.Show();
                             if (_currentRadialMenuDef.RadialMenuMode == 1) {
-                                _globalHookManager.IsRadialMenuClickCapturing = true;
-                                _globalHookManager.OnRadialMenuClickCaptured = () => {
+                                if (_globalHookManager != null) _globalHookManager.IsRadialMenuClickCapturing = true;
+                                if (_globalHookManager != null) _globalHookManager.OnRadialMenuClickCaptured = () => {
                                     _syncContext.Post(__ => {
                                         if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed) {
                                             int sel = _radialMenuHudForm.SelectedDirectionIndex; _radialMenuHudForm.Hide(); _radialMenuHudForm.Dispose(); _radialMenuHudForm = null;
@@ -469,7 +504,6 @@ namespace UsbInputMapper.UI
                 
                 if (binding.InputCode == 0 || binding.InputCode == 3) _stickMouseDx = dVal; else if (binding.InputCode == 1 || binding.InputCode == 4) _stickMouseDy = dVal;
                 
-                // ★ スティック入力がある時だけタイマーを回す
                 if (_stickMouseDx != 0 || _stickMouseDy != 0) TryStartActiveTimer(); else TryStopActiveTimer();
             }
         }
@@ -491,33 +525,49 @@ namespace UsbInputMapper.UI
             ContextMenuStrip menu = new ContextMenuStrip(); 
             menu.Items.Add("設定を開く", null, ShowMainForm);
             
-            var mnuSuspend = new ToolStripMenuItem("停止");
+            // ★変更: 一時停止と完全停止を分ける
+            var mnuSuspend = new ToolStripMenuItem("一時停止");
+            var mnuStop = new ToolStripMenuItem("完全停止 (スタンバイ)");
             var mnuResume = new ToolStripMenuItem("再開") { Enabled = false };
+            
             mnuSuspend.Click += (s, e) => {
                 _isSuspended = true;
-                mnuSuspend.Enabled = false; mnuResume.Enabled = true;
-                _trayIcon.Text = "UsbInputMapper (停止中)";
+                mnuSuspend.Enabled = false; mnuStop.Enabled = false; mnuResume.Enabled = true;
+                _trayIcon.Text = "UsbInputMapper (一時停止中)";
                 UpdateHookBlockList();
                 _physicalKeysDown.Clear();
                 foreach(var cts in _activeLoops.Values) { cts.Cancel(); cts.Dispose(); }
                 _activeLoops.Clear();
                 _dispatcher?.ReleaseAllInputs();
             };
+            
+            mnuStop.Click += (s, e) => {
+                _isSuspended = true;
+                mnuSuspend.Enabled = false; mnuStop.Enabled = false; mnuResume.Enabled = true;
+                _trayIcon.Text = "UsbInputMapper (スタンバイ中)";
+                ShutdownCore(); // デバイスやフックを全解放
+            };
+            
             mnuResume.Click += (s, e) => {
+                if (_globalHookManager == null) InitializeCore(); // スタンバイから復帰の場合は再初期化
+                
                 _isSuspended = false;
-                mnuSuspend.Enabled = true; mnuResume.Enabled = false;
+                mnuSuspend.Enabled = true; mnuStop.Enabled = true; mnuResume.Enabled = false;
                 _trayIcon.Text = "UsbInputMapper";
                 UpdateHookBlockList();
             };
+            
             menu.Items.Add(mnuSuspend);
+            menu.Items.Add(mnuStop);
             menu.Items.Add(mnuResume);
 
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("終了", null, ExitApp); 
             _trayIcon.ContextMenuStrip = menu; 
             _trayIcon.DoubleClick += ShowMainForm; 
         }
 
         private void ShowMainForm(object sender, EventArgs e) { if (_mainForm == null || _mainForm.IsDisposed) _mainForm = new MainForm(_profileManager, _diManager); _mainForm.Show(); _mainForm.Activate(); }
-        private void ExitApp(object sender, EventArgs e) { _loopTimer?.Stop(); _trayIcon.Visible = false; _dispatcher?.ReleaseAllInputs(); _globalHookManager?.Dispose(); _rawInputManager?.Dispose(); _diManager?.Dispose(); _appWatcher?.Dispose(); _viGEmOutput?.Dispose(); Application.Exit(); }
+        private void ExitApp(object sender, EventArgs e) { _trayIcon.Visible = false; ShutdownCore(); Application.Exit(); }
     }
 }

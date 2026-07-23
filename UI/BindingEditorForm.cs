@@ -103,12 +103,18 @@ namespace UsbInputMapper.UI
                 chkVibrate.Checked = existingBinding.Action.UseVibration;
                 numVibrateDuration.Value = existingBinding.Action.VibrateDuration;
                 numVibrateTimes.Value = existingBinding.Action.VibrateTimes;
+                
+                // ★追加
+                cmbCursorVis.SelectedIndex = existingBinding.Action.IsCursorVisible ? 1 : 0;
+                numOffsetX.Value = existingBinding.Action.CursorOffsetX; numOffsetY.Value = existingBinding.Action.CursorOffsetY;
+                numSysMouseSpd.Value = existingBinding.Action.SystemMouseSpeed; numSysScroll.Value = existingBinding.Action.SystemScrollLines;
             }
             else
             {
                 ResultBinding = new UsbInputMapper.Profiles.Binding();
                 cmbCondition.SelectedIndex = 0; cmbActionType.SelectedIndex = 1; 
                 numDeadZone.Value = 15; cmbBgAction.SelectedIndex = 0;
+                cmbCursorVis.SelectedIndex = 0;
             }
         }
 
@@ -134,6 +140,11 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "マクロ実行", Value = (int)ActionType.Macro });
             cmbActionType.Items.Add(new ComboItem { Text = "プロファイル切り替え", Value = (int)ActionType.ProfileSwitch });
             
+            // ★追加
+            cmbActionType.Items.Add(new ComboItem { Text = "OS設定: カーソル表示/非表示", Value = (int)ActionType.CursorVisibility });
+            cmbActionType.Items.Add(new ComboItem { Text = "OS設定: カーソル位置ずらし", Value = (int)ActionType.CursorOffset });
+            cmbActionType.Items.Add(new ComboItem { Text = "OS設定: マウス速度/スクロール量", Value = (int)ActionType.SystemMouseSettings });
+
             cmbManualSubTrigger.Items.Add(new ComboItem { Text = "左クリック", Value = 0x0001 });
             cmbManualSubTrigger.Items.Add(new ComboItem { Text = "右クリック", Value = 0x0002 });
             foreach (Keys key in Enum.GetValues(typeof(Keys))) cmbManualSubTrigger.Items.Add(new ComboItem { Text = key.ToString(), Value = 0x010000 | (int)key });
@@ -148,6 +159,9 @@ namespace UsbInputMapper.UI
 
             cmbBgAction.Items.Add("クリック");
             cmbBgAction.Items.Add("キー送信");
+            
+            cmbCursorVis.Items.Add("非表示 (透明化)");
+            cmbCursorVis.Items.Add("表示 (デフォルト)");
         }
 
         private void SetActionTypeCombo(ActionType type) { for (int i = 0; i < cmbActionType.Items.Count; i++) if (((ComboItem)cmbActionType.Items[i]).Value == (int)type) { cmbActionType.SelectedIndex = i; break; } }
@@ -186,6 +200,7 @@ namespace UsbInputMapper.UI
             var type = (ActionType)actItem.Value;
             
             cmbKeyButton.Visible = txtAppPath.Visible = btnBrowseApp.Visible = txtAppArgs.Visible = lblAppArgs.Visible = pnlMouseMove.Visible = pnlBackground.Visible = btnEditMacro.Visible = cmbProfileSwitchTarget.Visible = cmbProfileSwitchMode.Visible = btnSetupStickMouse.Visible = false;
+            cmbCursorVis.Visible = pnlCursorOffset.Visible = pnlSysMouse.Visible = false;
             cmbKeyButton.Items.Clear();
             cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged;
 
@@ -216,6 +231,11 @@ namespace UsbInputMapper.UI
                 case ActionType.Macro: btnEditMacro.Visible = true; break;
                 case ActionType.ProfileSwitch: cmbProfileSwitchTarget.Visible = true; cmbProfileSwitchMode.Visible = true; break;
                 case ActionType.StickToMouse: btnSetupStickMouse.Visible = true; break;
+                
+                // ★追加
+                case ActionType.CursorVisibility: cmbCursorVis.Visible = true; break;
+                case ActionType.CursorOffset: pnlCursorOffset.Visible = true; break;
+                case ActionType.SystemMouseSettings: pnlSysMouse.Visible = true; break;
             }
             if (cmbKeyButton.Items.Count > 0) cmbKeyButton.SelectedIndex = 0;
             if (ResultBinding != null && ResultBinding.Action != null && ResultBinding.Action.ActionType == type) SetOutputTarget(ResultBinding.Action);
@@ -268,6 +288,11 @@ namespace UsbInputMapper.UI
             ResultBinding.Action.MouseX = (int)numMouseX.Value; ResultBinding.Action.MouseY = (int)numMouseY.Value;
             ResultBinding.Action.UseVibration = chkVibrate.Checked; ResultBinding.Action.VibrateDuration = (int)numVibrateDuration.Value; ResultBinding.Action.VibrateTimes = (int)numVibrateTimes.Value;
             ResultBinding.PlayWavPath = txtWavPath.Text;
+            
+            // ★追加
+            ResultBinding.Action.IsCursorVisible = cmbCursorVis.SelectedIndex == 1;
+            ResultBinding.Action.CursorOffsetX = (int)numOffsetX.Value; ResultBinding.Action.CursorOffsetY = (int)numOffsetY.Value;
+            ResultBinding.Action.SystemMouseSpeed = (int)numSysMouseSpd.Value; ResultBinding.Action.SystemScrollLines = (int)numSysScroll.Value;
 
             this.DialogResult = DialogResult.OK; this.Close();
         }
@@ -306,9 +331,4 @@ namespace UsbInputMapper.UI
                 else {
                     int targetX = pt.x; int targetY = pt.y;
                     if (isWindow) { IntPtr hwnd = WindowFromPoint(new Point(pt.x, pt.y)); IntPtr root = GetAncestor(hwnd, 2); if (root != IntPtr.Zero) { Point ptScreen = new Point(pt.x, pt.y); ScreenToClient(root, ref ptScreen); targetX = ptScreen.X; targetY = ptScreen.Y; } }
-                    this.BeginInvoke(new Action(() => { numMouseX.Value = targetX; numMouseY.Value = targetY; }));
-                }
-            });
-        }
-    }
-}
+                    this.BeginInvoke(new Action(() => { numMouseX.Value = targetX; num

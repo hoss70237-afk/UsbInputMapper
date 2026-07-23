@@ -21,6 +21,7 @@ namespace UsbInputMapper.Profiles
         XboxTrigger,  
         AppLaunch,
         FileOpen,         
+        FolderOpen,       // ★追加: フォルダを開く
         AhkRun,           
         Macro,
         ToggleHold,
@@ -28,9 +29,9 @@ namespace UsbInputMapper.Profiles
         StickToMouse, 
         RadialMenu,       
         BackgroundControl,
-        CursorVisibility,    // ★追加: カーソル表示/非表示
-        CursorOffset,        // ★追加: カーソル表示位置ずらし
-        SystemMouseSettings  // ★追加: OSマウス設定変更(速度/スクロール量)
+        CursorVisibility,    
+        CursorOffset,        
+        SystemMouseSettings  
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }
@@ -52,6 +53,12 @@ namespace UsbInputMapper.Profiles
         public string ArgumentExtraStr { get; set; }
         public int MouseX { get; set; }
         public int MouseY { get; set; }
+        
+        // ★追加: 動作モード (0:入力(連動), 1:押す(Downのみ), 2:離す(Upのみ))
+        public int ActionState { get; set; } = 0;
+        
+        // ★追加: マウス移動後の揺らし
+        public bool JiggleCursor { get; set; } = false;
 
         public List<MacroStep> MacroSteps { get; set; }
         public MacroPlaybackMode PlaybackMode { get; set; }
@@ -63,13 +70,10 @@ namespace UsbInputMapper.Profiles
 
         [JsonProperty("GestureSlices")]
         public int RadialMenuSlices { get; set; } = 8;
-        
         [JsonProperty("GestureSize")]
         public int RadialMenuSize { get; set; } = 200;
-        
         [JsonProperty("GestureMode")]
         public int RadialMenuMode { get; set; } = 0; 
-        
         [JsonProperty("GestureDirections")]
         public List<RadialMenuDirection> RadialMenuDirections { get; set; }
 
@@ -82,12 +86,14 @@ namespace UsbInputMapper.Profiles
         public int VibrateDuration { get; set; } = 200;
         public int VibrateTimes { get; set; } = 1;
 
-        // ★追加: カーソル制御・OSマウス設定用
-        public bool IsCursorVisible { get; set; } = true;
+        // ★変更: カーソル制御・OSマウス設定用
+        public int CursorVisMode { get; set; } = 1; // 0:非表示, 1:表示, 2:トグル
         public int CursorOffsetX { get; set; } = 0;
         public int CursorOffsetY { get; set; } = 0;
-        public int SystemMouseSpeed { get; set; } = 10; // OS標準は10 (1〜20)
-        public int SystemScrollLines { get; set; } = 3; // OS標準は3
+        public int SystemMouseSpeed { get; set; } = 10; 
+        public int SystemScrollType { get; set; } = 0;  // 0:行数, 1:1画面ずつ
+        public int SystemScrollLines { get; set; } = 3; 
+        public int SystemHorizontalScroll { get; set; } = 3;
 
         public ActionDef()
         {
@@ -105,18 +111,24 @@ namespace UsbInputMapper.Profiles
                 case ActionType.None: return "アクションなし";
                 case ActionType.Keyboard: 
                 case ActionType.ToggleHold:
-                    if (MultipleKeys != null && MultipleKeys.Count > 0) return "キーボード: " + string.Join("+", MultipleKeys);
-                    return "キーボード: " + (System.Windows.Forms.Keys)ArgumentNum;
-                case ActionType.MouseClick: return "マウスクリック: " + ArgumentNum;
-                case ActionType.MouseMoveRelative: return $"マウス移動(相対): X={MouseX}, Y={MouseY}";
-                case ActionType.MouseMoveAbsoluteDesk: return $"マウス絶対(デスク): X={MouseX}, Y={MouseY}";
-                case ActionType.MouseMoveAbsoluteWin: return $"マウス絶対(アクティブ): X={MouseX}, Y={MouseY}";
-                case ActionType.MouseMoveAbsoluteHoverWin: return $"マウス絶対(ポインタ下): X={MouseX}, Y={MouseY}";
-                case ActionType.XboxController: return "Xboxボタン: " + ArgumentNum;
+                    string kState = ActionState == 1 ? " [押す]" : ActionState == 2 ? " [離す]" : "";
+                    if (MultipleKeys != null && MultipleKeys.Count > 0) return "キーボード: " + string.Join("+", MultipleKeys) + kState;
+                    return "キーボード: " + (System.Windows.Forms.Keys)ArgumentNum + kState;
+                case ActionType.MouseClick: 
+                    string mState = ActionState == 1 ? " [押す]" : ActionState == 2 ? " [離す]" : "";
+                    return "マウスクリック: " + ArgumentNum + mState;
+                case ActionType.MouseMoveRelative: return $"マウス移動(相対): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らす]":"");
+                case ActionType.MouseMoveAbsoluteDesk: return $"マウス絶対(デスク): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らす]":"");
+                case ActionType.MouseMoveAbsoluteWin: return $"マウス絶対(アクティブ): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らす]":"");
+                case ActionType.MouseMoveAbsoluteHoverWin: return $"マウス絶対(ポインタ下): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らす]":"");
+                case ActionType.XboxController: 
+                    string xState = ActionState == 1 ? " [押す]" : ActionState == 2 ? " [離す]" : "";
+                    return "Xboxボタン: " + ArgumentNum + xState;
                 case ActionType.XboxAxis: return "Xboxスティック軸: " + ArgumentNum;
                 case ActionType.XboxTrigger: return "Xboxトリガー: " + ArgumentNum;
                 case ActionType.AppLaunch: return "アプリ起動: " + System.IO.Path.GetFileName(ArgumentStr);
                 case ActionType.FileOpen: return "ファイルを開く: " + System.IO.Path.GetFileName(ArgumentStr);
+                case ActionType.FolderOpen: return "フォルダを開く: " + ArgumentStr;
                 case ActionType.AhkRun: return "AHKスクリプト実行: " + System.IO.Path.GetFileName(ArgumentStr);
                 case ActionType.Macro: return "マクロ実行";
                 case ActionType.ProfileSwitch: return "プロファイル切替: " + ArgumentStr;
@@ -124,10 +136,10 @@ namespace UsbInputMapper.Profiles
                 case ActionType.RadialMenu: return $"ラジアルメニュー({RadialMenuSlices}分割)";
                 case ActionType.BackgroundControl: return $"バックグラウンド操作: {(string.IsNullOrEmpty(BgWindowName)?BgClassName:BgWindowName)}";
                 
-                // ★追加
-                case ActionType.CursorVisibility: return IsCursorVisible ? "カーソル: 表示" : "カーソル: 非表示";
+                case ActionType.CursorVisibility: 
+                    return CursorVisMode == 0 ? "カーソル: 非表示" : CursorVisMode == 1 ? "カーソル: 表示" : "カーソル: トグル";
                 case ActionType.CursorOffset: return $"カーソルずらし: X={CursorOffsetX}, Y={CursorOffsetY}";
-                case ActionType.SystemMouseSettings: return $"OSマウス設定(速度:{SystemMouseSpeed}, スクロール:{SystemScrollLines})";
+                case ActionType.SystemMouseSettings: return $"OSマウス設定";
                 
                 default: return ActionType.ToString();
             }

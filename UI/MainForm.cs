@@ -143,10 +143,22 @@ namespace UsbInputMapper.UI
                 if (res == DialogResult.OK && capture.CapturedEvent != null)
                 {
                     var evt = capture.CapturedEvent;
-                    using (var ed = new BindingEditorForm(null, _profileManager.Profiles.Select(x => x.Name).ToList()))
+                    
+                    // ★変更: 取得したキーの名前をデフォルトアイテム名にセットしてからエディタを開く
+                    var newBinding = new UsbInputMapper.Profiles.Binding();
+                    newBinding.DeviceIdentifier = evt.DeviceIdentifier;
+                    newBinding.InputType = evt.Type;
+                    newBinding.InputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags;
+                    newBinding.Name = UsbInputMapper.Profiles.Binding.GetCodeName(newBinding.InputType, newBinding.InputCode);
+
+                    using (var ed = new BindingEditorForm(newBinding, _profileManager.Profiles.Select(x => x.Name).ToList()))
                     {
-                        var b = ed.ResultBinding; b.DeviceIdentifier = evt.DeviceIdentifier; b.InputType = evt.Type; b.InputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags;
-                        if (ed.ShowDialog(this) == DialogResult.OK) { p.Bindings.Add(b); _profileManager.Save(); RefreshBindings(); }
+                        if (ed.ShowDialog(this) == DialogResult.OK) 
+                        { 
+                            p.Bindings.Add(ed.ResultBinding); 
+                            _profileManager.Save(); 
+                            RefreshBindings(); 
+                        }
                     }
                 }
                 else if (res == DialogResult.Retry) 

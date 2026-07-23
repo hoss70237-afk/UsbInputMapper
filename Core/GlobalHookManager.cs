@@ -17,7 +17,7 @@ namespace UsbInputMapper.Core
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
 
-        private const int WM_MOUSEMOVE = 0x0200; // ★追加: マウス移動イベント
+        private const int WM_MOUSEMOVE = 0x0200;
         private const int WM_LBUTTONDOWN = 0x0201;
         private const int WM_LBUTTONUP = 0x0202;
         private const int WM_RBUTTONDOWN = 0x0204;
@@ -60,6 +60,12 @@ namespace UsbInputMapper.Core
         private HashSet<long> _blockList = new HashSet<long>();
         private Dictionary<long, long> _recentBlocked = new Dictionary<long, long>();
 
+        // ★追加: チャタリングキャンセラ用状態
+        private Dictionary<int, long> _lastMouseClickTime = new Dictionary<int, long>();
+        public bool EnableChatteringCanceler { get; set; } = false;
+        public int ChatteringThresholdMs { get; set; } = 20;
+        public int BlockedChatterCount { get; private set; } = 0; // テストUI用
+
         public bool IsRecording { get; set; }
         public bool IsCoordinateCapturing { get; private set; }
         private Action<POINT, bool> _coordinateCaptureCallback;
@@ -72,7 +78,7 @@ namespace UsbInputMapper.Core
 
         public event EventHandler<HookInputEvent> OnRecordedInput;
         public event EventHandler<HookInputEvent> OnBlockedInputFired;
-        public event EventHandler<POINT> OnMouseMove; // ★追加: マウス移動を外部に通知
+        public event EventHandler<POINT> OnMouseMove;
 
         public class HookInputEvent
         {
@@ -101,6 +107,7 @@ namespace UsbInputMapper.Core
         private long GetHookKey(int type, int code) => ((long)type << 32) | (uint)code;
         public void SetBlockList(HashSet<long> blockList) { _blockList = blockList ?? new HashSet<long>(); }
         public bool WasRecentlyBlocked(int type, int code) { long key = GetHookKey(type, code); if (_recentBlocked.TryGetValue(key, out long time)) { if (Environment.TickCount - time < 200) return true; } return false; }
+        public void ResetChatterCount() { BlockedChatterCount = 0; }
 
         public void StartCoordinateCapture(Action<POINT, bool> onCaptured) { _coordinateCaptureCallback = onCaptured; IsCoordinateCapturing = true; _waitingForUp = false; _waitingForRightUp = false; }
         public void StopCoordinateCapture() { IsCoordinateCapturing = false; _coordinateCaptureCallback = null; }
@@ -139,10 +146,16 @@ namespace UsbInputMapper.Core
                 bool isInjected = (ms.flags & LLMHF_INJECTED) != 0;
                 int msg = wParam.ToInt32();
                 
-                // ★ マウス移動をキャッチして外部へ
                 if (msg == WM_MOUSEMOVE && !isInjected)
                 {
-                    OnMouseMove?.Invoke(this, ms.pt);
+                    // ★追加: カーソルずらし機能が有効な場合、外部への通知（ベゼル判定用など）に補正座標を渡す
+                    POINT notifyPt = ms.pt;
+                    if (SystemMouseManager.IsOffsetActive)
+                    {
+                        notifyPt.x += SystemMouseManager.OffsetX;
+                        notifyPt.y += SystemMouseManager.OffsetY;
+                    }
+                    OnMouseMove?.Invoke(this, notifyPt);
                 }
                 
                 int code = -1;
@@ -151,6 +164,21 @@ namespace UsbInputMapper.Core
 
                 if (!isInjected)
                 {
+                    // ★追加: チャタリングキャンセラ
+                    if (code != -1 && isDown && EnableChatteringCanceler && code <= 3) // 左中右のみ対象
+                    {
+                        long now = Environment.TickCount;
+                        if (_lastMouseClickTime.TryGetValue(code, out long lastTime))
+                        {
+                            if (now - lastTime < ChatteringThresholdMs)
+                            {
+                                BlockedChatterCount++;
+                                return (IntPtr)1; // 入力をブロック
+                            }
+                        }
+                        _lastMouseClickTime[code] = now;
+                    }
+
                     if (IsRadialMenuClickCapturing && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN))
                     {
                         IsRadialMenuClickCapturing = false;

@@ -16,6 +16,8 @@ namespace UsbInputMapper.UI
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private static List<UsbInputMapper.Profiles.Binding> _clipboardBindings = new List<UsbInputMapper.Profiles.Binding>();
         private ContextMenuStrip _bindingsContextMenu;
+        
+        private Timer _monitorTimer;
 
         public MainForm(ProfileManager profileManager, DirectInputManager diManager)
         {
@@ -33,6 +35,9 @@ namespace UsbInputMapper.UI
             }
 
             InputLogger.OnLog += LogMessage;
+            
+            _monitorTimer = new Timer { Interval = 100 };
+            _monitorTimer.Tick += MonitorTimer_Tick;
         }
 
         private void LogMessage(string msg)
@@ -49,6 +54,24 @@ namespace UsbInputMapper.UI
         private void chkLog_CheckedChanged(object sender, EventArgs e)
         {
             InputLogger.IsLoggingEnabled = chkLog.Checked;
+            if (chkLog.Checked)
+            {
+                _monitorTimer.Start();
+                txtLog.AppendText("=== モニター開始 ===" + Environment.NewLine);
+            }
+            else
+            {
+                _monitorTimer.Stop();
+                txtLog.AppendText("=== モニター停止 ===" + Environment.NewLine);
+            }
+        }
+
+        private void MonitorTimer_Tick(object sender, EventArgs e)
+        {
+            if (GlobalHookManager.Instance != null && GlobalHookManager.Instance.EnableChatteringCanceler)
+            {
+                lblChatterCount.Text = $"ブロックしたチャタリング回数: {GlobalHookManager.Instance.BlockedChatterCount} 回";
+            }
         }
 
         private void SetupContextMenu()
@@ -77,11 +100,24 @@ namespace UsbInputMapper.UI
 
         private void lstProfiles_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (lstProfiles.SelectedItem is Profile p) chkEnableXInput.Checked = p.EnableXInput;
+            if (lstProfiles.SelectedItem is Profile p) 
+            {
+                chkEnableXInput.Checked = p.EnableXInput;
+                chkChattering.Checked = p.EnableChatteringCanceler;
+                numChatterMs.Value = p.ChatteringThresholdMs;
+                
+                chkOverlayMark.Checked = p.OverlayShowMark;
+                chkOverlayName.Checked = p.OverlayShowName;
+            }
             RefreshBindings();
         }
 
         private void chkEnableXInput_CheckedChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.EnableXInput = chkEnableXInput.Checked; _profileManager.Save(); } }
+        private void chkChattering_CheckedChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.EnableChatteringCanceler = chkChattering.Checked; p.ChatteringThresholdMs = (int)numChatterMs.Value; _profileManager.Save(); } }
+        private void numChatterMs_ValueChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.ChatteringThresholdMs = (int)numChatterMs.Value; _profileManager.Save(); } }
+        private void chkOverlayMark_CheckedChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.OverlayShowMark = chkOverlayMark.Checked; _profileManager.Save(); } }
+        private void chkOverlayName_CheckedChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.OverlayShowName = chkOverlayName.Checked; _profileManager.Save(); } }
+
         private void chkStartup_CheckedChanged(object sender, EventArgs e) { using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey, true)) { if (chkStartup.Checked) key.SetValue("UsbInputMapper", Application.ExecutablePath); else key.DeleteValue("UsbInputMapper", false); } }
         private void btnControllerBase_Click(object sender, EventArgs e) { using (var f = new ControllerBaseForm(_profileManager, _diManager)) { f.ShowDialog(this); } }
 
@@ -133,10 +169,15 @@ namespace UsbInputMapper.UI
         private void btnUpBinding_Click(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedItems.Count == 1 && lstBindings.SelectedIndex > 0) { int idx = lstBindings.SelectedIndex; _profileManager.MoveBinding(p.Bindings, idx, -1); RefreshBindings(); lstBindings.SetSelected(idx - 1, true); } }
         private void btnDownBinding_Click(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p && lstBindings.SelectedItems.Count == 1 && lstBindings.SelectedIndex >= 0 && lstBindings.SelectedIndex < lstBindings.Items.Count - 1) { int idx = lstBindings.SelectedIndex; _profileManager.MoveBinding(p.Bindings, idx, 1); RefreshBindings(); lstBindings.SetSelected(idx + 1, true); } }
 
+        private void btnResetChatter_Click(object sender, EventArgs e)
+        {
+            if (GlobalHookManager.Instance != null) GlobalHookManager.Instance.ResetChatterCount();
+        }
+
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; this.Hide(); }
-            else { InputLogger.OnLog -= LogMessage; }
+            else { InputLogger.OnLog -= LogMessage; _monitorTimer?.Stop(); }
         }
     }
 }

@@ -12,7 +12,6 @@ namespace UsbInputMapper.Profiles
         private readonly string _settingsFilePath;
         private readonly string _controllerBaseFilePath;
         private readonly string _baseFolder;
-        private readonly bool _isPortable;
         
         public List<Profile> Profiles { get; private set; }
         public List<Binding> ControllerBaseBindings { get; private set; } 
@@ -30,15 +29,13 @@ namespace UsbInputMapper.Profiles
             string exeProfilePath = Path.Combine(exeFolder, "profiles.json");
             string portableMarker = Path.Combine(exeFolder, "portable.txt");
 
-            // ★追加: ポータブルモード判定
+            // ポータブルモード判定
             if (File.Exists(portableMarker) || File.Exists(exeProfilePath))
             {
-                _isPortable = true;
                 _baseFolder = exeFolder;
             }
             else
             {
-                _isPortable = false;
                 string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 _baseFolder = Path.Combine(appData, "UsbInputMapper");
                 if (!Directory.Exists(_baseFolder)) Directory.CreateDirectory(_baseFolder);
@@ -72,7 +69,7 @@ namespace UsbInputMapper.Profiles
         {
             try
             {
-                // ★追加: 5世代バックアップ機能
+                // 5世代バックアップ機能
                 ManageBackups(_settingsFilePath);
                 ManageBackups(_controllerBaseFilePath);
 
@@ -138,7 +135,7 @@ namespace UsbInputMapper.Profiles
         {
             CurrentProfile = newProfile;
             
-            // ★追加: プロファイルが切り替わった時、前回のOS変更が残っていれば強制リセット
+            // プロファイルが切り替わった時、前回のOS変更が残っていれば強制リセット
             SystemMouseManager.RestoreAllSafely();
             
             OnProfileChanged?.Invoke(this, EventArgs.Empty);

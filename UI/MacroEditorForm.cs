@@ -19,6 +19,7 @@ namespace UsbInputMapper.UI
         private List<string> _profileNames;
         private long _lastRecordTime = 0;
         private bool _isUpdatingUI = false;
+        private bool _isTimelineMode = false;
 
         public MacroEditorForm(ActionDef action, List<string> profileNames = null)
         {
@@ -48,6 +49,12 @@ namespace UsbInputMapper.UI
             cmbPlaybackMode.SelectedIndex = (int)_action.PlaybackMode;
 
             lstSteps.SelectedIndexChanged += LstSteps_SelectedIndexChanged;
+            
+            // ★追加: タイムライン用
+            pnlTimeline.Paint += PnlTimeline_Paint;
+            pnlTimeline.MouseDown += PnlTimeline_MouseDown;
+            pnlTimeline.MouseMove += PnlTimeline_MouseMove;
+            pnlTimeline.MouseUp += PnlTimeline_MouseUp;
 
             AttachPropertyEvents();
 
@@ -123,6 +130,7 @@ namespace UsbInputMapper.UI
                 txtWavStart.Text = ""; txtWavEnd.Text = ""; chkWaitForExit.Checked = false; chkWaitForExit.Visible = false;
                 _isUpdatingUI = false;
             }
+            if (_isTimelineMode) pnlTimeline.Invalidate();
         }
 
         private void RefreshMacroList(int selectIndex = -1)
@@ -144,6 +152,8 @@ namespace UsbInputMapper.UI
             }
             if (selectIndex >= 0 && selectIndex < lstSteps.Items.Count) lstSteps.SelectedIndex = selectIndex;
             _isUpdatingUI = false;
+            
+            if (_isTimelineMode) pnlTimeline.Invalidate();
         }
 
         private void btnAdd_Click(object sender, EventArgs e)
@@ -256,6 +266,119 @@ namespace UsbInputMapper.UI
                 }
             }
             _lastRecordTime = now; RefreshMacroList(_action.MacroSteps.Count - 1);
+        }
+        
+        // ★追加: タイムライン用描画ロジック
+        private void btnToggleTimeline_Click(object sender, EventArgs e)
+        {
+            _isTimelineMode = !_isTimelineMode;
+            lstSteps.Visible = !_isTimelineMode;
+            pnlTimeline.Visible = _isTimelineMode;
+            btnToggleTimeline.Text = _isTimelineMode ? "リスト編集へ戻る" : "タイムライン編集 (絶対時間)";
+            if (_isTimelineMode) pnlTimeline.Invalidate();
+        }
+
+        private const int ROW_HEIGHT = 20;
+        private const float MS_PER_PIXEL = 5.0f; // 1ピクセルあたり5ms
+        private int _draggingStepIndex = -1;
+        private int _dragStartX = 0;
+        private int _dragStartDelay = 0;
+
+        private void PnlTimeline_Paint(object sender, PaintEventArgs e)
+        {
+            if (!_isTimelineMode) return;
+            Graphics g = e.Graphics;
+            g.Clear(Color.White);
+            
+            // 背景のグリッド描画
+            int w = pnlTimeline.Width; int h = pnlTimeline.Height;
+            using (Pen gridPen = new Pen(Color.LightGray))
+            {
+                for (int x = 0; x < w; x += 20) g.DrawLine(gridPen, x, 0, x, h); // 100ms単位
+                for (int y = 0; y < h; y += ROW_HEIGHT) g.DrawLine(gridPen, 0, y, w, y);
+            }
+
+            int currentAbsTime = 0;
+            using (Font f = new Font("MS UI Gothic", 8))
+            {
+                for (int i = 0; i < _action.MacroSteps.Count; i++)
+                {
+                    var step = _action.MacroSteps[i];
+                    currentAbsTime += step.DelayMs;
+                    
+                    int px = (int)(currentAbsTime / MS_PER_PIXEL);
+                    int py = i * ROW_HEIGHT;
+                    
+                    Rectangle rect = new Rectangle(px, py, 15, ROW_HEIGHT - 2);
+                    
+                    bool isSelected = (lstSteps.SelectedIndex == i);
+                    using (Brush b = new SolidBrush(isSelected ? Color.DodgerBlue : Color.LightGreen))
+                    {
+                        g.FillRectangle(b, rect);
+                    }
+                    g.DrawRectangle(Pens.Black, rect);
+                    
+                    ActionDef dummyAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr };
+                    g.DrawString(dummyAct.ToString(), f, Brushes.Black, px + 20, py + 3);
+                }
+            }
+        }
+
+        private void PnlTimeline_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                int currentAbsTime = 0;
+                for (int i = 0; i < _action.MacroSteps.Count; i++)
+                {
+                    var step = _action.MacroSteps[i];
+                    currentAbsTime += step.DelayMs;
+                    
+                    int px = (int)(currentAbsTime / MS_PER_PIXEL);
+                    int py = i * ROW_HEIGHT;
+                    
+                    Rectangle rect = new Rectangle(px, py, 15, ROW_HEIGHT - 2);
+                    if (rect.Contains(e.Location))
+                    {
+                        lstSteps.SelectedIndex = i;
+                        _draggingStepIndex = i;
+                        _dragStartX = e.X;
+                        _dragStartDelay = step.DelayMs;
+                        return;
+                    }
+                }
+            }
+        }
+
+        private void PnlTimeline_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (_draggingStepIndex != -1 && e.Button == MouseButtons.Left)
+            {
+                int dx = e.X - _dragStartX;
+                int dDelay = (int)(dx * MS_PER_PIXEL);
+                int newDelay = _dragStartDelay + dDelay;
+                if (newDelay < 0) newDelay = 0;
+                
+                _action.MacroSteps[_draggingStepIndex].DelayMs = newDelay;
+                
+                if (lstSteps.SelectedIndex == _draggingStepIndex)
+                {
+                    _isUpdatingUI = true;
+                    numDelay.Value = newDelay;
+                    _isUpdatingUI = false;
+                }
+                
+                pnlTimeline.Invalidate();
+            }
+        }
+
+        private void PnlTimeline_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (_draggingStepIndex != -1)
+            {
+                _draggingStepIndex = -1;
+                RefreshMacroList(lstSteps.SelectedIndex);
+            }
         }
 
         private void MacroEditorForm_FormClosed(object sender, FormClosedEventArgs e) { if (GlobalHookManager.Instance != null) { GlobalHookManager.Instance.IsRecording = false; GlobalHookManager.Instance.OnRecordedInput -= Hook_OnRecordedInput; } }

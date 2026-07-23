@@ -48,6 +48,10 @@ namespace UsbInputMapper.Core
 
         public void Dispatch(ActionDef action, bool isDown)
         {
+            // ★変更: 動作モード(入力=0, 押す=1, 離す=2)による振り分け
+            if (action.ActionState == 1) { if (!isDown) return; isDown = true; }
+            else if (action.ActionState == 2) { if (!isDown) return; isDown = false; }
+
             switch (action.ActionType)
             {
                 case ActionType.Keyboard:
@@ -56,25 +60,40 @@ namespace UsbInputMapper.Core
                     else SendKeyboardInputs(new List<int> { action.ArgumentNum }, isDown);
                     break;
                 case ActionType.MouseClick: SendMouseClick(action.ArgumentNum, isDown); break;
-                case ActionType.MouseMoveRelative: if (isDown) SendMouseMove(action.MouseX, action.MouseY, false, false); break;
-                case ActionType.MouseMoveAbsoluteDesk: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, false); break;
-                case ActionType.MouseMoveAbsoluteWin: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, true); break;
-                case ActionType.MouseMoveAbsoluteHoverWin: if (isDown) SendMouseMoveHover(action.MouseX, action.MouseY); break;
+                case ActionType.MouseMoveRelative: if (isDown) SendMouseMove(action.MouseX, action.MouseY, false, false, action.JiggleCursor); break;
+                case ActionType.MouseMoveAbsoluteDesk: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, false, action.JiggleCursor); break;
+                case ActionType.MouseMoveAbsoluteWin: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, true, action.JiggleCursor); break;
+                case ActionType.MouseMoveAbsoluteHoverWin: if (isDown) SendMouseMoveHover(action.MouseX, action.MouseY, action.JiggleCursor); break;
                 case ActionType.MousePosSave: if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt); break;
                 case ActionType.MousePosRestore:
-                    if (isDown && _mousePositionStack.Count > 0) { var popPt = _mousePositionStack.Pop(); SendMouseMove(popPt.X, popPt.Y, true, false); } break;
+                    if (isDown && _mousePositionStack.Count > 0) { var popPt = _mousePositionStack.Pop(); SendMouseMove(popPt.X, popPt.Y, true, false, false); } break;
                 case ActionType.AppLaunch: 
                 case ActionType.FileOpen:
                 case ActionType.AhkRun:
                     if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
+                case ActionType.FolderOpen:
+                    if (isDown && !string.IsNullOrEmpty(action.ArgumentStr)) { try { Process.Start("explorer.exe", action.ArgumentStr); } catch { } } break;
                 case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
                 case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
                 case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; 
                 
-                // ★追加: カーソル制御とシステムマウス設定
-                case ActionType.CursorVisibility: if (isDown) { if (action.IsCursorVisible) SystemMouseManager.ShowCursor(); else SystemMouseManager.HideCursor(); } break;
-                case ActionType.CursorOffset: if (isDown) { SystemMouseManager.SetCursorOffset(action.CursorOffsetX, action.CursorOffsetY); } break;
-                case ActionType.SystemMouseSettings: if (isDown) { SystemMouseManager.SetMouseSpeed(action.SystemMouseSpeed); SystemMouseManager.SetScrollLines(action.SystemScrollLines); } break;
+                case ActionType.CursorVisibility: 
+                    if (isDown) { 
+                        int mode = action.CursorVisMode;
+                        if (mode == 2) mode = SystemMouseManager.IsCursorHidden ? 1 : 0;
+                        if (mode == 1) SystemMouseManager.ShowCursor(); else SystemMouseManager.HideCursor(); 
+                    } 
+                    break;
+                case ActionType.CursorOffset: 
+                    if (isDown) { SystemMouseManager.SetCursorOffset(action.CursorOffsetX, action.CursorOffsetY); } 
+                    break;
+                case ActionType.SystemMouseSettings: 
+                    if (isDown) { 
+                        SystemMouseManager.SetMouseSpeed(action.SystemMouseSpeed); 
+                        SystemMouseManager.SetScrollLines(action.SystemScrollLines, action.SystemScrollType == 1); 
+                        SystemMouseManager.SetHorizontalScrollChars(action.SystemHorizontalScroll);
+                    } 
+                    break;
             }
         }
 
@@ -82,11 +101,7 @@ namespace UsbInputMapper.Core
         {
             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
             Task.Run(() => {
-                try {
-                    using (var player = new System.Media.SoundPlayer(path)) {
-                        player.PlaySync();
-                    }
-                } catch { }
+                try { using (var player = new System.Media.SoundPlayer(path)) { player.PlaySync(); } } catch { }
             });
         }
 
@@ -110,16 +125,14 @@ namespace UsbInputMapper.Core
                 bool isUp = step.PressState == StepPressState.Up || step.PressState == StepPressState.Tap;
 
                 ActionDef stepAct = new ActionDef { 
-                    ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, ArgumentExtraStr = step.ArgumentExtraStr, MouseX = step.MouseX, MouseY = step.MouseY, BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName,
-                    // ★追加パラメータ引き継ぎ
-                    IsCursorVisible = true, CursorOffsetX = 0, CursorOffsetY = 0, SystemMouseSpeed = 10, SystemScrollLines = 3
+                    ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr, ArgumentExtraStr = step.ArgumentExtraStr, MouseX = step.MouseX, MouseY = step.MouseY, BgActionMode = step.BgActionMode, BgClassName = step.BgClassName, BgControlId = step.BgControlId, BgWindowName = step.BgWindowName, ActionState = 0 
                 };
                 
                 if (isDown) 
                 {
-                    if (step.ActionType == ActionType.AhkRun || step.ActionType == ActionType.AppLaunch || step.ActionType == ActionType.FileOpen)
+                    if (step.ActionType == ActionType.AhkRun || step.ActionType == ActionType.AppLaunch || step.ActionType == ActionType.FileOpen || step.ActionType == ActionType.FolderOpen)
                     {
-                        var proc = LaunchApp(step.ArgumentStr, step.ArgumentExtraStr);
+                        var proc = step.ActionType == ActionType.FolderOpen ? Process.Start("explorer.exe", step.ArgumentStr) : LaunchApp(step.ArgumentStr, step.ArgumentExtraStr);
                         if (proc != null && step.WaitForExit)
                         {
                             await Task.Run(() => { try { proc.WaitForExit(); } catch { } });
@@ -133,7 +146,7 @@ namespace UsbInputMapper.Core
                 
                 if (step.PressState == StepPressState.Tap) await Task.Delay(10);
                 
-                if (isUp && step.ActionType != ActionType.AhkRun && step.ActionType != ActionType.AppLaunch && step.ActionType != ActionType.FileOpen) 
+                if (isUp && step.ActionType != ActionType.AhkRun && step.ActionType != ActionType.AppLaunch && step.ActionType != ActionType.FileOpen && step.ActionType != ActionType.FolderOpen) 
                 {
                     Dispatch(stepAct, false);
                 }
@@ -181,7 +194,7 @@ namespace UsbInputMapper.Core
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
         }
 
-        public void SendMouseMove(int x, int y, bool isAbsolute, bool isWindowRelative)
+        public void SendMouseMove(int x, int y, bool isAbsolute, bool isWindowRelative, bool jiggle)
         {
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
@@ -199,12 +212,10 @@ namespace UsbInputMapper.Core
                     }
                 }
                 
-                // ★追加: カーソルずらし指定があればここで補正（マウス実機自体がずれた位置に飛ぶのを防ぐのではなく、送る座標そのものをずらす）
-                if (SystemMouseManager.IsOffsetActive)
-                {
-                    targetX -= SystemMouseManager.OffsetX;
-                    targetY -= SystemMouseManager.OffsetY;
-                }
+                // ★注意: SystemMouseManagerのオフセットは物理マウス移動時の上書き用であり、
+                // ソフトウェア的な絶対座標移動には影響させない方が安全。
+                // (ユーザーが「x:500 y:500へ移動」と設定したら、素直に画面の500,500へ飛ぶのが期待動作)
+                // もしここでもオフセットを適用したい場合はここで足すが、今回はスキップ。
 
                 int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
                 inputs[0].u.mi.dx = (targetX * 65535) / sW; inputs[0].u.mi.dy = (targetY * 65535) / sH;
@@ -216,9 +227,20 @@ namespace UsbInputMapper.Core
                 inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE;
             }
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
+            
+            // ★追加: ポインタの揺らし
+            if (jiggle)
+            {
+                Task.Delay(10).ContinueWith(_ => {
+                    SendMouseMove(1, 1, false, false, false);
+                    Task.Delay(10).ContinueWith(__ => {
+                        SendMouseMove(-1, -1, false, false, false);
+                    });
+                });
+            }
         }
 
-        private void SendMouseMoveHover(int x, int y)
+        private void SendMouseMoveHover(int x, int y, bool jiggle)
         {
             if (SendInputNative.GetCursorPos(out var pt))
             {
@@ -228,7 +250,7 @@ namespace UsbInputMapper.Core
                 {
                     SendInputNative.POINT ptScreen = new SendInputNative.POINT { X = 0, Y = 0 };
                     ClientToScreen(root, ref ptScreen);
-                    SendMouseMove(ptScreen.X + x, ptScreen.Y + y, true, false);
+                    SendMouseMove(ptScreen.X + x, ptScreen.Y + y, true, false, jiggle);
                 }
             }
         }

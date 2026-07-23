@@ -104,10 +104,13 @@ namespace UsbInputMapper.UI
                 numVibrateDuration.Value = existingBinding.Action.VibrateDuration;
                 numVibrateTimes.Value = existingBinding.Action.VibrateTimes;
                 
-                // ★追加
-                cmbCursorVis.SelectedIndex = existingBinding.Action.IsCursorVisible ? 1 : 0;
+                cmbActionState.SelectedIndex = existingBinding.Action.ActionState;
+                chkJiggle.Checked = existingBinding.Action.JiggleCursor;
+                cmbCursorVis.SelectedIndex = existingBinding.Action.CursorVisMode;
                 numOffsetX.Value = existingBinding.Action.CursorOffsetX; numOffsetY.Value = existingBinding.Action.CursorOffsetY;
                 numSysMouseSpd.Value = existingBinding.Action.SystemMouseSpeed; numSysScroll.Value = existingBinding.Action.SystemScrollLines;
+                chkSysScrollPage.Checked = existingBinding.Action.SystemScrollType == 1;
+                numSysHScroll.Value = existingBinding.Action.SystemHorizontalScroll;
             }
             else
             {
@@ -115,6 +118,7 @@ namespace UsbInputMapper.UI
                 cmbCondition.SelectedIndex = 0; cmbActionType.SelectedIndex = 1; 
                 numDeadZone.Value = 15; cmbBgAction.SelectedIndex = 0;
                 cmbCursorVis.SelectedIndex = 0;
+                cmbActionState.SelectedIndex = 0;
             }
         }
 
@@ -134,13 +138,13 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "スティックでマウス移動", Value = (int)ActionType.StickToMouse });
             cmbActionType.Items.Add(new ComboItem { Text = "アプリケーション起動", Value = (int)ActionType.AppLaunch });
             cmbActionType.Items.Add(new ComboItem { Text = "ファイルを開く", Value = (int)ActionType.FileOpen });
+            cmbActionType.Items.Add(new ComboItem { Text = "フォルダを開く", Value = (int)ActionType.FolderOpen }); // ★追加
             cmbActionType.Items.Add(new ComboItem { Text = "AHKスクリプト実行", Value = (int)ActionType.AhkRun });
             cmbActionType.Items.Add(new ComboItem { Text = "バックグラウンド操作", Value = (int)ActionType.BackgroundControl });
             cmbActionType.Items.Add(new ComboItem { Text = "トグル維持", Value = (int)ActionType.ToggleHold });
             cmbActionType.Items.Add(new ComboItem { Text = "マクロ実行", Value = (int)ActionType.Macro });
             cmbActionType.Items.Add(new ComboItem { Text = "プロファイル切り替え", Value = (int)ActionType.ProfileSwitch });
             
-            // ★追加
             cmbActionType.Items.Add(new ComboItem { Text = "OS設定: カーソル表示/非表示", Value = (int)ActionType.CursorVisibility });
             cmbActionType.Items.Add(new ComboItem { Text = "OS設定: カーソル位置ずらし", Value = (int)ActionType.CursorOffset });
             cmbActionType.Items.Add(new ComboItem { Text = "OS設定: マウス速度/スクロール量", Value = (int)ActionType.SystemMouseSettings });
@@ -160,8 +164,15 @@ namespace UsbInputMapper.UI
             cmbBgAction.Items.Add("クリック");
             cmbBgAction.Items.Add("キー送信");
             
+            // ★変更: トグル追加
             cmbCursorVis.Items.Add("非表示 (透明化)");
             cmbCursorVis.Items.Add("表示 (デフォルト)");
+            cmbCursorVis.Items.Add("トグル切替");
+            
+            // ★追加: 動作ステート
+            cmbActionState.Items.Add("入力 (連動)");
+            cmbActionState.Items.Add("押す (Downのみ)");
+            cmbActionState.Items.Add("離す (Upのみ)");
         }
 
         private void SetActionTypeCombo(ActionType type) { for (int i = 0; i < cmbActionType.Items.Count; i++) if (((ComboItem)cmbActionType.Items[i]).Value == (int)type) { cmbActionType.SelectedIndex = i; break; } }
@@ -200,21 +211,24 @@ namespace UsbInputMapper.UI
             var type = (ActionType)actItem.Value;
             
             cmbKeyButton.Visible = txtAppPath.Visible = btnBrowseApp.Visible = txtAppArgs.Visible = lblAppArgs.Visible = pnlMouseMove.Visible = pnlBackground.Visible = btnEditMacro.Visible = cmbProfileSwitchTarget.Visible = cmbProfileSwitchMode.Visible = btnSetupStickMouse.Visible = false;
-            cmbCursorVis.Visible = pnlCursorOffset.Visible = pnlSysMouse.Visible = false;
+            cmbCursorVis.Visible = pnlCursorOffset.Visible = pnlSysMouse.Visible = cmbActionState.Visible = chkJiggle.Visible = false;
             cmbKeyButton.Items.Clear();
             cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged;
 
             switch (type)
             {
                 case ActionType.Keyboard: case ActionType.ToggleHold:
-                    cmbKeyButton.Visible = true; cmbKeyButton.Items.Add(new ComboItem { Text = "(None)", Value = 0 }); cmbKeyButton.Items.Add(new ComboItem { Text = "実際に入力 (同時押し対応)...", Value = -1 });
+                    cmbKeyButton.Visible = true; cmbActionState.Visible = true;
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "(None)", Value = 0 }); cmbKeyButton.Items.Add(new ComboItem { Text = "実際に入力 (同時押し対応)...", Value = -1 });
                     foreach (Keys key in Enum.GetValues(typeof(Keys))) cmbKeyButton.Items.Add(new ComboItem { Text = key.ToString(), Value = (int)key });
                     break;
                 case ActionType.MouseClick:
-                    cmbKeyButton.Visible = true; cmbKeyButton.Items.Add(new ComboItem { Text = "左クリック", Value = 1 }); cmbKeyButton.Items.Add(new ComboItem { Text = "右クリック", Value = 2 }); cmbKeyButton.Items.Add(new ComboItem { Text = "中クリック", Value = 3 }); cmbKeyButton.Items.Add(new ComboItem { Text = "ホイール上", Value = 4 }); cmbKeyButton.Items.Add(new ComboItem { Text = "ホイール下", Value = 5 });
+                    cmbKeyButton.Visible = true; cmbActionState.Visible = true;
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "左クリック", Value = 1 }); cmbKeyButton.Items.Add(new ComboItem { Text = "右クリック", Value = 2 }); cmbKeyButton.Items.Add(new ComboItem { Text = "中クリック", Value = 3 }); cmbKeyButton.Items.Add(new ComboItem { Text = "ホイール上", Value = 4 }); cmbKeyButton.Items.Add(new ComboItem { Text = "ホイール下", Value = 5 });
                     break;
                 case ActionType.XboxController:
-                    cmbKeyButton.Visible = true; string[] xboxBtns = { "A", "B", "X", "Y", "LB", "RB", "Back", "Start", "L3", "R3", "上", "下", "左", "右" };
+                    cmbKeyButton.Visible = true; cmbActionState.Visible = true;
+                    string[] xboxBtns = { "A", "B", "X", "Y", "LB", "RB", "Back", "Start", "L3", "R3", "上", "下", "左", "右" };
                     for (int i = 0; i < xboxBtns.Length; i++) cmbKeyButton.Items.Add(new ComboItem { Text = xboxBtns[i], Value = i + 1 });
                     break;
                 case ActionType.XboxAxis:
@@ -224,15 +238,16 @@ namespace UsbInputMapper.UI
                     cmbKeyButton.Visible = true; cmbKeyButton.Items.Add(new ComboItem { Text = "左トリガー (LT)", Value = 1 }); cmbKeyButton.Items.Add(new ComboItem { Text = "右トリガー (RT)", Value = 2 });
                     break;
                 case ActionType.MouseMoveRelative: case ActionType.MouseMoveContinuous: case ActionType.MouseMoveAbsoluteDesk: case ActionType.MouseMoveAbsoluteWin: case ActionType.MouseMoveAbsoluteHoverWin:
-                    pnlMouseMove.Visible = true; btnCaptureCoord.Visible = (type != ActionType.MouseMoveContinuous); break;
-                case ActionType.AppLaunch: case ActionType.FileOpen: case ActionType.AhkRun:
-                    txtAppPath.Visible = true; btnBrowseApp.Visible = true; txtAppArgs.Visible = true; lblAppArgs.Visible = true; break;
+                    pnlMouseMove.Visible = true; btnCaptureCoord.Visible = (type != ActionType.MouseMoveContinuous); chkJiggle.Visible = true; break;
+                case ActionType.AppLaunch: case ActionType.FileOpen: case ActionType.AhkRun: case ActionType.FolderOpen:
+                    txtAppPath.Visible = true; btnBrowseApp.Visible = true; 
+                    if (type != ActionType.FolderOpen) { txtAppArgs.Visible = true; lblAppArgs.Visible = true; }
+                    break;
                 case ActionType.BackgroundControl: pnlBackground.Visible = true; break;
                 case ActionType.Macro: btnEditMacro.Visible = true; break;
                 case ActionType.ProfileSwitch: cmbProfileSwitchTarget.Visible = true; cmbProfileSwitchMode.Visible = true; break;
                 case ActionType.StickToMouse: btnSetupStickMouse.Visible = true; break;
                 
-                // ★追加
                 case ActionType.CursorVisibility: cmbCursorVis.Visible = true; break;
                 case ActionType.CursorOffset: pnlCursorOffset.Visible = true; break;
                 case ActionType.SystemMouseSettings: pnlSysMouse.Visible = true; break;
@@ -289,10 +304,15 @@ namespace UsbInputMapper.UI
             ResultBinding.Action.UseVibration = chkVibrate.Checked; ResultBinding.Action.VibrateDuration = (int)numVibrateDuration.Value; ResultBinding.Action.VibrateTimes = (int)numVibrateTimes.Value;
             ResultBinding.PlayWavPath = txtWavPath.Text;
             
-            // ★追加
-            ResultBinding.Action.IsCursorVisible = cmbCursorVis.SelectedIndex == 1;
+            ResultBinding.Action.ActionState = cmbActionState.Visible ? cmbActionState.SelectedIndex : 0;
+            ResultBinding.Action.JiggleCursor = chkJiggle.Visible ? chkJiggle.Checked : false;
+
+            ResultBinding.Action.CursorVisMode = cmbCursorVis.SelectedIndex;
             ResultBinding.Action.CursorOffsetX = (int)numOffsetX.Value; ResultBinding.Action.CursorOffsetY = (int)numOffsetY.Value;
-            ResultBinding.Action.SystemMouseSpeed = (int)numSysMouseSpd.Value; ResultBinding.Action.SystemScrollLines = (int)numSysScroll.Value;
+            ResultBinding.Action.SystemMouseSpeed = (int)numSysMouseSpd.Value; 
+            ResultBinding.Action.SystemScrollType = chkSysScrollPage.Checked ? 1 : 0;
+            ResultBinding.Action.SystemScrollLines = (int)numSysScroll.Value;
+            ResultBinding.Action.SystemHorizontalScroll = (int)numSysHScroll.Value;
 
             this.DialogResult = DialogResult.OK; this.Close();
         }
@@ -305,7 +325,26 @@ namespace UsbInputMapper.UI
         private void btnManualAddSub_Click(object sender, EventArgs e) { if (cmbManualSubTrigger.SelectedItem is ComboItem item) { int type = (item.Value & 0x010000) != 0 ? 1 : 0; var key = new TriggerKey { DeviceIdentifier = "Any", Type = type, Code = item.Value & 0xFFFF }; lstSubTriggers.Items.Add(key); } }
         private void cmbCondition_SelectedIndexChanged(object sender, EventArgs e) { int idx = cmbCondition.SelectedIndex; lblParam.Visible = numConditionParam.Visible = (idx == 1 || idx == 2); if (idx == 1) lblParam.Text = "長押し(ms):"; if (idx == 2) lblParam.Text = "連打(ms):"; }
         private void cmbKeyButton_SelectedIndexChanged(object sender, EventArgs e) { if (cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value == -1) { using (var capture = new CaptureForm(CaptureMode.MultiKeyboard)) { if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedKeys.Count > 0) { ResultBinding.Action.MultipleKeys = new List<int>(capture.CapturedKeys); string keysStr = string.Join(" + ", capture.CapturedKeys.Select(k => ((Keys)k).ToString())); var customItem = new ComboItem { Text = $"[保存済] {keysStr}", Value = -2 }; cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged; cmbKeyButton.Items.Insert(0, customItem); cmbKeyButton.SelectedIndex = 0; cmbKeyButton.SelectedIndexChanged += cmbKeyButton_SelectedIndexChanged; } else cmbKeyButton.SelectedIndex = 0; } } }
-        private void btnBrowseApp_Click(object sender, EventArgs e) { using (var ofd = new OpenFileDialog { Filter = "実行ファイル等|*.exe;*.ahk;*.bat;*.cmd;*.vbs|全て|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) txtAppPath.Text = ofd.FileName; } }
+        
+        private void btnBrowseApp_Click(object sender, EventArgs e) 
+        { 
+            var type = (ActionType)((ComboItem)cmbActionType.SelectedItem).Value;
+            if (type == ActionType.FolderOpen)
+            {
+                using (var fbd = new FolderBrowserDialog())
+                {
+                    if (fbd.ShowDialog() == DialogResult.OK) txtAppPath.Text = fbd.SelectedPath;
+                }
+            }
+            else
+            {
+                using (var ofd = new OpenFileDialog { Filter = "実行ファイル等|*.exe;*.ahk;*.bat;*.cmd;*.vbs|全て|*.*" }) 
+                { 
+                    if (ofd.ShowDialog() == DialogResult.OK) txtAppPath.Text = ofd.FileName; 
+                } 
+            }
+        }
+        
         private void btnBrowseWav_Click(object sender, EventArgs e) { using (var ofd = new OpenFileDialog { Filter = "WAVファイル|*.wav|全て|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) txtWavPath.Text = ofd.FileName; } }
         private void btnEditMacro_Click(object sender, EventArgs e) { using (var editor = new MacroEditorForm(ResultBinding.Action, _profileNames)) { editor.ShowDialog(this); } }
 

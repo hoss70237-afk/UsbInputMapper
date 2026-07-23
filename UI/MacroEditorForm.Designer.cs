@@ -4,8 +4,12 @@ namespace UsbInputMapper.UI
     {
         private System.ComponentModel.IContainer components = null;
         private System.Windows.Forms.ListBox lstSteps;
-        private System.Windows.Forms.Panel pnlTimeline; // ★追加
-        private System.Windows.Forms.Button btnToggleTimeline; // ★追加
+        private System.Windows.Forms.Panel pnlTimeline;
+        private System.Windows.Forms.HScrollBar hScrollBarTimeline; // ★追加
+        private System.Windows.Forms.Button btnToggleTimeline; 
+        private System.Windows.Forms.Button btnZoomIn;  // ★追加
+        private System.Windows.Forms.Button btnZoomOut; // ★追加
+        private System.Windows.Forms.Label lblScale;    // ★追加
         
         private System.Windows.Forms.Button btnAdd;
         private System.Windows.Forms.Button btnEditStep;
@@ -42,7 +46,11 @@ namespace UsbInputMapper.UI
         {
             this.lstSteps = new System.Windows.Forms.ListBox(); 
             this.pnlTimeline = new System.Windows.Forms.Panel();
+            this.hScrollBarTimeline = new System.Windows.Forms.HScrollBar();
             this.btnToggleTimeline = new System.Windows.Forms.Button();
+            this.btnZoomIn = new System.Windows.Forms.Button();
+            this.btnZoomOut = new System.Windows.Forms.Button();
+            this.lblScale = new System.Windows.Forms.Label();
             
             this.btnAdd = new System.Windows.Forms.Button(); this.btnEditStep = new System.Windows.Forms.Button(); this.btnRemove = new System.Windows.Forms.Button(); this.btnUpStep = new System.Windows.Forms.Button(); this.btnDownStep = new System.Windows.Forms.Button();
             
@@ -62,9 +70,14 @@ namespace UsbInputMapper.UI
             
             this.lstSteps.FormattingEnabled = true; this.lstSteps.ItemHeight = 12; this.lstSteps.Location = new System.Drawing.Point(12, 40); this.lstSteps.Size = new System.Drawing.Size(260, 244);
             
-            this.pnlTimeline.Location = new System.Drawing.Point(12, 40); this.pnlTimeline.Size = new System.Drawing.Size(260, 244); this.pnlTimeline.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle; this.pnlTimeline.Visible = false;
+            this.pnlTimeline.Location = new System.Drawing.Point(12, 40); this.pnlTimeline.Size = new System.Drawing.Size(260, 226); this.pnlTimeline.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle; this.pnlTimeline.Visible = false;
+            this.hScrollBarTimeline.Location = new System.Drawing.Point(12, 268); this.hScrollBarTimeline.Size = new System.Drawing.Size(260, 16); this.hScrollBarTimeline.Visible = false;
             
-            this.btnToggleTimeline.Location = new System.Drawing.Point(12, 12); this.btnToggleTimeline.Size = new System.Drawing.Size(260, 23); this.btnToggleTimeline.Text = "タイムライン編集 (絶対時間)"; this.btnToggleTimeline.Click += new System.EventHandler(this.btnToggleTimeline_Click);
+            this.btnToggleTimeline.Location = new System.Drawing.Point(12, 12); this.btnToggleTimeline.Size = new System.Drawing.Size(160, 23); this.btnToggleTimeline.Text = "タイムライン編集 (絶対時間)"; this.btnToggleTimeline.Click += new System.EventHandler(this.btnToggleTimeline_Click);
+            
+            this.btnZoomOut.Location = new System.Drawing.Point(180, 12); this.btnZoomOut.Size = new System.Drawing.Size(25, 23); this.btnZoomOut.Text = "-"; this.btnZoomOut.Visible = false; this.btnZoomOut.Click += new System.EventHandler(this.btnZoomOut_Click);
+            this.btnZoomIn.Location = new System.Drawing.Point(210, 12); this.btnZoomIn.Size = new System.Drawing.Size(25, 23); this.btnZoomIn.Text = "+"; this.btnZoomIn.Visible = false; this.btnZoomIn.Click += new System.EventHandler(this.btnZoomIn_Click);
+            this.lblScale.AutoSize = true; this.lblScale.Location = new System.Drawing.Point(240, 17); this.lblScale.Text = "1px=5ms"; this.lblScale.Visible = false;
             
             this.pnlStepDetails.Location = new System.Drawing.Point(280, 40); this.pnlStepDetails.Size = new System.Drawing.Size(200, 244);
             this.pnlStepDetails.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
@@ -115,7 +128,7 @@ namespace UsbInputMapper.UI
             this.ClientSize = new System.Drawing.Size(584, 385);
             this.Controls.Add(this.btnOK); this.Controls.Add(this.numTimeout); this.Controls.Add(this.lblTimeout); this.Controls.Add(this.cmbPlaybackMode); this.Controls.Add(this.label2);
             this.Controls.Add(this.cmbRecordMode); this.Controls.Add(this.chkRecord); this.Controls.Add(this.btnDownStep); this.Controls.Add(this.btnUpStep); this.Controls.Add(this.btnEditStep); this.Controls.Add(this.btnRemove); this.Controls.Add(this.btnAdd); 
-            this.Controls.Add(this.pnlStepDetails); this.Controls.Add(this.btnToggleTimeline); this.Controls.Add(this.pnlTimeline); this.Controls.Add(this.lstSteps);
+            this.Controls.Add(this.pnlStepDetails); this.Controls.Add(this.lblScale); this.Controls.Add(this.btnZoomIn); this.Controls.Add(this.btnZoomOut); this.Controls.Add(this.btnToggleTimeline); this.Controls.Add(this.hScrollBarTimeline); this.Controls.Add(this.pnlTimeline); this.Controls.Add(this.lstSteps);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog; this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent; this.Text = "マクロエディタ"; this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.MacroEditorForm_FormClosed);
             
             this.pnlStepDetails.ResumeLayout(false); this.pnlStepDetails.PerformLayout();

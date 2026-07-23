@@ -47,7 +47,9 @@ namespace UsbInputMapper.Core
 
         private const uint SPIF_UPDATEINIFILE = 0x01;
         private const uint SPIF_SENDCHANGE = 0x02;
-        private const uint WHEEL_PAGESCROLL = 4294967295; // unchecked((uint)-1)
+        
+        // ★修正: 4294967295 ではなく -1 をキャストすることでビルドエラー回避
+        private const uint WHEEL_PAGESCROLL = unchecked((uint)-1);
 
         private static uint _originalSpeed = 10;
         private static uint _originalScrollLines = 3;

@@ -4,13 +4,15 @@ namespace UsbInputMapper.UI
     {
         private System.ComponentModel.IContainer components = null;
         private System.Windows.Forms.ListBox lstSteps;
+        private System.Windows.Forms.Panel pnlTimeline; // ★追加
+        private System.Windows.Forms.Button btnToggleTimeline; // ★追加
+        
         private System.Windows.Forms.Button btnAdd;
         private System.Windows.Forms.Button btnEditStep;
         private System.Windows.Forms.Button btnRemove;
         private System.Windows.Forms.Button btnUpStep;
         private System.Windows.Forms.Button btnDownStep;
         
-        // ★ステップ詳細パネル
         private System.Windows.Forms.Panel pnlStepDetails;
         private System.Windows.Forms.CheckBox chkUseDelay; 
         private System.Windows.Forms.NumericUpDown numDelay;
@@ -38,7 +40,11 @@ namespace UsbInputMapper.UI
 
         private void InitializeComponent()
         {
-            this.lstSteps = new System.Windows.Forms.ListBox(); this.btnAdd = new System.Windows.Forms.Button(); this.btnEditStep = new System.Windows.Forms.Button(); this.btnRemove = new System.Windows.Forms.Button(); this.btnUpStep = new System.Windows.Forms.Button(); this.btnDownStep = new System.Windows.Forms.Button();
+            this.lstSteps = new System.Windows.Forms.ListBox(); 
+            this.pnlTimeline = new System.Windows.Forms.Panel();
+            this.btnToggleTimeline = new System.Windows.Forms.Button();
+            
+            this.btnAdd = new System.Windows.Forms.Button(); this.btnEditStep = new System.Windows.Forms.Button(); this.btnRemove = new System.Windows.Forms.Button(); this.btnUpStep = new System.Windows.Forms.Button(); this.btnDownStep = new System.Windows.Forms.Button();
             
             this.pnlStepDetails = new System.Windows.Forms.Panel();
             this.chkUseDelay = new System.Windows.Forms.CheckBox(); this.numDelay = new System.Windows.Forms.NumericUpDown();
@@ -54,10 +60,13 @@ namespace UsbInputMapper.UI
             this.pnlStepDetails.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.numDelay)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numFluctuation)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numTimeout)).BeginInit(); this.SuspendLayout();
             
-            this.lstSteps.FormattingEnabled = true; this.lstSteps.ItemHeight = 12; this.lstSteps.Location = new System.Drawing.Point(12, 12); this.lstSteps.Size = new System.Drawing.Size(260, 244);
+            this.lstSteps.FormattingEnabled = true; this.lstSteps.ItemHeight = 12; this.lstSteps.Location = new System.Drawing.Point(12, 40); this.lstSteps.Size = new System.Drawing.Size(260, 244);
             
-            // pnlStepDetails 内
-            this.pnlStepDetails.Location = new System.Drawing.Point(280, 12); this.pnlStepDetails.Size = new System.Drawing.Size(200, 244);
+            this.pnlTimeline.Location = new System.Drawing.Point(12, 40); this.pnlTimeline.Size = new System.Drawing.Size(260, 244); this.pnlTimeline.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle; this.pnlTimeline.Visible = false;
+            
+            this.btnToggleTimeline.Location = new System.Drawing.Point(12, 12); this.btnToggleTimeline.Size = new System.Drawing.Size(260, 23); this.btnToggleTimeline.Text = "タイムライン編集 (絶対時間)"; this.btnToggleTimeline.Click += new System.EventHandler(this.btnToggleTimeline_Click);
+            
+            this.pnlStepDetails.Location = new System.Drawing.Point(280, 40); this.pnlStepDetails.Size = new System.Drawing.Size(200, 244);
             this.pnlStepDetails.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
 
             this.chkUseDelay.AutoSize = true; this.chkUseDelay.Location = new System.Drawing.Point(10, 10); this.chkUseDelay.Text = "待機時間を使用する(ms)"; this.chkUseDelay.Checked = true;
@@ -86,28 +95,27 @@ namespace UsbInputMapper.UI
             this.pnlStepDetails.Controls.Add(this.lblWavEnd); this.pnlStepDetails.Controls.Add(this.txtWavEnd); this.pnlStepDetails.Controls.Add(this.btnBrowseWavEnd);
             this.pnlStepDetails.Controls.Add(this.chkWaitForExit);
             
-            // ボタン群
-            this.btnAdd.Location = new System.Drawing.Point(490, 12); this.btnAdd.Size = new System.Drawing.Size(80, 23); this.btnAdd.Text = "追加/編集..."; this.btnAdd.Click += new System.EventHandler(this.btnAdd_Click);
-            this.btnEditStep.Location = new System.Drawing.Point(490, 42); this.btnEditStep.Size = new System.Drawing.Size(80, 23); this.btnEditStep.Text = "アクション変更"; this.btnEditStep.Click += new System.EventHandler(this.btnEditStep_Click);
-            this.btnRemove.Location = new System.Drawing.Point(490, 72); this.btnRemove.Size = new System.Drawing.Size(80, 23); this.btnRemove.Text = "削除"; this.btnRemove.Click += new System.EventHandler(this.btnRemove_Click);
-            this.btnUpStep.Location = new System.Drawing.Point(490, 102); this.btnUpStep.Size = new System.Drawing.Size(80, 23); this.btnUpStep.Text = "▲ 上へ"; this.btnUpStep.Click += new System.EventHandler(this.btnUpStep_Click);
-            this.btnDownStep.Location = new System.Drawing.Point(490, 132); this.btnDownStep.Size = new System.Drawing.Size(80, 23); this.btnDownStep.Text = "▼ 下へ"; this.btnDownStep.Click += new System.EventHandler(this.btnDownStep_Click);
+            this.btnAdd.Location = new System.Drawing.Point(490, 40); this.btnAdd.Size = new System.Drawing.Size(80, 23); this.btnAdd.Text = "追加/編集..."; this.btnAdd.Click += new System.EventHandler(this.btnAdd_Click);
+            this.btnEditStep.Location = new System.Drawing.Point(490, 70); this.btnEditStep.Size = new System.Drawing.Size(80, 23); this.btnEditStep.Text = "アクション変更"; this.btnEditStep.Click += new System.EventHandler(this.btnEditStep_Click);
+            this.btnRemove.Location = new System.Drawing.Point(490, 100); this.btnRemove.Size = new System.Drawing.Size(80, 23); this.btnRemove.Text = "削除"; this.btnRemove.Click += new System.EventHandler(this.btnRemove_Click);
+            this.btnUpStep.Location = new System.Drawing.Point(490, 130); this.btnUpStep.Size = new System.Drawing.Size(80, 23); this.btnUpStep.Text = "▲ 上へ"; this.btnUpStep.Click += new System.EventHandler(this.btnUpStep_Click);
+            this.btnDownStep.Location = new System.Drawing.Point(490, 160); this.btnDownStep.Size = new System.Drawing.Size(80, 23); this.btnDownStep.Text = "▼ 下へ"; this.btnDownStep.Click += new System.EventHandler(this.btnDownStep_Click);
             
-            this.chkRecord.Appearance = System.Windows.Forms.Appearance.Button; this.chkRecord.Location = new System.Drawing.Point(12, 260); this.chkRecord.Size = new System.Drawing.Size(120, 24); this.chkRecord.Text = "レコーディング開始"; this.chkRecord.TextAlign = System.Drawing.ContentAlignment.MiddleCenter; this.chkRecord.CheckedChanged += new System.EventHandler(this.chkRecord_CheckedChanged);
-            this.cmbRecordMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbRecordMode.Location = new System.Drawing.Point(135, 262); this.cmbRecordMode.Size = new System.Drawing.Size(137, 20);
+            this.chkRecord.Appearance = System.Windows.Forms.Appearance.Button; this.chkRecord.Location = new System.Drawing.Point(12, 290); this.chkRecord.Size = new System.Drawing.Size(120, 24); this.chkRecord.Text = "レコーディング開始"; this.chkRecord.TextAlign = System.Drawing.ContentAlignment.MiddleCenter; this.chkRecord.CheckedChanged += new System.EventHandler(this.chkRecord_CheckedChanged);
+            this.cmbRecordMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbRecordMode.Location = new System.Drawing.Point(135, 292); this.cmbRecordMode.Size = new System.Drawing.Size(137, 20);
             
-            this.label2.AutoSize = true; this.label2.Location = new System.Drawing.Point(12, 293); this.label2.Text = "再生モード:";
-            this.cmbPlaybackMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbPlaybackMode.Location = new System.Drawing.Point(80, 290); this.cmbPlaybackMode.Size = new System.Drawing.Size(190, 20); this.cmbPlaybackMode.SelectedIndexChanged += new System.EventHandler(this.cmbPlaybackMode_SelectedIndexChanged);
+            this.label2.AutoSize = true; this.label2.Location = new System.Drawing.Point(12, 323); this.label2.Text = "再生モード:";
+            this.cmbPlaybackMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList; this.cmbPlaybackMode.Location = new System.Drawing.Point(80, 320); this.cmbPlaybackMode.Size = new System.Drawing.Size(190, 20); this.cmbPlaybackMode.SelectedIndexChanged += new System.EventHandler(this.cmbPlaybackMode_SelectedIndexChanged);
             
-            this.lblTimeout.AutoSize = true; this.lblTimeout.Location = new System.Drawing.Point(12, 323); this.lblTimeout.Text = "タイムアウト:"; this.lblTimeout.Visible = false;
-            this.numTimeout.Location = new System.Drawing.Point(80, 321); this.numTimeout.Maximum = new decimal(new int[] { 60000, 0, 0, 0 }); this.numTimeout.Size = new System.Drawing.Size(80, 19); this.numTimeout.Visible = false;
+            this.lblTimeout.AutoSize = true; this.lblTimeout.Location = new System.Drawing.Point(12, 353); this.lblTimeout.Text = "タイムアウト:"; this.lblTimeout.Visible = false;
+            this.numTimeout.Location = new System.Drawing.Point(80, 351); this.numTimeout.Maximum = new decimal(new int[] { 60000, 0, 0, 0 }); this.numTimeout.Size = new System.Drawing.Size(80, 19); this.numTimeout.Visible = false;
             
-            this.btnOK.Location = new System.Drawing.Point(495, 318); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "完了"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
+            this.btnOK.Location = new System.Drawing.Point(495, 348); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "完了"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
             
-            this.ClientSize = new System.Drawing.Size(584, 355);
+            this.ClientSize = new System.Drawing.Size(584, 385);
             this.Controls.Add(this.btnOK); this.Controls.Add(this.numTimeout); this.Controls.Add(this.lblTimeout); this.Controls.Add(this.cmbPlaybackMode); this.Controls.Add(this.label2);
             this.Controls.Add(this.cmbRecordMode); this.Controls.Add(this.chkRecord); this.Controls.Add(this.btnDownStep); this.Controls.Add(this.btnUpStep); this.Controls.Add(this.btnEditStep); this.Controls.Add(this.btnRemove); this.Controls.Add(this.btnAdd); 
-            this.Controls.Add(this.pnlStepDetails); this.Controls.Add(this.lstSteps);
+            this.Controls.Add(this.pnlStepDetails); this.Controls.Add(this.btnToggleTimeline); this.Controls.Add(this.pnlTimeline); this.Controls.Add(this.lstSteps);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog; this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent; this.Text = "マクロエディタ"; this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.MacroEditorForm_FormClosed);
             
             this.pnlStepDetails.ResumeLayout(false); this.pnlStepDetails.PerformLayout();

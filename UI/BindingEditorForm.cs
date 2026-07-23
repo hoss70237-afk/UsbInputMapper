@@ -331,4 +331,9 @@ namespace UsbInputMapper.UI
                 else {
                     int targetX = pt.x; int targetY = pt.y;
                     if (isWindow) { IntPtr hwnd = WindowFromPoint(new Point(pt.x, pt.y)); IntPtr root = GetAncestor(hwnd, 2); if (root != IntPtr.Zero) { Point ptScreen = new Point(pt.x, pt.y); ScreenToClient(root, ref ptScreen); targetX = ptScreen.X; targetY = ptScreen.Y; } }
-                    this.BeginInvoke(new Action(() => { numMouseX.Value = targetX; num
+                    this.BeginInvoke(new Action(() => { numMouseX.Value = targetX; numMouseY.Value = targetY; }));
+                }
+            });
+        }
+    }
+}

@@ -20,14 +20,17 @@ namespace UsbInputMapper.Profiles
         XboxAxis,     
         XboxTrigger,  
         AppLaunch,
-        FileOpen,         // ★追加: ファイルを開く
-        AhkRun,           // ★追加: AHKスクリプトを実行
+        FileOpen,         
+        AhkRun,           
         Macro,
         ToggleHold,
         ProfileSwitch,
         StickToMouse, 
         RadialMenu,       
-        BackgroundControl 
+        BackgroundControl,
+        CursorVisibility,    // ★追加: カーソル表示/非表示
+        CursorOffset,        // ★追加: カーソル表示位置ずらし
+        SystemMouseSettings  // ★追加: OSマウス設定変更(速度/スクロール量)
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }
@@ -46,7 +49,7 @@ namespace UsbInputMapper.Profiles
         public int ArgumentNum { get; set; }
         public List<int> MultipleKeys { get; set; }
         public string ArgumentStr { get; set; }
-        public string ArgumentExtraStr { get; set; } // ★アプリ起動引数等に利用
+        public string ArgumentExtraStr { get; set; }
         public int MouseX { get; set; }
         public int MouseY { get; set; }
 
@@ -78,6 +81,13 @@ namespace UsbInputMapper.Profiles
         public bool UseVibration { get; set; } = false;
         public int VibrateDuration { get; set; } = 200;
         public int VibrateTimes { get; set; } = 1;
+
+        // ★追加: カーソル制御・OSマウス設定用
+        public bool IsCursorVisible { get; set; } = true;
+        public int CursorOffsetX { get; set; } = 0;
+        public int CursorOffsetY { get; set; } = 0;
+        public int SystemMouseSpeed { get; set; } = 10; // OS標準は10 (1〜20)
+        public int SystemScrollLines { get; set; } = 3; // OS標準は3
 
         public ActionDef()
         {
@@ -113,6 +123,12 @@ namespace UsbInputMapper.Profiles
                 case ActionType.StickToMouse: return $"スティックマウス(最高速度:{StickMaxSpeed})";
                 case ActionType.RadialMenu: return $"ラジアルメニュー({RadialMenuSlices}分割)";
                 case ActionType.BackgroundControl: return $"バックグラウンド操作: {(string.IsNullOrEmpty(BgWindowName)?BgClassName:BgWindowName)}";
+                
+                // ★追加
+                case ActionType.CursorVisibility: return IsCursorVisible ? "カーソル: 表示" : "カーソル: 非表示";
+                case ActionType.CursorOffset: return $"カーソルずらし: X={CursorOffsetX}, Y={CursorOffsetY}";
+                case ActionType.SystemMouseSettings: return $"OSマウス設定(速度:{SystemMouseSpeed}, スクロール:{SystemScrollLines})";
+                
                 default: return ActionType.ToString();
             }
         }

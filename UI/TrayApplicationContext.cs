@@ -99,14 +99,12 @@ namespace UsbInputMapper.UI
                 {
                     if (p.NotifyProfileChangeVibration) VibrationManager.Vibrate(300, 2); 
                     
-                    // ★追加: チャタリング設定の適用
                     if (_globalHookManager != null)
                     {
                         _globalHookManager.EnableChatteringCanceler = p.EnableChatteringCanceler;
                         _globalHookManager.ChatteringThresholdMs = p.ChatteringThresholdMs;
                     }
                     
-                    // ★追加: オーバーレイ表示
                     if (p.OverlayShowMark || p.OverlayShowName)
                     {
                         _syncContext.Post(_ => {
@@ -128,7 +126,6 @@ namespace UsbInputMapper.UI
             _globalHookManager.OnMouseMove += GlobalHookManager_OnMouseMove;
             UpdateHookBlockList();
             
-            // ★起動時のチャタリング設定適用
             var initialProfile = _profileManager.CurrentActiveProfile;
             if (initialProfile != null)
             {
@@ -153,7 +150,7 @@ namespace UsbInputMapper.UI
         {
             _loopTimer?.Stop(); 
             _dispatcher?.ReleaseAllInputs(); 
-            SystemMouseManager.RestoreAllSafely(); // OSマウス設定のリセット
+            SystemMouseManager.RestoreAllSafely(); 
             
             _globalHookManager?.Dispose(); _globalHookManager = null;
             _rawInputManager?.Dispose(); _rawInputManager = null;
@@ -216,7 +213,8 @@ namespace UsbInputMapper.UI
         {
             if (_stickMouseDx != 0 || _stickMouseDy != 0) 
             {
-                _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false);
+                // ★修正: SendMouseMoveの引数にjiggle(false)を追加
+                _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false, false);
             }
 
             if (_currentBezelCode != -1)
@@ -525,7 +523,6 @@ namespace UsbInputMapper.UI
             ContextMenuStrip menu = new ContextMenuStrip(); 
             menu.Items.Add("設定を開く", null, ShowMainForm);
             
-            // ★変更: 一時停止と完全停止を分ける
             var mnuSuspend = new ToolStripMenuItem("一時停止");
             var mnuStop = new ToolStripMenuItem("完全停止 (スタンバイ)");
             var mnuResume = new ToolStripMenuItem("再開") { Enabled = false };
@@ -545,11 +542,11 @@ namespace UsbInputMapper.UI
                 _isSuspended = true;
                 mnuSuspend.Enabled = false; mnuStop.Enabled = false; mnuResume.Enabled = true;
                 _trayIcon.Text = "UsbInputMapper (スタンバイ中)";
-                ShutdownCore(); // デバイスやフックを全解放
+                ShutdownCore(); 
             };
             
             mnuResume.Click += (s, e) => {
-                if (_globalHookManager == null) InitializeCore(); // スタンバイから復帰の場合は再初期化
+                if (_globalHookManager == null) InitializeCore(); 
                 
                 _isSuspended = false;
                 mnuSuspend.Enabled = true; mnuStop.Enabled = true; mnuResume.Enabled = false;

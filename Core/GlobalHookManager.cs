@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
 
 namespace UsbInputMapper.Core
 {
@@ -60,11 +61,10 @@ namespace UsbInputMapper.Core
         private HashSet<long> _blockList = new HashSet<long>();
         private Dictionary<long, long> _recentBlocked = new Dictionary<long, long>();
 
-        // ★追加: チャタリングキャンセラ用状態
         private Dictionary<int, long> _lastMouseClickTime = new Dictionary<int, long>();
         public bool EnableChatteringCanceler { get; set; } = false;
         public int ChatteringThresholdMs { get; set; } = 20;
-        public int BlockedChatterCount { get; private set; } = 0; // テストUI用
+        public int BlockedChatterCount { get; private set; } = 0; 
 
         public bool IsRecording { get; set; }
         public bool IsCoordinateCapturing { get; private set; }
@@ -148,13 +148,29 @@ namespace UsbInputMapper.Core
                 
                 if (msg == WM_MOUSEMOVE && !isInjected)
                 {
-                    // ★追加: カーソルずらし機能が有効な場合、外部への通知（ベゼル判定用など）に補正座標を渡す
                     POINT notifyPt = ms.pt;
+                    
+                    // ★変更: カーソルずらしが有効な場合、本来のOSマウス移動をブロックし、補正した座標でSendInputを飛ばす
                     if (SystemMouseManager.IsOffsetActive)
                     {
                         notifyPt.x += SystemMouseManager.OffsetX;
                         notifyPt.y += SystemMouseManager.OffsetY;
+                        
+                        OnMouseMove?.Invoke(this, notifyPt); // ベゼル判定用などに補正座標を渡す
+
+                        // INJECTEDをつけて飛ばすことで、無限ループを防ぐ
+                        int sW = Screen.PrimaryScreen.Bounds.Width;
+                        int sH = Screen.PrimaryScreen.Bounds.Height;
+                        var inputs = new SendInputNative.INPUT[1];
+                        inputs[0].type = SendInputNative.INPUT_MOUSE;
+                        inputs[0].u.mi.dx = (notifyPt.x * 65535) / sW;
+                        inputs[0].u.mi.dy = (notifyPt.y * 65535) / sH;
+                        inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE | SendInputNative.MOUSEEVENTF_ABSOLUTE | SendInputNative.MOUSEEVENTF_VIRTUALDESK;
+                        SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
+                        
+                        return (IntPtr)1; // 本来の物理マウスの移動をここで抹殺する
                     }
+
                     OnMouseMove?.Invoke(this, notifyPt);
                 }
                 
@@ -164,8 +180,7 @@ namespace UsbInputMapper.Core
 
                 if (!isInjected)
                 {
-                    // ★追加: チャタリングキャンセラ
-                    if (code != -1 && isDown && EnableChatteringCanceler && code <= 3) // 左中右のみ対象
+                    if (code != -1 && isDown && EnableChatteringCanceler && code <= 3) 
                     {
                         long now = Environment.TickCount;
                         if (_lastMouseClickTime.TryGetValue(code, out long lastTime))
@@ -173,7 +188,7 @@ namespace UsbInputMapper.Core
                             if (now - lastTime < ChatteringThresholdMs)
                             {
                                 BlockedChatterCount++;
-                                return (IntPtr)1; // 入力をブロック
+                                return (IntPtr)1; 
                             }
                         }
                         _lastMouseClickTime[code] = now;

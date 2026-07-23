@@ -21,6 +21,14 @@ namespace UsbInputMapper.UI
         private bool _isUpdatingUI = false;
         private bool _isTimelineMode = false;
 
+        // タイムライン用変数
+        private const int ROW_HEIGHT = 20;
+        private float _msPerPixel = 5.0f; // ズームで可変にする
+        private int _draggingStepIndex = -1;
+        private int _dragStartX = 0;
+        private int _dragStartDelay = 0;
+        private int _scrollX = 0; // 横スクロール位置
+
         public MacroEditorForm(ActionDef action, List<string> profileNames = null)
         {
             InitializeComponent();
@@ -50,11 +58,13 @@ namespace UsbInputMapper.UI
 
             lstSteps.SelectedIndexChanged += LstSteps_SelectedIndexChanged;
             
-            // ★追加: タイムライン用
             pnlTimeline.Paint += PnlTimeline_Paint;
             pnlTimeline.MouseDown += PnlTimeline_MouseDown;
             pnlTimeline.MouseMove += PnlTimeline_MouseMove;
             pnlTimeline.MouseUp += PnlTimeline_MouseUp;
+            pnlTimeline.MouseWheel += PnlTimeline_MouseWheel;
+            
+            hScrollBarTimeline.Scroll += (s, e) => { _scrollX = hScrollBarTimeline.Value; pnlTimeline.Invalidate(); };
 
             AttachPropertyEvents();
 
@@ -118,7 +128,7 @@ namespace UsbInputMapper.UI
                 txtWavEnd.Text = step.PlayWavPathEnd;
                 chkWaitForExit.Checked = step.WaitForExit;
                 
-                bool isAppAction = (step.ActionType == ActionType.AhkRun || step.ActionType == ActionType.AppLaunch || step.ActionType == ActionType.FileOpen);
+                bool isAppAction = (step.ActionType == ActionType.AhkRun || step.ActionType == ActionType.AppLaunch || step.ActionType == ActionType.FileOpen || step.ActionType == ActionType.FolderOpen);
                 chkWaitForExit.Visible = isAppAction;
                 
                 _isUpdatingUI = false;
@@ -139,8 +149,10 @@ namespace UsbInputMapper.UI
             if (selectIndex == -1) selectIndex = lstSteps.SelectedIndex;
             
             lstSteps.Items.Clear();
+            int totalMs = 0;
             foreach (var step in _action.MacroSteps)
             {
+                totalMs += step.DelayMs;
                 string stateStr = step.PressState == StepPressState.Down ? "[押す]" : (step.PressState == StepPressState.Up ? "[離す]" : "[タップ]");
                 string delayStr = step.UseDelay ? $"[{step.DelayMs}ms{(step.UseFluctuation ? "±"+step.FluctuationMs : "")}]" : "[待機無]";
                 
@@ -151,8 +163,20 @@ namespace UsbInputMapper.UI
                 lstSteps.Items.Add($"{delayStr} {stateStr} {dummyAct.ToString()}");
             }
             if (selectIndex >= 0 && selectIndex < lstSteps.Items.Count) lstSteps.SelectedIndex = selectIndex;
-            _isUpdatingUI = false;
             
+            // スクロールバーの最大値更新
+            if (totalMs > 0)
+            {
+                int maxPx = (int)(totalMs / _msPerPixel) + 100;
+                if (maxPx > pnlTimeline.Width) { hScrollBarTimeline.Maximum = maxPx; hScrollBarTimeline.Enabled = true; }
+                else { hScrollBarTimeline.Value = 0; _scrollX = 0; hScrollBarTimeline.Enabled = false; }
+            }
+            else
+            {
+                hScrollBarTimeline.Value = 0; _scrollX = 0; hScrollBarTimeline.Enabled = false;
+            }
+
+            _isUpdatingUI = false;
             if (_isTimelineMode) pnlTimeline.Invalidate();
         }
 
@@ -267,34 +291,84 @@ namespace UsbInputMapper.UI
             }
             _lastRecordTime = now; RefreshMacroList(_action.MacroSteps.Count - 1);
         }
-        
-        // ★追加: タイムライン用描画ロジック
+
         private void btnToggleTimeline_Click(object sender, EventArgs e)
         {
             _isTimelineMode = !_isTimelineMode;
             lstSteps.Visible = !_isTimelineMode;
+            
             pnlTimeline.Visible = _isTimelineMode;
+            hScrollBarTimeline.Visible = _isTimelineMode;
+            btnZoomIn.Visible = _isTimelineMode;
+            btnZoomOut.Visible = _isTimelineMode;
+            lblScale.Visible = _isTimelineMode;
+            
             btnToggleTimeline.Text = _isTimelineMode ? "リスト編集へ戻る" : "タイムライン編集 (絶対時間)";
-            if (_isTimelineMode) pnlTimeline.Invalidate();
+            
+            if (_isTimelineMode)
+            {
+                pnlTimeline.Focus();
+                RefreshMacroList(); 
+            }
         }
 
-        private const int ROW_HEIGHT = 20;
-        private const float MS_PER_PIXEL = 5.0f; // 1ピクセルあたり5ms
-        private int _draggingStepIndex = -1;
-        private int _dragStartX = 0;
-        private int _dragStartDelay = 0;
+        private void PnlTimeline_MouseWheel(object sender, MouseEventArgs e)
+        {
+            if (Control.ModifierKeys == Keys.Control)
+            {
+                if (e.Delta > 0) ZoomIn(); else ZoomOut();
+            }
+            else
+            {
+                if (hScrollBarTimeline.Enabled)
+                {
+                    int newV = hScrollBarTimeline.Value - (e.Delta);
+                    if (newV < 0) newV = 0;
+                    if (newV > hScrollBarTimeline.Maximum - hScrollBarTimeline.LargeChange) newV = hScrollBarTimeline.Maximum - hScrollBarTimeline.LargeChange;
+                    if (newV < 0) newV = 0;
+                    hScrollBarTimeline.Value = newV;
+                    _scrollX = newV;
+                    pnlTimeline.Invalidate();
+                }
+            }
+        }
+
+        private void btnZoomIn_Click(object sender, EventArgs e) { ZoomIn(); }
+        private void btnZoomOut_Click(object sender, EventArgs e) { ZoomOut(); }
+
+        private void ZoomIn() { _msPerPixel *= 0.5f; if (_msPerPixel < 0.1f) _msPerPixel = 0.1f; UpdateScaleLabel(); RefreshMacroList(); }
+        private void ZoomOut() { _msPerPixel *= 2.0f; if (_msPerPixel > 100.0f) _msPerPixel = 100.0f; UpdateScaleLabel(); RefreshMacroList(); }
+        private void UpdateScaleLabel() { lblScale.Text = $"1px = {_msPerPixel}ms"; }
 
         private void PnlTimeline_Paint(object sender, PaintEventArgs e)
         {
             if (!_isTimelineMode) return;
             Graphics g = e.Graphics;
-            g.Clear(Color.White);
+            g.Clear(Color.FromArgb(240, 240, 240));
             
-            // 背景のグリッド描画
             int w = pnlTimeline.Width; int h = pnlTimeline.Height;
+            
             using (Pen gridPen = new Pen(Color.LightGray))
+            using (Pen gridPenBold = new Pen(Color.DarkGray))
             {
-                for (int x = 0; x < w; x += 20) g.DrawLine(gridPen, x, 0, x, h); // 100ms単位
+                // 目盛りの間隔(ms)
+                int tickMs = 100;
+                if (_msPerPixel > 10) tickMs = 1000;
+                if (_msPerPixel > 50) tickMs = 5000;
+                if (_msPerPixel < 1) tickMs = 10;
+
+                int startMs = (int)(_scrollX * _msPerPixel);
+                int startTick = (startMs / tickMs) * tickMs;
+
+                for (int m = startTick; ; m += tickMs)
+                {
+                    int px = (int)(m / _msPerPixel) - _scrollX;
+                    if (px > w) break;
+                    if (px >= 0)
+                    {
+                        g.DrawLine((m % (tickMs*5) == 0) ? gridPenBold : gridPen, px, 0, px, h);
+                    }
+                }
                 for (int y = 0; y < h; y += ROW_HEIGHT) g.DrawLine(gridPen, 0, y, w, y);
             }
 
@@ -306,20 +380,21 @@ namespace UsbInputMapper.UI
                     var step = _action.MacroSteps[i];
                     currentAbsTime += step.DelayMs;
                     
-                    int px = (int)(currentAbsTime / MS_PER_PIXEL);
+                    int px = (int)(currentAbsTime / _msPerPixel) - _scrollX;
                     int py = i * ROW_HEIGHT;
                     
                     Rectangle rect = new Rectangle(px, py, 15, ROW_HEIGHT - 2);
                     
                     bool isSelected = (lstSteps.SelectedIndex == i);
-                    using (Brush b = new SolidBrush(isSelected ? Color.DodgerBlue : Color.LightGreen))
+                    using (Brush b = new SolidBrush(isSelected ? Color.DodgerBlue : Color.MediumAquamarine))
                     {
                         g.FillRectangle(b, rect);
                     }
                     g.DrawRectangle(Pens.Black, rect);
                     
                     ActionDef dummyAct = new ActionDef { ActionType = step.ActionType, ArgumentNum = step.ArgumentNum, MultipleKeys = step.MultipleKeys, ArgumentStr = step.ArgumentStr };
-                    g.DrawString(dummyAct.ToString(), f, Brushes.Black, px + 20, py + 3);
+                    string stateStr = step.PressState == StepPressState.Down ? "↓" : (step.PressState == StepPressState.Up ? "↑" : "・");
+                    g.DrawString($"{stateStr}{dummyAct.ToString()} ({currentAbsTime}ms)", f, Brushes.Black, px + 20, py + 3);
                 }
             }
         }
@@ -334,16 +409,21 @@ namespace UsbInputMapper.UI
                     var step = _action.MacroSteps[i];
                     currentAbsTime += step.DelayMs;
                     
-                    int px = (int)(currentAbsTime / MS_PER_PIXEL);
+                    int px = (int)(currentAbsTime / _msPerPixel) - _scrollX;
                     int py = i * ROW_HEIGHT;
                     
                     Rectangle rect = new Rectangle(px, py, 15, ROW_HEIGHT - 2);
-                    if (rect.Contains(e.Location))
+                    
+                    // クリック判定を少し広げる（文字部分も含む）
+                    Rectangle hitRect = new Rectangle(px, py, 200, ROW_HEIGHT);
+                    
+                    if (hitRect.Contains(e.Location))
                     {
                         lstSteps.SelectedIndex = i;
                         _draggingStepIndex = i;
                         _dragStartX = e.X;
                         _dragStartDelay = step.DelayMs;
+                        pnlTimeline.Invalidate();
                         return;
                     }
                 }
@@ -355,7 +435,7 @@ namespace UsbInputMapper.UI
             if (_draggingStepIndex != -1 && e.Button == MouseButtons.Left)
             {
                 int dx = e.X - _dragStartX;
-                int dDelay = (int)(dx * MS_PER_PIXEL);
+                int dDelay = (int)(dx * _msPerPixel);
                 int newDelay = _dragStartDelay + dDelay;
                 if (newDelay < 0) newDelay = 0;
                 

@@ -148,30 +148,8 @@ namespace UsbInputMapper.Core
                 
                 if (msg == WM_MOUSEMOVE && !isInjected)
                 {
-                    POINT notifyPt = ms.pt;
-                    
-                    // ★変更: カーソルずらしが有効な場合、本来のOSマウス移動をブロックし、補正した座標でSendInputを飛ばす
-                    if (SystemMouseManager.IsOffsetActive)
-                    {
-                        notifyPt.x += SystemMouseManager.OffsetX;
-                        notifyPt.y += SystemMouseManager.OffsetY;
-                        
-                        OnMouseMove?.Invoke(this, notifyPt); // ベゼル判定用などに補正座標を渡す
-
-                        // INJECTEDをつけて飛ばすことで、無限ループを防ぐ
-                        int sW = Screen.PrimaryScreen.Bounds.Width;
-                        int sH = Screen.PrimaryScreen.Bounds.Height;
-                        var inputs = new SendInputNative.INPUT[1];
-                        inputs[0].type = SendInputNative.INPUT_MOUSE;
-                        inputs[0].u.mi.dx = (notifyPt.x * 65535) / sW;
-                        inputs[0].u.mi.dy = (notifyPt.y * 65535) / sH;
-                        inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE | SendInputNative.MOUSEEVENTF_ABSOLUTE | SendInputNative.MOUSEEVENTF_VIRTUALDESK;
-                        SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
-                        
-                        return (IntPtr)1; // 本来の物理マウスの移動をここで抹殺する
-                    }
-
-                    OnMouseMove?.Invoke(this, notifyPt);
+                    // カーソルオフセット機能は削除。素直に通知のみ
+                    OnMouseMove?.Invoke(this, ms.pt);
                 }
                 
                 int code = -1;

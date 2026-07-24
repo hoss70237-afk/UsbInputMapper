@@ -213,7 +213,6 @@ namespace UsbInputMapper.UI
         {
             if (_stickMouseDx != 0 || _stickMouseDy != 0) 
             {
-                // ★修正: SendMouseMoveの引数にjiggle(false)を追加
                 _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false, false);
             }
 
@@ -429,6 +428,14 @@ namespace UsbInputMapper.UI
                 if (!string.IsNullOrEmpty(binding.PlayWavPath)) PlayWav(binding.PlayWavPath);
 
                 if (binding.Condition == TriggerCondition.Release) return;
+                
+                // ★追加: 同期入力 (Sync)
+                if (binding.Condition == TriggerCondition.Sync)
+                {
+                    ExecuteAction(binding.Action, true);
+                    return;
+                }
+
                 if (binding.Action.ActionType == ActionType.RadialMenu) {
                     _syncContext.Post(_ => {
                         if (_radialMenuHudForm == null || _radialMenuHudForm.IsDisposed) {
@@ -466,6 +473,13 @@ namespace UsbInputMapper.UI
             }
             else
             {
+                // ★追加: 同期入力 (Sync)
+                if (binding.Condition == TriggerCondition.Sync)
+                {
+                    ExecuteAction(binding.Action, false);
+                    return;
+                }
+
                 if (binding.Action.ActionType == ActionType.RadialMenu) {
                     if (binding.Action.RadialMenuMode == 0) {
                         _syncContext.Post(_ => {

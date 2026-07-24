@@ -48,7 +48,6 @@ namespace UsbInputMapper.Core
         private const uint SPIF_UPDATEINIFILE = 0x01;
         private const uint SPIF_SENDCHANGE = 0x02;
         
-        // ★修正: 4294967295 ではなく -1 をキャストすることでビルドエラー回避
         private const uint WHEEL_PAGESCROLL = unchecked((uint)-1);
 
         private static uint _originalSpeed = 10;
@@ -60,19 +59,36 @@ namespace UsbInputMapper.Core
         private static bool _isScrollCharsModified = false;
         public static bool IsCursorHidden { get; private set; } = false;
 
-        public static int OffsetX { get; set; } = 0;
-        public static int OffsetY { get; set; } = 0;
-        public static bool IsOffsetActive => OffsetX != 0 || OffsetY != 0;
+        // ★追加: 現在のOS設定を読み取るプロパティ群
+        public static int CurrentMouseSpeed
+        {
+            get { uint speed = 10; SystemParametersInfo(SPI_GETMOUSESPEED, 0, ref speed, 0); return (int)speed; }
+        }
+
+        public static int CurrentScrollLines
+        {
+            get { uint scrollL = 3; SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, ref scrollL, 0); return scrollL == WHEEL_PAGESCROLL ? 3 : (int)scrollL; }
+        }
+
+        public static bool IsPageScroll
+        {
+            get { uint scrollL = 3; SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, ref scrollL, 0); return scrollL == WHEEL_PAGESCROLL; }
+        }
+
+        public static int CurrentHorizontalScrollChars
+        {
+            get { uint scrollC = 3; SystemParametersInfo(SPI_GETWHEELSCROLLCHARS, 0, ref scrollC, 0); return (int)scrollC; }
+        }
 
         static SystemMouseManager()
         {
-            uint speed = 0;
+            uint speed = 10;
             if (SystemParametersInfo(SPI_GETMOUSESPEED, 0, ref speed, 0)) _originalSpeed = speed;
 
-            uint scrollL = 0;
+            uint scrollL = 3;
             if (SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, ref scrollL, 0)) _originalScrollLines = scrollL;
 
-            uint scrollC = 0;
+            uint scrollC = 3;
             if (SystemParametersInfo(SPI_GETWHEELSCROLLCHARS, 0, ref scrollC, 0)) _originalScrollChars = scrollC;
 
             AppDomain.CurrentDomain.ProcessExit += (s, e) => RestoreAllSafely();
@@ -135,18 +151,6 @@ namespace UsbInputMapper.Core
             IsCursorHidden = false;
         }
 
-        public static void SetCursorOffset(int x, int y)
-        {
-            OffsetX = x;
-            OffsetY = y;
-        }
-
-        public static void ClearCursorOffset()
-        {
-            OffsetX = 0;
-            OffsetY = 0;
-        }
-
         public static void RestoreAllSafely()
         {
             if (_isSpeedModified)
@@ -165,7 +169,6 @@ namespace UsbInputMapper.Core
                 _isScrollCharsModified = false;
             }
             if (IsCursorHidden) ShowCursor();
-            ClearCursorOffset();
         }
     }
 }

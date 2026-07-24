@@ -21,7 +21,7 @@ namespace UsbInputMapper.Profiles
         XboxTrigger,  
         AppLaunch,
         FileOpen,         
-        FolderOpen,       // ★追加: フォルダを開く
+        FolderOpen,       
         AhkRun,           
         Macro,
         ToggleHold,
@@ -30,8 +30,7 @@ namespace UsbInputMapper.Profiles
         RadialMenu,       
         BackgroundControl,
         CursorVisibility,    
-        CursorOffset,        
-        SystemMouseSettings  
+        SystemMouseSettings  // ★CursorOffsetを削除
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }
@@ -54,10 +53,8 @@ namespace UsbInputMapper.Profiles
         public int MouseX { get; set; }
         public int MouseY { get; set; }
         
-        // ★追加: 動作モード (0:入力(連動), 1:押す(Downのみ), 2:離す(Upのみ))
         public int ActionState { get; set; } = 0;
         
-        // ★追加: マウス移動後の揺らし
         public bool JiggleCursor { get; set; } = false;
 
         public List<MacroStep> MacroSteps { get; set; }
@@ -86,12 +83,11 @@ namespace UsbInputMapper.Profiles
         public int VibrateDuration { get; set; } = 200;
         public int VibrateTimes { get; set; } = 1;
 
-        // ★変更: カーソル制御・OSマウス設定用
-        public int CursorVisMode { get; set; } = 1; // 0:非表示, 1:表示, 2:トグル
-        public int CursorOffsetX { get; set; } = 0;
-        public int CursorOffsetY { get; set; } = 0;
+        public int CursorVisMode { get; set; } = 1; 
+        
+        // ★初期値は便宜上の値。UI表示時に実際のOS設定を取得して上書きします
         public int SystemMouseSpeed { get; set; } = 10; 
-        public int SystemScrollType { get; set; } = 0;  // 0:行数, 1:1画面ずつ
+        public int SystemScrollType { get; set; } = 0;  
         public int SystemScrollLines { get; set; } = 3; 
         public int SystemHorizontalScroll { get; set; } = 3;
 
@@ -138,7 +134,6 @@ namespace UsbInputMapper.Profiles
                 
                 case ActionType.CursorVisibility: 
                     return CursorVisMode == 0 ? "カーソル: 非表示" : CursorVisMode == 1 ? "カーソル: 表示" : "カーソル: トグル";
-                case ActionType.CursorOffset: return $"カーソルずらし: X={CursorOffsetX}, Y={CursorOffsetY}";
                 case ActionType.SystemMouseSettings: return $"OSマウス設定";
                 
                 default: return ActionType.ToString();

@@ -144,11 +144,12 @@ namespace UsbInputMapper.UI
                 {
                     var evt = capture.CapturedEvent;
                     
-                    // ★変更: 取得したキーの名前をデフォルトアイテム名にセットしてからエディタを開く
                     var newBinding = new UsbInputMapper.Profiles.Binding();
                     newBinding.DeviceIdentifier = evt.DeviceIdentifier;
                     newBinding.InputType = evt.Type;
                     newBinding.InputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags;
+                    
+                    // ★追加: 取得したキーの名前をデフォルトアイテム名にセット
                     newBinding.Name = UsbInputMapper.Profiles.Binding.GetCodeName(newBinding.InputType, newBinding.InputCode);
 
                     using (var ed = new BindingEditorForm(newBinding, _profileManager.Profiles.Select(x => x.Name).ToList()))

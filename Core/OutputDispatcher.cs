@@ -48,7 +48,6 @@ namespace UsbInputMapper.Core
 
         public void Dispatch(ActionDef action, bool isDown)
         {
-            // ★変更: 動作モード(入力=0, 押す=1, 離す=2)による振り分け
             if (action.ActionState == 1) { if (!isDown) return; isDown = true; }
             else if (action.ActionState == 2) { if (!isDown) return; isDown = false; }
 
@@ -83,9 +82,6 @@ namespace UsbInputMapper.Core
                         if (mode == 2) mode = SystemMouseManager.IsCursorHidden ? 1 : 0;
                         if (mode == 1) SystemMouseManager.ShowCursor(); else SystemMouseManager.HideCursor(); 
                     } 
-                    break;
-                case ActionType.CursorOffset: 
-                    if (isDown) { SystemMouseManager.SetCursorOffset(action.CursorOffsetX, action.CursorOffsetY); } 
                     break;
                 case ActionType.SystemMouseSettings: 
                     if (isDown) { 
@@ -211,11 +207,6 @@ namespace UsbInputMapper.Core
                         targetX = pt.X + x; targetY = pt.Y + y;
                     }
                 }
-                
-                // ★注意: SystemMouseManagerのオフセットは物理マウス移動時の上書き用であり、
-                // ソフトウェア的な絶対座標移動には影響させない方が安全。
-                // (ユーザーが「x:500 y:500へ移動」と設定したら、素直に画面の500,500へ飛ぶのが期待動作)
-                // もしここでもオフセットを適用したい場合はここで足すが、今回はスキップ。
 
                 int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
                 inputs[0].u.mi.dx = (targetX * 65535) / sW; inputs[0].u.mi.dy = (targetY * 65535) / sH;
@@ -228,7 +219,6 @@ namespace UsbInputMapper.Core
             }
             SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
             
-            // ★追加: ポインタの揺らし
             if (jiggle)
             {
                 Task.Delay(10).ContinueWith(_ => {

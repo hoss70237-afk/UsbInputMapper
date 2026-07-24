@@ -107,10 +107,22 @@ namespace UsbInputMapper.UI
                 cmbActionState.SelectedIndex = existingBinding.Action.ActionState;
                 chkJiggle.Checked = existingBinding.Action.JiggleCursor;
                 cmbCursorVis.SelectedIndex = existingBinding.Action.CursorVisMode;
-                numOffsetX.Value = existingBinding.Action.CursorOffsetX; numOffsetY.Value = existingBinding.Action.CursorOffsetY;
-                numSysMouseSpd.Value = existingBinding.Action.SystemMouseSpeed; numSysScroll.Value = existingBinding.Action.SystemScrollLines;
-                chkSysScrollPage.Checked = existingBinding.Action.SystemScrollType == 1;
-                numSysHScroll.Value = existingBinding.Action.SystemHorizontalScroll;
+                
+                // ★追加: 既存設定がなければ、OSの現在の設定値をデフォルトとしてUIに入れる
+                if (existingBinding.Action.ActionType == ActionType.SystemMouseSettings)
+                {
+                    numSysMouseSpd.Value = existingBinding.Action.SystemMouseSpeed; 
+                    numSysScroll.Value = existingBinding.Action.SystemScrollLines;
+                    chkSysScrollPage.Checked = existingBinding.Action.SystemScrollType == 1;
+                    numSysHScroll.Value = existingBinding.Action.SystemHorizontalScroll;
+                }
+                else
+                {
+                    numSysMouseSpd.Value = SystemMouseManager.CurrentMouseSpeed;
+                    numSysScroll.Value = SystemMouseManager.CurrentScrollLines;
+                    chkSysScrollPage.Checked = SystemMouseManager.IsPageScroll;
+                    numSysHScroll.Value = SystemMouseManager.CurrentHorizontalScrollChars;
+                }
             }
             else
             {
@@ -119,12 +131,25 @@ namespace UsbInputMapper.UI
                 numDeadZone.Value = 15; cmbBgAction.SelectedIndex = 0;
                 cmbCursorVis.SelectedIndex = 0;
                 cmbActionState.SelectedIndex = 0;
+                
+                numSysMouseSpd.Value = SystemMouseManager.CurrentMouseSpeed;
+                numSysScroll.Value = SystemMouseManager.CurrentScrollLines;
+                chkSysScrollPage.Checked = SystemMouseManager.IsPageScroll;
+                numSysHScroll.Value = SystemMouseManager.CurrentHorizontalScrollChars;
             }
+            
+            EnforceSyncConditionLogic();
         }
 
         private void SetupComboBoxes()
         {
-            cmbCondition.Items.Add("通常入力 (押した時)"); cmbCondition.Items.Add("長押し (ミリ秒経過で発動)"); cmbCondition.Items.Add("連打 (押している間ループ)"); cmbCondition.Items.Add("離した時 (Key Up)");
+            // ★変更: Sync追加
+            cmbCondition.Items.Add("通常入力 (押した時)"); 
+            cmbCondition.Items.Add("長押し (ミリ秒経過で発動)"); 
+            cmbCondition.Items.Add("連打 (押している間ループ)"); 
+            cmbCondition.Items.Add("離した時 (Key Up)");
+            cmbCondition.Items.Add("同期入力 (連動)");
+
             cmbActionType.Items.Add(new ComboItem { Text = "(None)", Value = (int)ActionType.None });
             cmbActionType.Items.Add(new ComboItem { Text = "キーボード入力", Value = (int)ActionType.Keyboard });
             cmbActionType.Items.Add(new ComboItem { Text = "マウスクリック", Value = (int)ActionType.MouseClick });
@@ -138,7 +163,7 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "スティックでマウス移動", Value = (int)ActionType.StickToMouse });
             cmbActionType.Items.Add(new ComboItem { Text = "アプリケーション起動", Value = (int)ActionType.AppLaunch });
             cmbActionType.Items.Add(new ComboItem { Text = "ファイルを開く", Value = (int)ActionType.FileOpen });
-            cmbActionType.Items.Add(new ComboItem { Text = "フォルダを開く", Value = (int)ActionType.FolderOpen }); // ★追加
+            cmbActionType.Items.Add(new ComboItem { Text = "フォルダを開く", Value = (int)ActionType.FolderOpen }); 
             cmbActionType.Items.Add(new ComboItem { Text = "AHKスクリプト実行", Value = (int)ActionType.AhkRun });
             cmbActionType.Items.Add(new ComboItem { Text = "バックグラウンド操作", Value = (int)ActionType.BackgroundControl });
             cmbActionType.Items.Add(new ComboItem { Text = "トグル維持", Value = (int)ActionType.ToggleHold });
@@ -146,7 +171,6 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "プロファイル切り替え", Value = (int)ActionType.ProfileSwitch });
             
             cmbActionType.Items.Add(new ComboItem { Text = "OS設定: カーソル表示/非表示", Value = (int)ActionType.CursorVisibility });
-            cmbActionType.Items.Add(new ComboItem { Text = "OS設定: カーソル位置ずらし", Value = (int)ActionType.CursorOffset });
             cmbActionType.Items.Add(new ComboItem { Text = "OS設定: マウス速度/スクロール量", Value = (int)ActionType.SystemMouseSettings });
 
             cmbManualSubTrigger.Items.Add(new ComboItem { Text = "左クリック", Value = 0x0001 });
@@ -164,12 +188,10 @@ namespace UsbInputMapper.UI
             cmbBgAction.Items.Add("クリック");
             cmbBgAction.Items.Add("キー送信");
             
-            // ★変更: トグル追加
             cmbCursorVis.Items.Add("非表示 (透明化)");
             cmbCursorVis.Items.Add("表示 (デフォルト)");
             cmbCursorVis.Items.Add("トグル切替");
             
-            // ★追加: 動作ステート
             cmbActionState.Items.Add("入力 (連動)");
             cmbActionState.Items.Add("押す (Downのみ)");
             cmbActionState.Items.Add("離す (Upのみ)");
@@ -205,13 +227,72 @@ namespace UsbInputMapper.UI
             txtName.Text = name;
         }
 
+        private void cmbCondition_SelectedIndexChanged(object sender, EventArgs e) 
+        { 
+            int idx = cmbCondition.SelectedIndex; 
+            lblParam.Visible = numConditionParam.Visible = (idx == 1 || idx == 2); 
+            if (idx == 1) lblParam.Text = "長押し(ms):"; 
+            if (idx == 2) lblParam.Text = "連打(ms):"; 
+            
+            EnforceSyncConditionLogic();
+        }
+
+        // ★追加: 同期入力(Sync)時のグレーアウト制御
+        private void EnforceSyncConditionLogic()
+        {
+            bool isSync = (cmbCondition.SelectedIndex == 4);
+            lblSyncWarning.Visible = isSync;
+
+            if (cmbActionType.SelectedItem is ComboItem actItem)
+            {
+                var type = (ActionType)actItem.Value;
+                
+                // Syncが許可されるアクションか判定
+                bool allowed = type == ActionType.None || type == ActionType.Keyboard || type == ActionType.MouseClick || type == ActionType.XboxController || type == ActionType.XboxTrigger;
+                
+                if (isSync)
+                {
+                    cmbActionState.SelectedIndex = 0; // 強制連動
+                    cmbActionState.Enabled = false;
+                    
+                    if (!allowed)
+                    {
+                        // 許可されていない場合、強制的にNoneに戻す
+                        SetActionTypeCombo(ActionType.None);
+                    }
+                }
+                else
+                {
+                    cmbActionState.Enabled = true;
+                }
+            }
+
+            // アイテムのグレーアウト制御
+            for (int i = 0; i < cmbActionType.Items.Count; i++)
+            {
+                // UI上で個別にグレーアウトは難しいため、SelectedIndexChangedでブロックする処理を入れています。
+            }
+        }
+
         private void cmbActionType_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (!(cmbActionType.SelectedItem is ComboItem actItem)) return;
             var type = (ActionType)actItem.Value;
             
+            // ★追加: Sync時の選択ブロック
+            if (cmbCondition.SelectedIndex == 4)
+            {
+                bool allowed = type == ActionType.None || type == ActionType.Keyboard || type == ActionType.MouseClick || type == ActionType.XboxController || type == ActionType.XboxTrigger;
+                if (!allowed)
+                {
+                    MessageBox.Show("「同期入力」条件では、継続状態を持たないアクション(移動、マクロ、起動など)は選択できません。", "設定エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    SetActionTypeCombo(ActionType.None);
+                    return;
+                }
+            }
+            
             cmbKeyButton.Visible = txtAppPath.Visible = btnBrowseApp.Visible = txtAppArgs.Visible = lblAppArgs.Visible = pnlMouseMove.Visible = pnlBackground.Visible = btnEditMacro.Visible = cmbProfileSwitchTarget.Visible = cmbProfileSwitchMode.Visible = btnSetupStickMouse.Visible = false;
-            cmbCursorVis.Visible = pnlCursorOffset.Visible = pnlSysMouse.Visible = cmbActionState.Visible = chkJiggle.Visible = false;
+            cmbCursorVis.Visible = pnlSysMouse.Visible = cmbActionState.Visible = chkJiggle.Visible = false;
             cmbKeyButton.Items.Clear();
             cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged;
 
@@ -249,7 +330,6 @@ namespace UsbInputMapper.UI
                 case ActionType.StickToMouse: btnSetupStickMouse.Visible = true; break;
                 
                 case ActionType.CursorVisibility: cmbCursorVis.Visible = true; break;
-                case ActionType.CursorOffset: pnlCursorOffset.Visible = true; break;
                 case ActionType.SystemMouseSettings: pnlSysMouse.Visible = true; break;
             }
             if (cmbKeyButton.Items.Count > 0) cmbKeyButton.SelectedIndex = 0;
@@ -308,7 +388,6 @@ namespace UsbInputMapper.UI
             ResultBinding.Action.JiggleCursor = chkJiggle.Visible ? chkJiggle.Checked : false;
 
             ResultBinding.Action.CursorVisMode = cmbCursorVis.SelectedIndex;
-            ResultBinding.Action.CursorOffsetX = (int)numOffsetX.Value; ResultBinding.Action.CursorOffsetY = (int)numOffsetY.Value;
             ResultBinding.Action.SystemMouseSpeed = (int)numSysMouseSpd.Value; 
             ResultBinding.Action.SystemScrollType = chkSysScrollPage.Checked ? 1 : 0;
             ResultBinding.Action.SystemScrollLines = (int)numSysScroll.Value;
@@ -323,7 +402,6 @@ namespace UsbInputMapper.UI
         private void btnAddSubTrigger_Click(object sender, EventArgs e) { using (var capture = new CaptureForm(CaptureMode.SingleAny)) { if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedEvent != null) { var evt = capture.CapturedEvent; var key = new TriggerKey { DeviceIdentifier = evt.DeviceIdentifier, Type = evt.Type, Code = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags }; lstSubTriggers.Items.Add(key); } } }
         private void btnRemoveSubTrigger_Click(object sender, EventArgs e) { if (lstSubTriggers.SelectedIndex >= 0) lstSubTriggers.Items.RemoveAt(lstSubTriggers.SelectedIndex); }
         private void btnManualAddSub_Click(object sender, EventArgs e) { if (cmbManualSubTrigger.SelectedItem is ComboItem item) { int type = (item.Value & 0x010000) != 0 ? 1 : 0; var key = new TriggerKey { DeviceIdentifier = "Any", Type = type, Code = item.Value & 0xFFFF }; lstSubTriggers.Items.Add(key); } }
-        private void cmbCondition_SelectedIndexChanged(object sender, EventArgs e) { int idx = cmbCondition.SelectedIndex; lblParam.Visible = numConditionParam.Visible = (idx == 1 || idx == 2); if (idx == 1) lblParam.Text = "長押し(ms):"; if (idx == 2) lblParam.Text = "連打(ms):"; }
         private void cmbKeyButton_SelectedIndexChanged(object sender, EventArgs e) { if (cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value == -1) { using (var capture = new CaptureForm(CaptureMode.MultiKeyboard)) { if (capture.ShowDialog(this) == DialogResult.OK && capture.CapturedKeys.Count > 0) { ResultBinding.Action.MultipleKeys = new List<int>(capture.CapturedKeys); string keysStr = string.Join(" + ", capture.CapturedKeys.Select(k => ((Keys)k).ToString())); var customItem = new ComboItem { Text = $"[保存済] {keysStr}", Value = -2 }; cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged; cmbKeyButton.Items.Insert(0, customItem); cmbKeyButton.SelectedIndex = 0; cmbKeyButton.SelectedIndexChanged += cmbKeyButton_SelectedIndexChanged; } else cmbKeyButton.SelectedIndex = 0; } } }
         
         private void btnBrowseApp_Click(object sender, EventArgs e) 

@@ -4,7 +4,8 @@ using System.Windows.Forms;
 
 namespace UsbInputMapper.Profiles
 {
-    public enum TriggerCondition { Normal, Hold, RapidFire, Release }
+    // ★追加: Sync (同期入力)
+    public enum TriggerCondition { Normal, Hold, RapidFire, Release, Sync }
     public class TriggerKey { public string DeviceIdentifier { get; set; } public int Type { get; set; } public int Code { get; set; } public override string ToString() => Binding.GetCodeName(Type, Code); }
 
     public class Binding
@@ -26,7 +27,7 @@ namespace UsbInputMapper.Profiles
         public int AxisRange { get; set; } = 0; 
         public int AccelerationCurve { get; set; } = 0; 
         
-        public string PlayWavPath { get; set; } // ★追加: アイテム発動時のWAV再生
+        public string PlayWavPath { get; set; }
 
         public Binding()
         {

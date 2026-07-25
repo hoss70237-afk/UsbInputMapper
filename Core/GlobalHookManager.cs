@@ -1,8 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows.Forms;
 
 namespace UsbInputMapper.Core
 {
@@ -58,10 +58,10 @@ namespace UsbInputMapper.Core
         private LowLevelHookProc _keyboardProc;
         private LowLevelHookProc _mouseProc;
 
-        private HashSet<long> _blockList = new HashSet<long>();
-        private Dictionary<long, long> _recentBlocked = new Dictionary<long, long>();
+        private ConcurrentDictionary<long, byte> _blockList = new ConcurrentDictionary<long, byte>();
+        private ConcurrentDictionary<long, long> _recentBlocked = new ConcurrentDictionary<long, long>();
+        private ConcurrentDictionary<int, long> _lastMouseClickTime = new ConcurrentDictionary<int, long>();
 
-        private Dictionary<int, long> _lastMouseClickTime = new Dictionary<int, long>();
         public bool EnableChatteringCanceler { get; set; } = false;
         public int ChatteringThresholdMs { get; set; } = 20;
         public int BlockedChatterCount { get; private set; } = 0; 
@@ -105,101 +105,138 @@ namespace UsbInputMapper.Core
         }
 
         private long GetHookKey(int type, int code) => ((long)type << 32) | (uint)code;
-        public void SetBlockList(HashSet<long> blockList) { _blockList = blockList ?? new HashSet<long>(); }
-        public bool WasRecentlyBlocked(int type, int code) { long key = GetHookKey(type, code); if (_recentBlocked.TryGetValue(key, out long time)) { if (Environment.TickCount - time < 200) return true; } return false; }
+
+        public void SetBlockList(HashSet<long> blockList) 
+        { 
+            _blockList.Clear();
+            if (blockList != null)
+            {
+                foreach (var item in blockList) _blockList.TryAdd(item, 1);
+            }
+        }
+
+        public bool WasRecentlyBlocked(int type, int code) 
+        { 
+            long key = GetHookKey(type, code); 
+            if (_recentBlocked.TryGetValue(key, out long time)) 
+            { 
+                if (Environment.TickCount64 - time < 200) return true; 
+            } 
+            return false; 
+        }
+
         public void ResetChatterCount() { BlockedChatterCount = 0; }
 
-        public void StartCoordinateCapture(Action<POINT, bool> onCaptured) { _coordinateCaptureCallback = onCaptured; IsCoordinateCapturing = true; _waitingForUp = false; _waitingForRightUp = false; }
-        public void StopCoordinateCapture() { IsCoordinateCapturing = false; _coordinateCaptureCallback = null; }
+        public void StartCoordinateCapture(Action<POINT, bool> onCaptured) 
+        { 
+            _coordinateCaptureCallback = onCaptured; 
+            IsCoordinateCapturing = true; 
+            _waitingForUp = false; 
+            _waitingForRightUp = false; 
+        }
+        
+        public void StopCoordinateCapture() 
+        { 
+            IsCoordinateCapturing = false; 
+            _coordinateCaptureCallback = null; 
+        }
 
         private IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            if (nCode >= 0)
+            try
             {
-                var kb = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
-                bool isInjected = (kb.flags & LLKHF_INJECTED) != 0;
-                int msg = wParam.ToInt32();
-                bool isDown = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
-                int vkCode = (int)kb.vkCode;
-                
-                if (IsRecording) OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = Environment.TickCount });
-                
-                if (!isInjected)
+                if (nCode >= 0)
                 {
-                    long key = GetHookKey(1, vkCode);
-                    if (_blockList.Contains(key)) 
-                    { 
-                        _recentBlocked[key] = Environment.TickCount;
-                        OnBlockedInputFired?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = Environment.TickCount });
-                        return (IntPtr)1; 
-                    }
-                }
-            }
-            return CallNextHookEx(_keyboardHookID, nCode, wParam, lParam);
-        }
-
-        private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-        {
-            if (nCode >= 0)
-            {
-                var ms = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
-                bool isInjected = (ms.flags & LLMHF_INJECTED) != 0;
-                int msg = wParam.ToInt32();
-                
-                if (msg == WM_MOUSEMOVE && !isInjected)
-                {
-                    // カーソルオフセット機能は削除。素直に通知のみ
-                    OnMouseMove?.Invoke(this, ms.pt);
-                }
-                
-                int code = -1;
-                bool isDown = false;
-                if (msg == WM_LBUTTONDOWN) { code = 1; isDown = true; } else if (msg == WM_LBUTTONUP) { code = 1; isDown = false; } else if (msg == WM_RBUTTONDOWN) { code = 2; isDown = true; } else if (msg == WM_RBUTTONUP) { code = 2; isDown = false; } else if (msg == WM_MBUTTONDOWN) { code = 3; isDown = true; } else if (msg == WM_MBUTTONUP) { code = 3; isDown = false; } else if (msg == WM_MOUSEWHEEL) { short wheelData = (short)(ms.mouseData >> 16); code = wheelData > 0 ? 4 : 5; isDown = true; } else if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP) { isDown = (msg == WM_XBUTTONDOWN); int xButton = (int)(ms.mouseData >> 16); code = xButton == 1 ? 6 : 7; }
-
-                if (!isInjected)
-                {
-                    if (code != -1 && isDown && EnableChatteringCanceler && code <= 3) 
+                    var kb = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+                    bool isInjected = (kb.flags & LLKHF_INJECTED) != 0;
+                    int msg = wParam.ToInt32();
+                    bool isDown = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
+                    int vkCode = (int)kb.vkCode;
+                    long now = Environment.TickCount64;
+                    
+                    if (IsRecording) OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now });
+                    
+                    if (!isInjected)
                     {
-                        long now = Environment.TickCount;
-                        if (_lastMouseClickTime.TryGetValue(code, out long lastTime))
-                        {
-                            if (now - lastTime < ChatteringThresholdMs)
-                            {
-                                BlockedChatterCount++;
-                                return (IntPtr)1; 
-                            }
-                        }
-                        _lastMouseClickTime[code] = now;
-                    }
-
-                    if (IsRadialMenuClickCapturing && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN))
-                    {
-                        IsRadialMenuClickCapturing = false;
-                        OnRadialMenuClickCaptured?.Invoke();
-                        return (IntPtr)1; 
-                    }
-
-                    if (IsCoordinateCapturing)
-                    {
-                        if (msg == WM_LBUTTONDOWN) { _capturePoint = ms.pt; _waitingForUp = true; return (IntPtr)1; }
-                        else if (msg == WM_LBUTTONUP && _waitingForUp) { _waitingForUp = false; IsCoordinateCapturing = false; _coordinateCaptureCallback?.Invoke(_capturePoint, false); return (IntPtr)1; }
-                        else if (msg == WM_RBUTTONDOWN) { _waitingForRightUp = true; return (IntPtr)1; }
-                        else if (msg == WM_RBUTTONUP && _waitingForRightUp) { _waitingForRightUp = false; IsCoordinateCapturing = false; _coordinateCaptureCallback?.Invoke(ms.pt, true); return (IntPtr)1; }
-                    }
-
-                    if (code != -1)
-                    {
-                        if (IsRecording) OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = Environment.TickCount });
-                        long key = GetHookKey(0, code);
-                        if (_blockList.Contains(key)) 
+                        long key = GetHookKey(1, vkCode);
+                        if (_blockList.ContainsKey(key)) 
                         { 
-                            _recentBlocked[key] = Environment.TickCount; 
-                            OnBlockedInputFired?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = Environment.TickCount });
+                            _recentBlocked[key] = now;
+                            OnBlockedInputFired?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now });
                             return (IntPtr)1; 
                         }
                     }
                 }
             }
+            catch { }
+            return CallNextHookEx(_keyboardHookID, nCode, wParam, lParam);
+        }
+
+        private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            try
+            {
+                if (nCode >= 0)
+                {
+                    var ms = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+                    bool isInjected = (ms.flags & LLMHF_INJECTED) != 0;
+                    int msg = wParam.ToInt32();
+                    long now = Environment.TickCount64;
+                    
+                    if (msg == WM_MOUSEMOVE && !isInjected)
+                    {
+                        OnMouseMove?.Invoke(this, ms.pt);
+                    }
+                    
+                    int code = -1;
+                    bool isDown = false;
+                    if (msg == WM_LBUTTONDOWN) { code = 1; isDown = true; } else if (msg == WM_LBUTTONUP) { code = 1; isDown = false; } else if (msg == WM_RBUTTONDOWN) { code = 2; isDown = true; } else if (msg == WM_RBUTTONUP) { code = 2; isDown = false; } else if (msg == WM_MBUTTONDOWN) { code = 3; isDown = true; } else if (msg == WM_MBUTTONUP) { code = 3; isDown = false; } else if (msg == WM_MOUSEWHEEL) { short wheelData = (short)(ms.mouseData >> 16); code = wheelData > 0 ? 4 : 5; isDown = true; } else if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP) { isDown = (msg == WM_XBUTTONDOWN); int xButton = (int)(ms.mouseData >> 16); code = xButton == 1 ? 6 : 7; }
+
+                    if (!isInjected)
+                    {
+                        if (code != -1 && isDown && EnableChatteringCanceler && code <= 3) 
+                        {
+                            if (_lastMouseClickTime.TryGetValue(code, out long lastTime))
+                            {
+                                if (now - lastTime < ChatteringThresholdMs)
+                                {
+                                    BlockedChatterCount++;
+                                    return (IntPtr)1; 
+                                }
+                            }
+                            _lastMouseClickTime[code] = now;
+                        }
+
+                        if (IsRadialMenuClickCapturing && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN))
+                        {
+                            IsRadialMenuClickCapturing = false;
+                            OnRadialMenuClickCaptured?.Invoke();
+                            return (IntPtr)1; 
+                        }
+
+                        if (IsCoordinateCapturing)
+                        {
+                            if (msg == WM_LBUTTONDOWN) { _capturePoint = ms.pt; _waitingForUp = true; return (IntPtr)1; }
+                            else if (msg == WM_LBUTTONUP && _waitingForUp) { _waitingForUp = false; IsCoordinateCapturing = false; _coordinateCaptureCallback?.Invoke(_capturePoint, false); return (IntPtr)1; }
+                            else if (msg == WM_RBUTTONDOWN) { _waitingForRightUp = true; return (IntPtr)1; }
+                            else if (msg == WM_RBUTTONUP && _waitingForRightUp) { _waitingForRightUp = false; IsCoordinateCapturing = false; _coordinateCaptureCallback?.Invoke(ms.pt, true); return (IntPtr)1; }
+                        }
+
+                        if (code != -1)
+                        {
+                            if (IsRecording) OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now });
+                            long key = GetHookKey(0, code);
+                            if (_blockList.ContainsKey(key)) 
+                            { 
+                                _recentBlocked[key] = now; 
+                                OnBlockedInputFired?.Invoke(this, new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now });
+                                return (IntPtr)1; 
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
             return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);
         }
 

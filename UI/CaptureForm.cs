@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using UsbInputMapper.Core;
@@ -23,6 +24,9 @@ namespace UsbInputMapper.UI
 
         private long _lastStandardInputTime = 0;
         private List<InputEvent> _pendingHidEvents = new List<InputEvent>();
+        
+        // ★ フォームが閉じられた際のタスクキャンセル用
+        private CancellationTokenSource _cts = new CancellationTokenSource();
 
         public CaptureForm(CaptureMode mode = CaptureMode.SingleAny)
         {
@@ -40,20 +44,33 @@ namespace UsbInputMapper.UI
             btnRadialMenuEdge.MouseLeave += (s, e) => _ignoreInput = false;
         }
 
-        private void CaptureForm_Load(object sender, EventArgs e) { IsCapturing = true; CurrentInstance = this; }
-        private void CaptureForm_FormClosed(object sender, FormClosedEventArgs e) { IsCapturing = false; if (CurrentInstance == this) CurrentInstance = null; }
+        private void CaptureForm_Load(object sender, EventArgs e) 
+        { 
+            IsCapturing = true; 
+            CurrentInstance = this; 
+        }
+        
+        private void CaptureForm_FormClosed(object sender, FormClosedEventArgs e) 
+        { 
+            IsCapturing = false; 
+            if (CurrentInstance == this) CurrentInstance = null;
+            
+            // ★ 非同期タスクの実行を停止
+            _cts.Cancel();
+            _cts.Dispose();
+        }
 
         public void ProcessInput(InputEvent e)
         {
-            if (_ignoreInput) return;
+            if (_ignoreInput || IsDisposed || _cts.IsCancellationRequested) return;
             
             if (this.InvokeRequired)
             {
-                this.BeginInvoke(new Action(() => ProcessInput(e)));
+                try { this.BeginInvoke(new Action(() => ProcessInput(e))); } catch { }
                 return;
             }
 
-            long now = Environment.TickCount;
+            long now = Environment.TickCount64;
             if (e.Type == 0 || e.Type == 1)
             {
                 _lastStandardInputTime = now;
@@ -65,15 +82,24 @@ namespace UsbInputMapper.UI
                 if (now - _lastStandardInputTime < 50) return;
                 
                 _pendingHidEvents.Add(e);
+                
+                // キャンセルトークンを渡して安全に非同期待機
                 Task.Run(async () => {
-                    await Task.Delay(30);
-                    this.BeginInvoke(new Action(() => {
-                        if (_pendingHidEvents.Contains(e))
-                        {
-                            _pendingHidEvents.Remove(e);
-                            ProcessFinalInput(e);
-                        }
-                    }));
+                    try
+                    {
+                        await Task.Delay(30, _cts.Token);
+                        if (_cts.IsCancellationRequested) return;
+
+                        this.BeginInvoke(new Action(() => {
+                            if (!IsDisposed && _pendingHidEvents.Contains(e))
+                            {
+                                _pendingHidEvents.Remove(e);
+                                ProcessFinalInput(e);
+                            }
+                        }));
+                    }
+                    catch (TaskCanceledException) { }
+                    catch (ObjectDisposedException) { }
                 });
                 return;
             }
@@ -83,17 +109,24 @@ namespace UsbInputMapper.UI
 
         private void ProcessFinalInput(InputEvent e)
         {
+            if (IsDisposed || _cts.IsCancellationRequested) return;
+
             if (Mode == CaptureMode.SingleAny)
             {
-                if (e.IsKeyDown) { CapturedEvent = e; this.DialogResult = DialogResult.OK; this.Close(); }
+                if (e.IsDown) 
+                { 
+                    CapturedEvent = e; 
+                    this.DialogResult = DialogResult.OK; 
+                    this.Close(); 
+                }
             }
             else if (Mode == CaptureMode.MultiKeyboard)
             {
                 if (e.Type == 1)
                 {
-                    if (e.IsKeyDown)
+                    if (e.IsDown)
                     {
-                        if (!CapturedKeys.Contains(e.VKey)) CapturedKeys.Add(e.VKey);
+                        if (!CapturedKeys.Contains(e.Code)) CapturedKeys.Add(e.Code);
                         _downCount++;
                         string keysStr = string.Join(" + ", CapturedKeys.Select(k => ((Keys)k).ToString()));
                         label1.Text = $"取得中: {keysStr}";
@@ -101,13 +134,21 @@ namespace UsbInputMapper.UI
                     else
                     {
                         _downCount--;
-                        if (_downCount <= 0 && CapturedKeys.Count > 0) { this.DialogResult = DialogResult.OK; this.Close(); }
+                        if (_downCount <= 0 && CapturedKeys.Count > 0) 
+                        { 
+                            this.DialogResult = DialogResult.OK; 
+                            this.Close(); 
+                        }
                     }
                 }
             }
         }
 
-        private void btnCancel_Click(object sender, EventArgs e) { this.DialogResult = DialogResult.Cancel; this.Close(); }
+        private void btnCancel_Click(object sender, EventArgs e) 
+        { 
+            this.DialogResult = DialogResult.Cancel; 
+            this.Close(); 
+        }
         
         private void btnRadialMenuEdge_Click(object sender, EventArgs e)
         {

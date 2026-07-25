@@ -13,6 +13,9 @@ namespace UsbInputMapper.UI
 {
     public class TrayApplicationContext : ApplicationContext
     {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern ulong GetTickCount64();
+
         private NotifyIcon _trayIcon;
         private MainForm _mainForm;
         private volatile bool _isSuspended = false;
@@ -27,7 +30,6 @@ namespace UsbInputMapper.UI
 
         private SynchronizationContext _syncContext;
 
-        // ★入力イベントを直列化するためのキューと処理タスク
         private BlockingCollection<InputEvent> _inputQueue = new BlockingCollection<InputEvent>();
         private CancellationTokenSource _queueCts = new CancellationTokenSource();
 
@@ -53,11 +55,10 @@ namespace UsbInputMapper.UI
             public override int GetHashCode() => (((((DeviceId != null ? DeviceId.GetHashCode() : 0) * 397) ^ Type) * 397) ^ Code) * 397 ^ BindingHash;
         }
 
-        private Dictionary<TriggerKeyHash, bool> _physicalKeysDown = new Dictionary<TriggerKeyHash, bool>(); // シリアルアクセスになるため普通のDictionaryで安全
+        private Dictionary<TriggerKeyHash, bool> _physicalKeysDown = new Dictionary<TriggerKeyHash, bool>(); 
         private ConcurrentDictionary<LoopKey, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<LoopKey, CancellationTokenSource>();
         private Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
 
-        // ★UIタイマーではなく軽量なバックグラウンドタイマーに変更
         private System.Threading.Timer _activeTimer;
         private volatile int _stickMouseDx = 0;
         private volatile int _stickMouseDy = 0;
@@ -73,17 +74,13 @@ namespace UsbInputMapper.UI
             _syncContext = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
             InitializeCore(); 
             InitializeTrayIcon(); 
-            
-            // 入力処理スレッドの開始
             Task.Factory.StartNew(ProcessInputQueue, _queueCts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
 
         private void InitializeCore()
         {
             _profileManager = new ProfileManager(); _profileManager.Load();
-            _profileManager.OnProfileChanged += (s, e) => {
-                _inputQueue.Add(new InputEvent { Type = -999 }); // プロファイル切り替えシグナル
-            };
+            _profileManager.OnProfileChanged += (s, e) => { _inputQueue.Add(new InputEvent { Type = -999 }); };
             _profileManager.OnSettingsChanged += (s, e) => { UpdateHookBlockList(); UpdateBindingCache(); };
 
             _appWatcher = new ForegroundAppWatcher(); 
@@ -112,7 +109,7 @@ namespace UsbInputMapper.UI
             _diManager = new DirectInputManager(); 
             _diManager.OnInputEvent += (s, e) => {
                 if (!_isSuspended) {
-                    _inputQueue.Add(new InputEvent { DeviceIdentifier = e.DeviceIdentifier, Type = e.Type, Code = e.Code, Value = e.Value, IsDown = e.IsDown, Timestamp = Environment.TickCount64 });
+                    _inputQueue.Add(new InputEvent { DeviceIdentifier = e.DeviceIdentifier, Type = e.Type, Code = e.Code, Value = e.Value, IsDown = e.IsDown, Timestamp = (long)GetTickCount64() });
                 }
             };
 
@@ -120,21 +117,42 @@ namespace UsbInputMapper.UI
             _activeTimer = new System.Threading.Timer(ActiveTimer_Tick, null, Timeout.Infinite, Timeout.Infinite);
         }
 
-        private void ShutdownCore()
+        private void InitializeTrayIcon()
         {
-            _queueCts.Cancel();
-            _activeTimer?.Dispose();
-            _dispatcher?.ReleaseAllInputs(); 
-            SystemMouseManager.RestoreAllSafely(); 
+            _mainForm = new MainForm(_profileManager, _diManager);
+            _trayIcon = new NotifyIcon
+            {
+                Icon = SystemIcons.Application,
+                Visible = true,
+                Text = "UsbInputMapper"
+            };
             
-            _globalHookManager?.Dispose();
-            _rawInputManager?.Dispose();
-            _diManager?.Dispose();
-            _appWatcher?.Dispose();
-            _viGEmOutput?.Dispose();
+            var menu = new ContextMenuStrip();
+            var settingsItem = new ToolStripMenuItem("設定画面を開く");
+            settingsItem.Click += (s, e) => {
+                if (_mainForm == null || _mainForm.IsDisposed) _mainForm = new MainForm(_profileManager, _diManager);
+                _mainForm.Show(); _mainForm.Activate();
+            };
+            
+            var suspendItem = new ToolStripMenuItem("一時停止");
+            suspendItem.CheckOnClick = true;
+            suspendItem.CheckedChanged += (s, e) => {
+                _isSuspended = suspendItem.Checked;
+                if (_isSuspended) _dispatcher?.ReleaseAllInputs();
+            };
+            
+            var exitItem = new ToolStripMenuItem("終了");
+            exitItem.Click += (s, e) => ExitThread();
+            
+            menu.Items.Add(settingsItem);
+            menu.Items.Add(suspendItem);
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(exitItem);
+            
+            _trayIcon.ContextMenuStrip = menu;
+            _trayIcon.DoubleClick += (s, e) => settingsItem.PerformClick();
         }
 
-        // ★専用スレッドですべての入力を順番に処理する
         private void ProcessInputQueue()
         {
             try
@@ -182,6 +200,129 @@ namespace UsbInputMapper.UI
             catch (OperationCanceledException) { }
         }
 
+        private void ProcessBindingExecution(UsbInputMapper.Profiles.Binding b, string devId, int type, int code, bool isDown, int rawValue = 0)
+        {
+            if (b.Action == null || b.Action.ActionType == ActionType.None) return;
+
+            if (b.Action.ActionType == ActionType.RadialMenu)
+            {
+                if (isDown)
+                {
+                    _currentRadialMenuDef = b.Action;
+                    if (_radialMenuHudForm == null || _radialMenuHudForm.IsDisposed)
+                    {
+                        _syncContext.Post(_ => {
+                            _radialMenuHudForm = new RadialMenuHudForm(b.Action);
+                            _radialMenuHudForm.Show();
+                        }, null);
+                    }
+                }
+                else
+                {
+                    _syncContext.Post(_ => {
+                        if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed)
+                        {
+                            int selIdx = _radialMenuHudForm.SelectedDirectionIndex;
+                            _radialMenuHudForm.Close();
+                            _radialMenuHudForm = null;
+
+                            if (selIdx >= 0 && selIdx < _currentRadialMenuDef.RadialMenuDirections.Count)
+                            {
+                                var dir = _currentRadialMenuDef.RadialMenuDirections[selIdx];
+                                if (dir.Action != null && dir.Action.ActionType != ActionType.None)
+                                {
+                                    _dispatcher.Dispatch(dir.Action, true);
+                                    _dispatcher.Dispatch(dir.Action, false);
+                                }
+                            }
+                        }
+                    }, null);
+                }
+                return;
+            }
+
+            if (b.Action.ActionType == ActionType.StickToMouse && type == 11)
+            {
+                float norm = (rawValue - 32767) / 32767f;
+                int dz = b.Action.StickDeadZone;
+                if (Math.Abs(norm * 100) < dz) norm = 0;
+                
+                int spd = (int)(norm * b.Action.StickMaxSpeed);
+                if (code == 0 || code == 3) _stickMouseDx = spd;
+                if (code == 1 || code == 4) _stickMouseDy = spd;
+                
+                if (_stickMouseDx != 0 || _stickMouseDy != 0) _activeTimer.Change(0, 10);
+                else if (_currentBezelCode == -1) _activeTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                return;
+            }
+
+            var loopKey = new LoopKey(devId, type, code, b.GetHashCode());
+
+            if (b.Condition == TriggerCondition.Normal)
+            {
+                _dispatcher.Dispatch(b.Action, isDown);
+            }
+            else if (b.Condition == TriggerCondition.Release)
+            {
+                if (!isDown)
+                {
+                    _dispatcher.Dispatch(b.Action, true);
+                    _dispatcher.Dispatch(b.Action, false);
+                }
+            }
+            else if (b.Condition == TriggerCondition.Hold)
+            {
+                if (isDown)
+                {
+                    var cts = new CancellationTokenSource();
+                    _activeLoops[loopKey] = cts;
+                    Task.Run(async () => {
+                        try {
+                            await Task.Delay(b.ConditionParam, cts.Token);
+                            if (!cts.IsCancellationRequested) {
+                                _dispatcher.Dispatch(b.Action, true);
+                                _dispatcher.Dispatch(b.Action, false);
+                            }
+                        } catch (TaskCanceledException) { }
+                    });
+                }
+                else
+                {
+                    if (_activeLoops.TryRemove(loopKey, out var cts)) {
+                        cts.Cancel(); cts.Dispose();
+                    }
+                }
+            }
+            else if (b.Condition == TriggerCondition.RapidFire)
+            {
+                if (isDown)
+                {
+                    var cts = new CancellationTokenSource();
+                    _activeLoops[loopKey] = cts;
+                    Task.Run(async () => {
+                        try {
+                            while (!cts.IsCancellationRequested) {
+                                _dispatcher.Dispatch(b.Action, true);
+                                await Task.Delay(10, cts.Token);
+                                _dispatcher.Dispatch(b.Action, false);
+                                await Task.Delay(b.ConditionParam > 0 ? b.ConditionParam : 50, cts.Token);
+                            }
+                        } catch (TaskCanceledException) { }
+                    });
+                }
+                else
+                {
+                    if (_activeLoops.TryRemove(loopKey, out var cts)) {
+                        cts.Cancel(); cts.Dispose();
+                    }
+                }
+            }
+            else if (b.Condition == TriggerCondition.Sync)
+            {
+                _dispatcher.Dispatch(b.Action, isDown);
+            }
+        }
+
         private void HandleProfileSwitchSignal()
         {
             _physicalKeysDown.Clear();
@@ -207,12 +348,6 @@ namespace UsbInputMapper.UI
                     _syncContext.Post(_ => { new ProfileOverlayForm(p).Show(); }, null);
                 }
             }
-        }
-
-        private void ProcessBindingExecution(UsbInputMapper.Profiles.Binding b, string devId, int type, int code, bool isDown, int rawValue = 0)
-        {
-            // (前回のProcessBindingExecutionの中身と同じ。非同期ループ処理などもここに記載)
-            // （省略：既存の ExecuteAction などのロジック）
         }
 
         private void GlobalHookManager_OnBlockedInputFired(object sender, GlobalHookManager.HookInputEvent e)
@@ -277,7 +412,6 @@ namespace UsbInputMapper.UI
                         if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) {
                             if (_bezelHoverTime >= b.ConditionParam && _bezelHoverTime - 10 < b.ConditionParam) 
                             { 
-                                // 条件を満たしたので実行要求をキューに入れる
                                 _inputQueue.Add(new InputEvent { Type = 5, Code = _currentBezelCode, IsDown = true, DeviceIdentifier = "Any" });
                             }
                         }
@@ -322,8 +456,26 @@ namespace UsbInputMapper.UI
             _hasBezelBindings = _bindingCache.Keys.Any(k => k.Type == 5);
         }
 
-        // トレイアイコンやUI周りの初期化（省略）
-        private void InitializeTrayIcon() { /* 既存のコードと同様 */ }
-        protected override void Dispose(bool disposing) { ShutdownCore(); base.Dispose(disposing); }
+        private void ShutdownCore()
+        {
+            _queueCts.Cancel();
+            _activeTimer?.Dispose();
+            _dispatcher?.ReleaseAllInputs(); 
+            SystemMouseManager.RestoreAllSafely(); 
+            
+            _globalHookManager?.Dispose();
+            _rawInputManager?.Dispose();
+            _diManager?.Dispose();
+            _appWatcher?.Dispose();
+            _viGEmOutput?.Dispose();
+        }
+
+        protected override void Dispose(bool disposing) 
+        { 
+            ShutdownCore(); 
+            if (_trayIcon != null) { _trayIcon.Visible = false; _trayIcon.Dispose(); }
+            _mainForm?.Dispose();
+            base.Dispose(disposing); 
+        }
     }
 }

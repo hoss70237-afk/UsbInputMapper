@@ -204,39 +204,76 @@ namespace UsbInputMapper.UI
         {
             if (b.Action == null || b.Action.ActionType == ActionType.None) return;
 
-            if (b.Action.ActionType == ActionType.RadialMenu)
+            // ★追加：プロファイル切り替えアクション
+            if (b.Action.ActionType == ActionType.ProfileSwitch)
             {
-                if (isDown)
+                if (b.Action.ArgumentNum == 0) // トグル
                 {
-                    _currentRadialMenuDef = b.Action;
-                    if (_radialMenuHudForm == null || _radialMenuHudForm.IsDisposed)
+                    if (isDown)
                     {
-                        _syncContext.Post(_ => {
-                            _radialMenuHudForm = new RadialMenuHudForm(b.Action);
-                            _radialMenuHudForm.Show();
-                        }, null);
+                        var targetName = b.Action.ArgumentStr;
+                        var current = _profileManager.CurrentProfile;
+                        if (current != null && current.Name == targetName) _profileManager.SwitchToDefault();
+                        else _profileManager.SwitchToProfile(targetName);
                     }
                 }
-                else
+                else // ホールド
                 {
-                    _syncContext.Post(_ => {
-                        if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed)
-                        {
-                            int selIdx = _radialMenuHudForm.SelectedDirectionIndex;
-                            _radialMenuHudForm.Close();
-                            _radialMenuHudForm = null;
+                    _profileManager.SetTemporaryProfile(b.Action.ArgumentStr, isDown);
+                }
+                return;
+            }
 
-                            if (selIdx >= 0 && selIdx < _currentRadialMenuDef.RadialMenuDirections.Count)
-                            {
-                                var dir = _currentRadialMenuDef.RadialMenuDirections[selIdx];
-                                if (dir.Action != null && dir.Action.ActionType != ActionType.None)
-                                {
-                                    _dispatcher.Dispatch(dir.Action, true);
-                                    _dispatcher.Dispatch(dir.Action, false);
-                                }
-                            }
+            // ★修正：ラジアルメニューのモード分岐とクリック対応
+            if (b.Action.ActionType == ActionType.RadialMenu)
+            {
+                if (b.Action.RadialMenuMode == 0) // ホールド
+                {
+                    if (isDown)
+                    {
+                        _currentRadialMenuDef = b.Action;
+                        if (_radialMenuHudForm == null || _radialMenuHudForm.IsDisposed)
+                        {
+                            _syncContext.Post(_ => {
+                                _radialMenuHudForm = new RadialMenuHudForm(b.Action);
+                                _radialMenuHudForm.Show();
+                            }, null);
                         }
-                    }, null);
+                    }
+                    else
+                    {
+                        _syncContext.Post(_ => CloseAndExecuteRadialMenu(), null);
+                    }
+                }
+                else // トグル (クリックで実行)
+                {
+                    if (isDown)
+                    {
+                        if (_radialMenuHudForm == null || _radialMenuHudForm.IsDisposed)
+                        {
+                            _currentRadialMenuDef = b.Action;
+                            _syncContext.Post(_ => {
+                                _radialMenuHudForm = new RadialMenuHudForm(b.Action);
+                                _radialMenuHudForm.Show();
+                                
+                                if (_globalHookManager != null)
+                                {
+                                    _globalHookManager.IsRadialMenuClickCapturing = true;
+                                    _globalHookManager.OnRadialMenuClickCaptured = () => {
+                                        _syncContext.Post(__ => CloseAndExecuteRadialMenu(), null);
+                                    };
+                                }
+                            }, null);
+                        }
+                        else
+                        {
+                            // 再度押された場合はキャンセルとして閉じる
+                            _syncContext.Post(_ => {
+                                if (_radialMenuHudForm != null) { _radialMenuHudForm.Close(); _radialMenuHudForm = null; }
+                                if (_globalHookManager != null) { _globalHookManager.IsRadialMenuClickCapturing = false; _globalHookManager.OnRadialMenuClickCaptured = null; }
+                            }, null);
+                        }
+                    }
                 }
                 return;
             }
@@ -320,6 +357,32 @@ namespace UsbInputMapper.UI
             else if (b.Condition == TriggerCondition.Sync)
             {
                 _dispatcher.Dispatch(b.Action, isDown);
+            }
+        }
+
+        private void CloseAndExecuteRadialMenu()
+        {
+            if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed)
+            {
+                int selIdx = _radialMenuHudForm.SelectedDirectionIndex;
+                _radialMenuHudForm.Close();
+                _radialMenuHudForm = null;
+                
+                if (_globalHookManager != null)
+                {
+                    _globalHookManager.IsRadialMenuClickCapturing = false;
+                    _globalHookManager.OnRadialMenuClickCaptured = null;
+                }
+
+                if (selIdx >= 0 && _currentRadialMenuDef != null && selIdx < _currentRadialMenuDef.RadialMenuDirections.Count)
+                {
+                    var dir = _currentRadialMenuDef.RadialMenuDirections[selIdx];
+                    if (dir.Action != null && dir.Action.ActionType != ActionType.None)
+                    {
+                        _dispatcher.Dispatch(dir.Action, true);
+                        _dispatcher.Dispatch(dir.Action, false);
+                    }
+                }
             }
         }
 

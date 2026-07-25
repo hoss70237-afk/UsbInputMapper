@@ -12,6 +12,7 @@ namespace UsbInputMapper.Profiles
         private readonly string _settingsFilePath;
         private readonly string _controllerBaseFilePath;
         private readonly string _baseFolder;
+        private readonly object _saveLock = new object();
         
         public List<Profile> Profiles { get; private set; }
         public List<Binding> ControllerBaseBindings { get; private set; } 
@@ -29,7 +30,6 @@ namespace UsbInputMapper.Profiles
             string exeProfilePath = Path.Combine(exeFolder, "profiles.json");
             string portableMarker = Path.Combine(exeFolder, "portable.txt");
 
-            // ポータブルモード判定
             if (File.Exists(portableMarker) || File.Exists(exeProfilePath))
             {
                 _baseFolder = exeFolder;
@@ -50,35 +50,64 @@ namespace UsbInputMapper.Profiles
 
         public void Load()
         {
-            if (File.Exists(_settingsFilePath))
+            lock (_saveLock)
             {
-                try { Profiles = JsonConvert.DeserializeObject<List<Profile>>(File.ReadAllText(_settingsFilePath)) ?? new List<Profile>(); }
-                catch { Profiles = new List<Profile>(); }
-            }
-            if (Profiles.Count == 0) Profiles.Add(new Profile { Name = "Default", IsDefault = true });
-            CurrentProfile = Profiles.Find(p => p.IsDefault) ?? Profiles[0];
+                if (File.Exists(_settingsFilePath))
+                {
+                    try { Profiles = JsonConvert.DeserializeObject<List<Profile>>(File.ReadAllText(_settingsFilePath)) ?? new List<Profile>(); }
+                    catch { Profiles = new List<Profile>(); }
+                }
+                if (Profiles.Count == 0) Profiles.Add(new Profile { Name = "Default", IsDefault = true });
+                CurrentProfile = Profiles.Find(p => p.IsDefault) ?? Profiles[0];
 
-            if (File.Exists(_controllerBaseFilePath))
-            {
-                try { ControllerBaseBindings = JsonConvert.DeserializeObject<List<Binding>>(File.ReadAllText(_controllerBaseFilePath)) ?? new List<Binding>(); }
-                catch { ControllerBaseBindings = new List<Binding>(); }
+                if (File.Exists(_controllerBaseFilePath))
+                {
+                    try { ControllerBaseBindings = JsonConvert.DeserializeObject<List<Binding>>(File.ReadAllText(_controllerBaseFilePath)) ?? new List<Binding>(); }
+                    catch { ControllerBaseBindings = new List<Binding>(); }
+                }
             }
         }
 
         public void Save()
         {
-            try
+            lock (_saveLock)
             {
-                // 5世代バックアップ機能
-                ManageBackups(_settingsFilePath);
-                ManageBackups(_controllerBaseFilePath);
+                try
+                {
+                    ManageBackups(_settingsFilePath);
+                    ManageBackups(_controllerBaseFilePath);
 
-                File.WriteAllText(_settingsFilePath, JsonConvert.SerializeObject(Profiles, Formatting.Indented));
-                File.WriteAllText(_controllerBaseFilePath, JsonConvert.SerializeObject(ControllerBaseBindings, Formatting.Indented));
-                
-                OnSettingsChanged?.Invoke(this, EventArgs.Empty);
+                    // ★ Atomic Write: 直接上書きせず、一時ファイルに書いてからリプレイスする
+                    SaveToFileAtomic(_settingsFilePath, Profiles);
+                    SaveToFileAtomic(_controllerBaseFilePath, ControllerBaseBindings);
+                    
+                    OnSettingsChanged?.Invoke(this, EventArgs.Empty);
+                }
+                catch (Exception ex)
+                {
+                    InputLogger.Log($"設定の保存に失敗しました: {ex.Message}");
+                }
             }
-            catch { }
+        }
+
+        private void SaveToFileAtomic(string filePath, object data)
+        {
+            string tempPath = filePath + ".tmp";
+            string json = JsonConvert.SerializeObject(data, Formatting.Indented);
+            
+            File.WriteAllText(tempPath, json);
+            
+            if (File.Exists(filePath))
+            {
+                // 元のファイルが存在する場合は安全に置換
+                string backupPath = filePath + ".bak";
+                File.Replace(tempPath, filePath, backupPath, true);
+            }
+            else
+            {
+                // 新規作成時はそのまま移動
+                File.Move(tempPath, filePath);
+            }
         }
 
         private void ManageBackups(string filePath)
@@ -134,10 +163,7 @@ namespace UsbInputMapper.Profiles
         private void ChangeProfileInternal(Profile newProfile)
         {
             CurrentProfile = newProfile;
-            
-            // プロファイルが切り替わった時、前回のOS変更が残っていれば強制リセット
             SystemMouseManager.RestoreAllSafely();
-            
             OnProfileChanged?.Invoke(this, EventArgs.Empty);
         }
 

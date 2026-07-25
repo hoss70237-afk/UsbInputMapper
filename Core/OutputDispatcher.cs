@@ -33,9 +33,11 @@ namespace UsbInputMapper.Core
         private readonly ConcurrentStack<SendInputNative.POINT> _mousePositionStack = new ConcurrentStack<SendInputNative.POINT>();
         private readonly Random _random = new Random();
 
-        // ★スレッドセーフな状態管理に変更
         private readonly ConcurrentDictionary<int, byte> _pressedKeys = new ConcurrentDictionary<int, byte>();
         private readonly ConcurrentDictionary<int, byte> _pressedMouseButtons = new ConcurrentDictionary<int, byte>();
+        
+        // ★追加：ToggleHoldの状態管理
+        private readonly ConcurrentDictionary<string, bool> _toggleStates = new ConcurrentDictionary<string, bool>();
 
         public OutputDispatcher(ViGEmOutput viGEmOutput) { _viGEmOutput = viGEmOutput; }
 
@@ -55,6 +57,7 @@ namespace UsbInputMapper.Core
             }
             _pressedMouseButtons.Clear();
             
+            _toggleStates.Clear();
             _viGEmOutput.Reset();
         }
 
@@ -66,10 +69,21 @@ namespace UsbInputMapper.Core
             switch (action.ActionType)
             {
                 case ActionType.Keyboard:
-                case ActionType.ToggleHold:
                     if (action.MultipleKeys != null && action.MultipleKeys.Count > 0) SendKeyboardInputs(action.MultipleKeys, isDown);
                     else SendKeyboardInputs(new List<int> { action.ArgumentNum }, isDown);
                     break;
+                    
+                // ★追加：正しいToggleHoldの実装
+                case ActionType.ToggleHold:
+                    if (!isDown) return; 
+                    string key = $"{action.ArgumentNum}_{string.Join(",", action.MultipleKeys ?? new List<int>())}";
+                    bool nextState = !_toggleStates.GetOrAdd(key, false);
+                    _toggleStates[key] = nextState;
+                    
+                    if (action.MultipleKeys != null && action.MultipleKeys.Count > 0) SendKeyboardInputs(action.MultipleKeys, nextState);
+                    else SendKeyboardInputs(new List<int> { action.ArgumentNum }, nextState);
+                    break;
+
                 case ActionType.MouseClick: SendMouseClick(action.ArgumentNum, isDown); break;
                 case ActionType.MouseMoveRelative: if (isDown) SendMouseMove(action.MouseX, action.MouseY, false, false, action.JiggleCursor); break;
                 case ActionType.MouseMoveAbsoluteDesk: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, false, action.JiggleCursor); break;
@@ -233,7 +247,6 @@ namespace UsbInputMapper.Core
             
             if (jiggle)
             {
-                // ★非同期にすることでスレッドブロックを防止
                 _ = Task.Run(async () => {
                     await Task.Delay(10);
                     SendMouseMove(1, 1, false, false, false);

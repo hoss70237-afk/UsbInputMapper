@@ -53,7 +53,7 @@ namespace UsbInputMapper.Core
             public ushort wParamH;
         }
 
-        // 32bit/64bitのメモリ構造の違いを自動吸収する正しいUnion定義
+        // ★ 32bit/64bit双方のマーシャラーで安全な明示的レイアウト
         [StructLayout(LayoutKind.Explicit)]
         public struct InputUnion
         {
@@ -72,10 +72,11 @@ namespace UsbInputMapper.Core
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
-        [DllImport("user32.dll")]
+        [DllImport("user32.dll", SetLastError = true)]
         public static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
-        [DllImport("user32.dll")]
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetCursorPos(out POINT lpPoint);
 
         [StructLayout(LayoutKind.Sequential)]

@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace UsbInputMapper.Profiles
 {
@@ -29,7 +30,6 @@ namespace UsbInputMapper.Profiles
         private static extern bool EnumChildWindows(IntPtr hwndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
-        // ★ WinEventHook 用の定義
         private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
         
         [DllImport("user32.dll")]
@@ -47,6 +47,7 @@ namespace UsbInputMapper.Profiles
         private WinEventDelegate _winEventProc;
         private IntPtr _hWinEventHook = IntPtr.Zero;
         private string _lastAppPath = string.Empty;
+        private readonly object _lockObj = new object();
 
         public ForegroundAppWatcher()
         {
@@ -56,26 +57,32 @@ namespace UsbInputMapper.Profiles
 
         public void Start()
         {
-            if (_hWinEventHook == IntPtr.Zero)
+            lock (_lockObj)
             {
-                // アクティブウィンドウが変わった瞬間だけOSから通知を受け取る (タイマー不要、CPU 0%)
-                _hWinEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
-                CheckCurrentForeground(); // 起動時の初回チェック
+                if (_hWinEventHook == IntPtr.Zero)
+                {
+                    _hWinEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+                    Task.Run(() => CheckCurrentForeground()); // 初回チェックは非同期で行いUIブロックを回避
+                }
             }
         }
 
         public void Stop()
         {
-            if (_hWinEventHook != IntPtr.Zero)
+            lock (_lockObj)
             {
-                UnhookWinEvent(_hWinEventHook);
-                _hWinEventHook = IntPtr.Zero;
+                if (_hWinEventHook != IntPtr.Zero)
+                {
+                    UnhookWinEvent(_hWinEventHook);
+                    _hWinEventHook = IntPtr.Zero;
+                }
             }
         }
 
         private void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            CheckCurrentForeground();
+            // コールバック内は極力軽くし、別タスクで重い処理（プロセス情報取得等）を行う
+            Task.Run(() => CheckCurrentForeground());
         }
 
         private void CheckCurrentForeground()

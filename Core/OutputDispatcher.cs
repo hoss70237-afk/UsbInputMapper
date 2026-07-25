@@ -1,9 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using UsbInputMapper.Profiles;
@@ -30,19 +30,31 @@ namespace UsbInputMapper.Core
         private static extern int GetDlgCtrlID(IntPtr hwnd);
 
         private readonly ViGEmOutput _viGEmOutput;
-        private readonly Stack<SendInputNative.POINT> _mousePositionStack = new Stack<SendInputNative.POINT>();
+        private readonly ConcurrentStack<SendInputNative.POINT> _mousePositionStack = new ConcurrentStack<SendInputNative.POINT>();
         private readonly Random _random = new Random();
 
-        private HashSet<int> _pressedKeys = new HashSet<int>();
-        private HashSet<int> _pressedMouseButtons = new HashSet<int>();
+        // ★スレッドセーフな状態管理に変更
+        private readonly ConcurrentDictionary<int, byte> _pressedKeys = new ConcurrentDictionary<int, byte>();
+        private readonly ConcurrentDictionary<int, byte> _pressedMouseButtons = new ConcurrentDictionary<int, byte>();
 
         public OutputDispatcher(ViGEmOutput viGEmOutput) { _viGEmOutput = viGEmOutput; }
 
         public void ReleaseAllInputs()
         {
-            if (_pressedKeys.Count > 0) { SendKeyboardInputs(_pressedKeys.ToList(), false); _pressedKeys.Clear(); }
-            foreach (var mb in _pressedMouseButtons.ToList()) { SendMouseClick(mb, false); }
+            var keysToRelease = _pressedKeys.Keys.ToList();
+            if (keysToRelease.Count > 0) 
+            { 
+                SendKeyboardInputs(keysToRelease, false); 
+                _pressedKeys.Clear(); 
+            }
+            
+            var mouseBtnsToRelease = _pressedMouseButtons.Keys.ToList();
+            foreach (var mb in mouseBtnsToRelease) 
+            { 
+                SendMouseClick(mb, false); 
+            }
             _pressedMouseButtons.Clear();
+            
             _viGEmOutput.Reset();
         }
 
@@ -65,7 +77,7 @@ namespace UsbInputMapper.Core
                 case ActionType.MouseMoveAbsoluteHoverWin: if (isDown) SendMouseMoveHover(action.MouseX, action.MouseY, action.JiggleCursor); break;
                 case ActionType.MousePosSave: if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt); break;
                 case ActionType.MousePosRestore:
-                    if (isDown && _mousePositionStack.Count > 0) { var popPt = _mousePositionStack.Pop(); SendMouseMove(popPt.X, popPt.Y, true, false, false); } break;
+                    if (isDown && _mousePositionStack.TryPop(out var popPt)) { SendMouseMove(popPt.X, popPt.Y, true, false, false); } break;
                 case ActionType.AppLaunch: 
                 case ActionType.FileOpen:
                 case ActionType.AhkRun:
@@ -160,7 +172,7 @@ namespace UsbInputMapper.Core
             for (int i = 0; i < keysToProcess.Count; i++)
             {
                 ushort vKey = (ushort)keysToProcess[i];
-                if (isDown) _pressedKeys.Add(vKey); else _pressedKeys.Remove(vKey);
+                if (isDown) _pressedKeys.TryAdd(vKey, 1); else _pressedKeys.TryRemove(vKey, out _);
 
                 inputs[i].type = SendInputNative.INPUT_KEYBOARD;
                 inputs[i].u.ki.wVk = vKey;
@@ -174,7 +186,7 @@ namespace UsbInputMapper.Core
 
         public void SendMouseClick(int buttonId, bool isDown)
         {
-            if (buttonId >= 1 && buttonId <= 3) { if (isDown) _pressedMouseButtons.Add(buttonId); else _pressedMouseButtons.Remove(buttonId); }
+            if (buttonId >= 1 && buttonId <= 3) { if (isDown) _pressedMouseButtons.TryAdd(buttonId, 1); else _pressedMouseButtons.TryRemove(buttonId, out _); }
 
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
@@ -221,11 +233,12 @@ namespace UsbInputMapper.Core
             
             if (jiggle)
             {
-                Task.Delay(10).ContinueWith(_ => {
+                // ★非同期にすることでスレッドブロックを防止
+                _ = Task.Run(async () => {
+                    await Task.Delay(10);
                     SendMouseMove(1, 1, false, false, false);
-                    Task.Delay(10).ContinueWith(__ => {
-                        SendMouseMove(-1, -1, false, false, false);
-                    });
+                    await Task.Delay(10);
+                    SendMouseMove(-1, -1, false, false, false);
                 });
             }
         }

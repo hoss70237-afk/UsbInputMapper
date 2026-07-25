@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Drawing;
 
 namespace UsbInputMapper.Core
 {
@@ -54,12 +53,13 @@ namespace UsbInputMapper.Core
         private static uint _originalScrollLines = 3;
         private static uint _originalScrollChars = 3;
         
-        private static bool _isSpeedModified = false;
-        private static bool _isScrollLinesModified = false;
-        private static bool _isScrollCharsModified = false;
+        private static volatile bool _isSpeedModified = false;
+        private static volatile bool _isScrollLinesModified = false;
+        private static volatile bool _isScrollCharsModified = false;
+        
         public static bool IsCursorHidden { get; private set; } = false;
+        private static readonly object _lockObj = new object();
 
-        // ★追加: 現在のOS設定を読み取るプロパティ群
         public static int CurrentMouseSpeed
         {
             get { uint speed = 10; SystemParametersInfo(SPI_GETMOUSESPEED, 0, ref speed, 0); return (int)speed; }
@@ -82,14 +82,17 @@ namespace UsbInputMapper.Core
 
         static SystemMouseManager()
         {
-            uint speed = 10;
-            if (SystemParametersInfo(SPI_GETMOUSESPEED, 0, ref speed, 0)) _originalSpeed = speed;
+            lock (_lockObj)
+            {
+                uint speed = 10;
+                if (SystemParametersInfo(SPI_GETMOUSESPEED, 0, ref speed, 0)) _originalSpeed = speed;
 
-            uint scrollL = 3;
-            if (SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, ref scrollL, 0)) _originalScrollLines = scrollL;
+                uint scrollL = 3;
+                if (SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, ref scrollL, 0)) _originalScrollLines = scrollL;
 
-            uint scrollC = 3;
-            if (SystemParametersInfo(SPI_GETWHEELSCROLLCHARS, 0, ref scrollC, 0)) _originalScrollChars = scrollC;
+                uint scrollC = 3;
+                if (SystemParametersInfo(SPI_GETWHEELSCROLLCHARS, 0, ref scrollC, 0)) _originalScrollChars = scrollC;
+            }
 
             AppDomain.CurrentDomain.ProcessExit += (s, e) => RestoreAllSafely();
             AppDomain.CurrentDomain.UnhandledException += (s, e) => RestoreAllSafely();
@@ -97,78 +100,94 @@ namespace UsbInputMapper.Core
 
         public static void SetMouseSpeed(int speed)
         {
-            if (speed < 1) speed = 1; if (speed > 20) speed = 20;
-            uint val = (uint)speed;
-            SystemParametersInfo(SPI_SETMOUSESPEED, 0, (IntPtr)val, SPIF_SENDCHANGE);
-            _isSpeedModified = true;
+            lock (_lockObj)
+            {
+                if (speed < 1) speed = 1; if (speed > 20) speed = 20;
+                SystemParametersInfo(SPI_SETMOUSESPEED, 0, (IntPtr)speed, SPIF_SENDCHANGE);
+                _isSpeedModified = true;
+            }
         }
 
         public static void SetScrollLines(int lines, bool isPageScroll)
         {
-            uint val = isPageScroll ? WHEEL_PAGESCROLL : (uint)Math.Max(1, Math.Min(lines, 100));
-            SystemParametersInfo(SPI_SETWHEELSCROLLLINES, val, IntPtr.Zero, SPIF_SENDCHANGE);
-            _isScrollLinesModified = true;
+            lock (_lockObj)
+            {
+                uint val = isPageScroll ? WHEEL_PAGESCROLL : (uint)Math.Max(1, Math.Min(lines, 100));
+                SystemParametersInfo(SPI_SETWHEELSCROLLLINES, val, IntPtr.Zero, SPIF_SENDCHANGE);
+                _isScrollLinesModified = true;
+            }
         }
 
         public static void SetHorizontalScrollChars(int chars)
         {
-            if (chars < 1) chars = 1; if (chars > 100) chars = 100;
-            uint val = (uint)chars;
-            SystemParametersInfo(SPI_SETWHEELSCROLLCHARS, val, IntPtr.Zero, SPIF_SENDCHANGE);
-            _isScrollCharsModified = true;
+            lock (_lockObj)
+            {
+                if (chars < 1) chars = 1; if (chars > 100) chars = 100;
+                SystemParametersInfo(SPI_SETWHEELSCROLLCHARS, (uint)chars, IntPtr.Zero, SPIF_SENDCHANGE);
+                _isScrollCharsModified = true;
+            }
         }
 
         public static void HideCursor()
         {
-            if (IsCursorHidden) return;
-            
-            byte[] andMask = new byte[] { 0xFF, 0xFF, 0xFF, 0xFF };
-            byte[] xorMask = new byte[] { 0x00, 0x00, 0x00, 0x00 };
-
-            IntPtr hAndMask = CreateBitmap(1, 1, 1, 1, Marshal.UnsafeAddrOfPinnedArrayElement(andMask, 0));
-            IntPtr hXorMask = CreateBitmap(1, 1, 1, 1, Marshal.UnsafeAddrOfPinnedArrayElement(xorMask, 0));
-
-            ICONINFO iconInfo = new ICONINFO { fIcon = false, xHotspot = 0, yHotspot = 0, hbmMask = hAndMask, hbmColor = hXorMask };
-            IntPtr hTransparentCursor = CreateIconIndirect(ref iconInfo);
-
-            DeleteObject(hAndMask); DeleteObject(hXorMask);
-
-            uint[] cursorIds = { 32512, 32513, 32514, 32515, 32516, 32640, 32641, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650, 32651 };
-            foreach (uint id in cursorIds)
+            lock (_lockObj)
             {
-                IntPtr hCurCopy = CopyIcon(hTransparentCursor);
-                SetSystemCursor(hCurCopy, id);
+                if (IsCursorHidden) return;
+                
+                byte[] andMask = new byte[] { 0xFF, 0xFF, 0xFF, 0xFF };
+                byte[] xorMask = new byte[] { 0x00, 0x00, 0x00, 0x00 };
+
+                IntPtr hAndMask = CreateBitmap(1, 1, 1, 1, Marshal.UnsafeAddrOfPinnedArrayElement(andMask, 0));
+                IntPtr hXorMask = CreateBitmap(1, 1, 1, 1, Marshal.UnsafeAddrOfPinnedArrayElement(xorMask, 0));
+
+                ICONINFO iconInfo = new ICONINFO { fIcon = false, xHotspot = 0, yHotspot = 0, hbmMask = hAndMask, hbmColor = hXorMask };
+                IntPtr hTransparentCursor = CreateIconIndirect(ref iconInfo);
+
+                DeleteObject(hAndMask); DeleteObject(hXorMask);
+
+                uint[] cursorIds = { 32512, 32513, 32514, 32515, 32516, 32640, 32641, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650, 32651 };
+                foreach (uint id in cursorIds)
+                {
+                    IntPtr hCurCopy = CopyIcon(hTransparentCursor);
+                    SetSystemCursor(hCurCopy, id);
+                }
+                
+                DeleteObject(hTransparentCursor);
+                IsCursorHidden = true;
             }
-            
-            DeleteObject(hTransparentCursor);
-            IsCursorHidden = true;
         }
 
         public static void ShowCursor()
         {
-            if (!IsCursorHidden) return;
-            SystemParametersInfo(SPI_SETCURSORS, 0, IntPtr.Zero, SPIF_SENDCHANGE);
-            IsCursorHidden = false;
+            lock (_lockObj)
+            {
+                if (!IsCursorHidden) return;
+                SystemParametersInfo(SPI_SETCURSORS, 0, IntPtr.Zero, SPIF_SENDCHANGE);
+                IsCursorHidden = false;
+            }
         }
 
         public static void RestoreAllSafely()
         {
-            if (_isSpeedModified)
+            lock (_lockObj)
             {
-                SystemParametersInfo(SPI_SETMOUSESPEED, 0, (IntPtr)_originalSpeed, SPIF_SENDCHANGE);
-                _isSpeedModified = false;
+                if (_isSpeedModified)
+                {
+                    SystemParametersInfo(SPI_SETMOUSESPEED, 0, (IntPtr)_originalSpeed, SPIF_SENDCHANGE);
+                    _isSpeedModified = false;
+                }
+                if (_isScrollLinesModified)
+                {
+                    SystemParametersInfo(SPI_SETWHEELSCROLLLINES, _originalScrollLines, IntPtr.Zero, SPIF_SENDCHANGE);
+                    _isScrollLinesModified = false;
+                }
+                if (_isScrollCharsModified)
+                {
+                    SystemParametersInfo(SPI_SETWHEELSCROLLCHARS, _originalScrollChars, IntPtr.Zero, SPIF_SENDCHANGE);
+                    _isScrollCharsModified = false;
+                }
+                if (IsCursorHidden) ShowCursor();
             }
-            if (_isScrollLinesModified)
-            {
-                SystemParametersInfo(SPI_SETWHEELSCROLLLINES, _originalScrollLines, IntPtr.Zero, SPIF_SENDCHANGE);
-                _isScrollLinesModified = false;
-            }
-            if (_isScrollCharsModified)
-            {
-                SystemParametersInfo(SPI_SETWHEELSCROLLCHARS, _originalScrollChars, IntPtr.Zero, SPIF_SENDCHANGE);
-                _isScrollCharsModified = false;
-            }
-            if (IsCursorHidden) ShowCursor();
         }
     }
 }

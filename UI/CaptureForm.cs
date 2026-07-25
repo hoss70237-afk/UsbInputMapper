@@ -12,6 +12,9 @@ namespace UsbInputMapper.UI
 
     public partial class CaptureForm : Form
     {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern ulong GetTickCount64();
+
         public static bool IsCapturing { get; private set; }
         public static CaptureForm CurrentInstance { get; private set; }
         
@@ -25,7 +28,6 @@ namespace UsbInputMapper.UI
         private long _lastStandardInputTime = 0;
         private List<InputEvent> _pendingHidEvents = new List<InputEvent>();
         
-        // ★ フォームが閉じられた際のタスクキャンセル用
         private CancellationTokenSource _cts = new CancellationTokenSource();
 
         public CaptureForm(CaptureMode mode = CaptureMode.SingleAny)
@@ -55,7 +57,6 @@ namespace UsbInputMapper.UI
             IsCapturing = false; 
             if (CurrentInstance == this) CurrentInstance = null;
             
-            // ★ 非同期タスクの実行を停止
             _cts.Cancel();
             _cts.Dispose();
         }
@@ -70,7 +71,7 @@ namespace UsbInputMapper.UI
                 return;
             }
 
-            long now = Environment.TickCount64;
+            long now = (long)GetTickCount64();
             if (e.Type == 0 || e.Type == 1)
             {
                 _lastStandardInputTime = now;
@@ -83,7 +84,6 @@ namespace UsbInputMapper.UI
                 
                 _pendingHidEvents.Add(e);
                 
-                // キャンセルトークンを渡して安全に非同期待機
                 Task.Run(async () => {
                     try
                     {

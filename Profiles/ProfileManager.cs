@@ -77,7 +77,6 @@ namespace UsbInputMapper.Profiles
                     ManageBackups(_settingsFilePath);
                     ManageBackups(_controllerBaseFilePath);
 
-                    // ★ Atomic Write: 直接上書きせず、一時ファイルに書いてからリプレイスする
                     SaveToFileAtomic(_settingsFilePath, Profiles);
                     SaveToFileAtomic(_controllerBaseFilePath, ControllerBaseBindings);
                     
@@ -99,13 +98,11 @@ namespace UsbInputMapper.Profiles
             
             if (File.Exists(filePath))
             {
-                // 元のファイルが存在する場合は安全に置換
                 string backupPath = filePath + ".bak";
                 File.Replace(tempPath, filePath, backupPath, true);
             }
             else
             {
-                // 新規作成時はそのまま移動
                 File.Move(tempPath, filePath);
             }
         }
@@ -127,7 +124,6 @@ namespace UsbInputMapper.Profiles
                                        .OrderByDescending(f => f.CreationTime)
                                        .ToList();
                 
-                // 最新5つを残して削除
                 if (backups.Count > 5)
                 {
                     for (int i = 5; i < backups.Count; i++)
@@ -158,6 +154,41 @@ namespace UsbInputMapper.Profiles
             TemporaryProfile = null; 
             var def = Profiles.Find(p => p.IsDefault) ?? Profiles[0]; 
             if (CurrentProfile != def) { ChangeProfileInternal(def); } 
+        }
+
+        // ★追加：明示的なプロファイル切替用
+        public void SwitchToProfile(string profileName)
+        {
+            TemporaryProfile = null;
+            var target = Profiles.Find(p => p.Name == profileName);
+            if (target != null && CurrentProfile != target)
+            {
+                ChangeProfileInternal(target);
+            }
+        }
+
+        // ★追加：ホールド中の一時的なプロファイル適用
+        public void SetTemporaryProfile(string profileName, bool enable)
+        {
+            if (enable)
+            {
+                var target = Profiles.Find(p => p.Name == profileName);
+                if (target != null && TemporaryProfile != target)
+                {
+                    TemporaryProfile = target;
+                    SystemMouseManager.RestoreAllSafely();
+                    OnProfileChanged?.Invoke(this, EventArgs.Empty);
+                }
+            }
+            else
+            {
+                if (TemporaryProfile != null)
+                {
+                    TemporaryProfile = null;
+                    SystemMouseManager.RestoreAllSafely();
+                    OnProfileChanged?.Invoke(this, EventArgs.Empty);
+                }
+            }
         }
 
         private void ChangeProfileInternal(Profile newProfile)

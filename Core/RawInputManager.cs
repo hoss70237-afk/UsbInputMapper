@@ -7,6 +7,9 @@ namespace UsbInputMapper.Core
 {
     public class RawInputManager : NativeWindow, IDisposable
     {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern ulong GetTickCount64();
+
         public event EventHandler<InputEvent> OnInputEvent;
         public event EventHandler OnDeviceChanged;
 
@@ -73,7 +76,7 @@ namespace UsbInputMapper.Core
                     { 
                         DeviceIdentifier = devInfo.GetIdentifier(), 
                         Type = (int)header.dwType,
-                        Timestamp = Environment.TickCount64
+                        Timestamp = (long)GetTickCount64()
                     };
                     
                     IntPtr pRawData = new IntPtr(pData.ToInt64() + headerSize);

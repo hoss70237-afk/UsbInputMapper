@@ -8,6 +8,9 @@ namespace UsbInputMapper.Core
 {
     public class GlobalHookManager : IDisposable
     {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern ulong GetTickCount64();
+
         public static GlobalHookManager Instance { get; private set; }
 
         private const int WH_KEYBOARD_LL = 13;
@@ -120,7 +123,7 @@ namespace UsbInputMapper.Core
             long key = GetHookKey(type, code); 
             if (_recentBlocked.TryGetValue(key, out long time)) 
             { 
-                if (Environment.TickCount64 - time < 200) return true; 
+                if ((long)GetTickCount64() - time < 200) return true; 
             } 
             return false; 
         }
@@ -152,7 +155,7 @@ namespace UsbInputMapper.Core
                     int msg = wParam.ToInt32();
                     bool isDown = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
                     int vkCode = (int)kb.vkCode;
-                    long now = Environment.TickCount64;
+                    long now = (long)GetTickCount64();
                     
                     if (IsRecording) OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now });
                     
@@ -181,7 +184,7 @@ namespace UsbInputMapper.Core
                     var ms = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
                     bool isInjected = (ms.flags & LLMHF_INJECTED) != 0;
                     int msg = wParam.ToInt32();
-                    long now = Environment.TickCount64;
+                    long now = (long)GetTickCount64();
                     
                     if (msg == WM_MOUSEMOVE && !isInjected)
                     {

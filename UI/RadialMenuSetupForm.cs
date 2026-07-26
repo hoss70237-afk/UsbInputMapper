@@ -61,7 +61,8 @@ namespace UsbInputMapper.UI
                     _triggerType = existingBinding.InputType; 
                     _triggerCode = existingBinding.InputCode; 
                     _triggerDevId = existingBinding.DeviceIdentifier;
-                    _lblTrigger.Text = $"開始ボタン: {Binding.GetCodeName(_triggerType, _triggerCode)}";
+                    // 名前空間を明示的に指定
+                    _lblTrigger.Text = $"開始ボタン: {UsbInputMapper.Profiles.Binding.GetCodeName(_triggerType, _triggerCode)}";
                     _chkBlockOriginalInput.Checked = existingBinding.BlockOriginalInput;
                     
                     _cmbSlices.SelectedIndex = existingBinding.Action.RadialMenuSlices == 12 ? 1 : 0;
@@ -70,7 +71,8 @@ namespace UsbInputMapper.UI
             }
             else
             {
-                ResultBinding = new Binding();
+                // 名前空間を明示的に指定
+                ResultBinding = new UsbInputMapper.Profiles.Binding();
             }
         }
 
@@ -85,7 +87,8 @@ namespace UsbInputMapper.UI
                         _triggerDevId = ev.DeviceIdentifier; 
                         _triggerType = ev.Type; 
                         _triggerCode = (ev.Type == 1) ? ev.VKey : (int)ev.MouseButtonFlags;
-                        _lblTrigger.Text = $"開始ボタン: {Binding.GetCodeName(_triggerType, _triggerCode)}";
+                        // 名前空間を明示的に指定
+                        _lblTrigger.Text = $"開始ボタン: {UsbInputMapper.Profiles.Binding.GetCodeName(_triggerType, _triggerCode)}";
                     }
                 }
             };

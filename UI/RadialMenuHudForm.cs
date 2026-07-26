@@ -15,7 +15,6 @@ namespace UsbInputMapper.UI
         
         private int _lastIndex = -2;
 
-        // ★ フォーカスを奪わずに最前面表示するためのスタイル定義
         protected override bool ShowWithoutActivation => true;
 
         protected override CreateParams CreateParams
@@ -33,6 +32,11 @@ namespace UsbInputMapper.UI
         public RadialMenuHudForm(ActionDef actionDef)
         {
             _actionDef = actionDef;
+
+            // ★ 描画のチラつき・点滅防止スタイル
+            this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            this.UpdateStyles();
+
             this.FormBorderStyle = FormBorderStyle.None;
             this.TopMost = true;
             this.ShowInTaskbar = false;
@@ -62,6 +66,12 @@ namespace UsbInputMapper.UI
             _drawTimer = new Timer { Interval = 16 };
             _drawTimer.Tick += UpdateSelection;
             _drawTimer.Start();
+        }
+
+        // ★ 背景消去時のマゼンタ色チラつきを完全に無効化
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            // 何もしない（チラつき・点滅防止）
         }
 
         private void UpdateSelection(object sender, EventArgs e)

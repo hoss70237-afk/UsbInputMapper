@@ -20,15 +20,14 @@ namespace UsbInputMapper.Util
                         object value = key.GetValue(AppName);
                         if (value != null)
                         {
-                            string expectedPath = $"\"{Application.ExecutablePath}\"";
-                            return value.ToString().Equals(expectedPath, StringComparison.OrdinalIgnoreCase);
+                            string regPath = value.ToString().Trim('"');
+                            return regPath.Equals(Application.ExecutablePath, StringComparison.OrdinalIgnoreCase);
                         }
                     }
                 }
             }
             catch
             {
-                // 権限エラーなどは未登録として扱う
             }
             return false;
         }

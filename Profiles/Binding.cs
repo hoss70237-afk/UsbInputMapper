@@ -1,4 +1,3 @@
-// FILE: Profiles/Binding.cs
 using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
@@ -17,12 +16,15 @@ namespace UsbInputMapper.Profiles
         
         public List<TriggerKey> SubTriggers { get; set; }
         
-        public int ClickTriggerCount { get; set; } = 1; // 1:Single, 2:Double, 3:Triple
+        public int ClickTriggerCount { get; set; } = 1; 
         public bool ExecuteSingleSimultaneously { get; set; } = false;
         public bool ExecuteDoubleSimultaneously { get; set; } = false;
 
         public TriggerCondition Condition { get; set; }
         public int ConditionParam { get; set; }
+        
+        public int RequiredLayer { get; set; } = 0; // ★追加: 0なら全レイヤー共通、1以上ならそのレイヤー時のみ発動
+
         public ActionDef Action { get; set; }
         public bool BlockOriginalInput { get; set; }
 
@@ -48,7 +50,9 @@ namespace UsbInputMapper.Profiles
             if (SubTriggers != null && SubTriggers.Count > 0) foreach (var t in SubTriggers) sub += t.ToString() + " + ";
             
             string clickStr = ClickTriggerCount == 2 ? "[Double] " : (ClickTriggerCount == 3 ? "[Triple] " : "");
-            return $"{sub}{clickStr}{mainTrigger}";
+            string layerStr = RequiredLayer > 0 ? $"[L{RequiredLayer}] " : "";
+            
+            return $"{layerStr}{sub}{clickStr}{mainTrigger}";
         }
 
         public static string GetCodeName(int type, int code)

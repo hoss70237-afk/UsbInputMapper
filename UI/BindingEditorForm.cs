@@ -82,6 +82,10 @@ namespace UsbInputMapper.UI
                 UpdateMainTriggerLabel();
                 if (ResultBinding.SubTriggers != null) foreach (var st in ResultBinding.SubTriggers) lstSubTriggers.Items.Add(st);
                 
+                cmbClickCount.SelectedIndex = existingBinding.ClickTriggerCount - 1;
+                chkExecuteSingle.Checked = existingBinding.ExecuteSingleSimultaneously;
+                chkExecuteDouble.Checked = existingBinding.ExecuteDoubleSimultaneously;
+
                 cmbCondition.SelectedIndex = (int)existingBinding.Condition;
                 numConditionParam.Value = existingBinding.ConditionParam;
                 
@@ -108,7 +112,6 @@ namespace UsbInputMapper.UI
                 chkJiggle.Checked = existingBinding.Action.JiggleCursor;
                 cmbCursorVis.SelectedIndex = existingBinding.Action.CursorVisMode;
                 
-                // ★追加: 既存設定がなければ、OSの現在の設定値をデフォルトとしてUIに入れる
                 if (existingBinding.Action.ActionType == ActionType.SystemMouseSettings)
                 {
                     numSysMouseSpd.Value = existingBinding.Action.SystemMouseSpeed; 
@@ -127,6 +130,7 @@ namespace UsbInputMapper.UI
             else
             {
                 ResultBinding = new UsbInputMapper.Profiles.Binding();
+                cmbClickCount.SelectedIndex = 0;
                 cmbCondition.SelectedIndex = 0; cmbActionType.SelectedIndex = 1; 
                 numDeadZone.Value = 15; cmbBgAction.SelectedIndex = 0;
                 cmbCursorVis.SelectedIndex = 0;
@@ -138,12 +142,16 @@ namespace UsbInputMapper.UI
                 numSysHScroll.Value = SystemMouseManager.CurrentHorizontalScrollChars;
             }
             
+            UpdateClickLogicUI();
             EnforceSyncConditionLogic();
         }
 
         private void SetupComboBoxes()
         {
-            // ★変更: Sync追加
+            cmbClickCount.Items.Add("シングルクリック");
+            cmbClickCount.Items.Add("ダブルクリック");
+            cmbClickCount.Items.Add("トリプルクリック");
+
             cmbCondition.Items.Add("通常入力 (押した時)"); 
             cmbCondition.Items.Add("長押し (ミリ秒経過で発動)"); 
             cmbCondition.Items.Add("連打 (押している間ループ)"); 
@@ -223,8 +231,25 @@ namespace UsbInputMapper.UI
             var subs = new List<string>();
             foreach (var item in lstSubTriggers.Items) if (item is TriggerKey tk) subs.Add(GetRawCodeName(tk.Type, tk.Code));
             string name = subs.Count > 0 ? string.Join(" + ", subs) + " + " : "";
+            
+            int c = cmbClickCount.SelectedIndex + 1;
+            if (c == 2) name += "[Double] ";
+            else if (c == 3) name += "[Triple] ";
+            
             name += GetRawCodeName(ResultBinding.InputType, ResultBinding.InputCode);
             txtName.Text = name;
+        }
+
+        private void cmbClickCount_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateClickLogicUI();
+        }
+
+        private void UpdateClickLogicUI()
+        {
+            int clicks = cmbClickCount.SelectedIndex + 1;
+            chkExecuteSingle.Visible = (clicks >= 2);
+            chkExecuteDouble.Visible = (clicks >= 3);
         }
 
         private void cmbCondition_SelectedIndexChanged(object sender, EventArgs e) 
@@ -237,7 +262,6 @@ namespace UsbInputMapper.UI
             EnforceSyncConditionLogic();
         }
 
-        // ★追加: 同期入力(Sync)時のグレーアウト制御
         private void EnforceSyncConditionLogic()
         {
             bool isSync = (cmbCondition.SelectedIndex == 4);
@@ -246,31 +270,19 @@ namespace UsbInputMapper.UI
             if (cmbActionType.SelectedItem is ComboItem actItem)
             {
                 var type = (ActionType)actItem.Value;
-                
-                // Syncが許可されるアクションか判定
                 bool allowed = type == ActionType.None || type == ActionType.Keyboard || type == ActionType.MouseClick || type == ActionType.XboxController || type == ActionType.XboxTrigger;
                 
                 if (isSync)
                 {
-                    cmbActionState.SelectedIndex = 0; // 強制連動
+                    cmbActionState.SelectedIndex = 0; 
                     cmbActionState.Enabled = false;
                     
-                    if (!allowed)
-                    {
-                        // 許可されていない場合、強制的にNoneに戻す
-                        SetActionTypeCombo(ActionType.None);
-                    }
+                    if (!allowed) SetActionTypeCombo(ActionType.None);
                 }
                 else
                 {
                     cmbActionState.Enabled = true;
                 }
-            }
-
-            // アイテムのグレーアウト制御
-            for (int i = 0; i < cmbActionType.Items.Count; i++)
-            {
-                // UI上で個別にグレーアウトは難しいため、SelectedIndexChangedでブロックする処理を入れています。
             }
         }
 
@@ -279,13 +291,12 @@ namespace UsbInputMapper.UI
             if (!(cmbActionType.SelectedItem is ComboItem actItem)) return;
             var type = (ActionType)actItem.Value;
             
-            // ★追加: Sync時の選択ブロック
             if (cmbCondition.SelectedIndex == 4)
             {
                 bool allowed = type == ActionType.None || type == ActionType.Keyboard || type == ActionType.MouseClick || type == ActionType.XboxController || type == ActionType.XboxTrigger;
                 if (!allowed)
                 {
-                    MessageBox.Show("「同期入力」条件では、継続状態を持たないアクション(移動、マクロ、起動など)は選択できません。", "設定エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show("「同期入力」条件では、継続状態を持たないアクションは選択できません。", "設定エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     SetActionTypeCombo(ActionType.None);
                     return;
                 }
@@ -359,6 +370,11 @@ namespace UsbInputMapper.UI
         {
             if (string.IsNullOrWhiteSpace(txtName.Text)) return;
             ResultBinding.Name = txtName.Text; ResultBinding.BlockOriginalInput = chkBlockOriginalInput.Checked;
+            
+            ResultBinding.ClickTriggerCount = cmbClickCount.SelectedIndex + 1;
+            ResultBinding.ExecuteSingleSimultaneously = chkExecuteSingle.Checked;
+            ResultBinding.ExecuteDoubleSimultaneously = chkExecuteDouble.Checked;
+
             ResultBinding.Condition = (TriggerCondition)cmbCondition.SelectedIndex; ResultBinding.ConditionParam = (int)numConditionParam.Value;
             ResultBinding.AxisRange = cmbAxisRange.SelectedIndex; ResultBinding.DeadZone = (int)numDeadZone.Value; ResultBinding.AccelerationCurve = cmbCurve.SelectedIndex;
 

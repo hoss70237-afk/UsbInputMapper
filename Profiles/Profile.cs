@@ -1,4 +1,3 @@
-// FILE: Profiles/Profile.cs
 using System;
 using System.Collections.Generic;
 
@@ -11,7 +10,11 @@ namespace UsbInputMapper.Profiles
         public bool IsDefault { get; set; }
         
         public bool EnableXInput { get; set; } = false;
+        
+        // 通知機能の拡充
         public bool NotifyProfileChangeVibration { get; set; } = false;
+        public bool NotifyProfileChangeBeep { get; set; } = false;
+        public bool NotifyProfileChangeTTS { get; set; } = false;
         
         public bool OverrideGlobalChattering { get; set; } = false;
         public bool EnableChatteringCanceler { get; set; } = false;

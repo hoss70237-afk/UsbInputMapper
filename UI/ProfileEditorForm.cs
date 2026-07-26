@@ -34,6 +34,8 @@ namespace UsbInputMapper.UI
 
             txtName.Text = profile.Name;
             chkNotifyVibration.Checked = profile.NotifyProfileChangeVibration;
+            chkNotifyBeep.Checked = profile.NotifyProfileChangeBeep;
+            chkNotifyTTS.Checked = profile.NotifyProfileChangeTTS;
             
             chkOverrideGlobalChattering.Checked = profile.OverrideGlobalChattering;
             chkEnableChatteringCanceler.Checked = profile.EnableChatteringCanceler;
@@ -53,15 +55,15 @@ namespace UsbInputMapper.UI
 
             if (_existingProfiles != null && _existingProfiles.Count > 0)
             {
-                _lblCopyFrom = new Label { Text = "コピー元:", Location = new Point(12, 282), AutoSize = true };
-                _cmbCopyFrom = new ComboBox { Location = new Point(87, 279), Size = new Size(265, 20), DropDownStyle = ComboBoxStyle.DropDownList };
+                _lblCopyFrom = new Label { Text = "コピー元:", Location = new Point(12, 332), AutoSize = true };
+                _cmbCopyFrom = new ComboBox { Location = new Point(87, 329), Size = new Size(265, 20), DropDownStyle = ComboBoxStyle.DropDownList };
                 _cmbCopyFrom.Items.Add("(空の状態で作成)");
                 foreach (var p in _existingProfiles) _cmbCopyFrom.Items.Add(p.Name);
                 _cmbCopyFrom.SelectedIndex = 0;
 
                 this.Controls.Add(_lblCopyFrom); this.Controls.Add(_cmbCopyFrom);
-                this.ClientSize = new Size(this.ClientSize.Width, 340);
-                btnOK.Top = 305; btnCancel.Top = 305; lblStatus.Top = 310;
+                this.ClientSize = new Size(this.ClientSize.Width, 390);
+                btnOK.Top = 355; btnCancel.Top = 355; lblStatus.Top = 360;
             }
 
             SetupTargetPicker();
@@ -110,6 +112,9 @@ namespace UsbInputMapper.UI
         private void btnOK_Click(object sender, EventArgs e)
         {
             TargetProfile.NotifyProfileChangeVibration = chkNotifyVibration.Checked;
+            TargetProfile.NotifyProfileChangeBeep = chkNotifyBeep.Checked;
+            TargetProfile.NotifyProfileChangeTTS = chkNotifyTTS.Checked;
+            
             TargetProfile.OverrideGlobalChattering = chkOverrideGlobalChattering.Checked;
             TargetProfile.EnableChatteringCanceler = chkEnableChatteringCanceler.Checked;
             TargetProfile.ChatteringThresholdMs = (int)numChatteringThresholdMs.Value;

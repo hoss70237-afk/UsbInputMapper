@@ -15,6 +15,21 @@ namespace UsbInputMapper.UI
         
         private int _lastIndex = -2;
 
+        // ★ フォーカスを奪わずに最前面表示するためのスタイル定義
+        protected override bool ShowWithoutActivation => true;
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
+                cp.ExStyle |= 0x00080000; // WS_EX_LAYERED
+                cp.ExStyle |= 0x00000008; // WS_EX_TOPMOST
+                return cp;
+            }
+        }
+
         public RadialMenuHudForm(ActionDef actionDef)
         {
             _actionDef = actionDef;
@@ -25,7 +40,7 @@ namespace UsbInputMapper.UI
             this.BackColor = Color.Magenta;
             this.TransparencyKey = Color.Magenta;
 
-            int size = _actionDef.RadialMenuSize;
+            int size = Math.Max(100, _actionDef.RadialMenuSize);
             this.Size = new Size(size, size);
 
             if (SendInputNative.GetCursorPos(out var pt))
@@ -132,7 +147,6 @@ namespace UsbInputMapper.UI
                         float tx = radius + (float)(Math.Cos(midAngle) * radius * 0.65);
                         float ty = radius + (float)(Math.Sin(midAngle) * radius * 0.65);
                         
-                        // ★ ラベル未設定時はアクション名を自動表示
                         string label = "";
                         if (i < _actionDef.RadialMenuDirections.Count)
                         {

@@ -9,8 +9,15 @@ namespace UsbInputMapper.Util
 
         public static bool Initialize(string mutexName)
         {
-            _mutex = new Mutex(true, mutexName, out bool createdNew);
-            return createdNew;
+            try
+            {
+                _mutex = new Mutex(true, mutexName, out bool createdNew);
+                return createdNew;
+            }
+            catch
+            {
+                return true; // 例外時はそのまま起動を許可
+            }
         }
 
         public static void Release()
@@ -23,10 +30,15 @@ namespace UsbInputMapper.Util
                 }
                 catch (ApplicationException)
                 {
-                    // 別のスレッドから解放された場合など
                 }
-                _mutex.Dispose();
-                _mutex = null;
+                catch (Exception)
+                {
+                }
+                finally
+                {
+                    _mutex.Dispose();
+                    _mutex = null;
+                }
             }
         }
     }

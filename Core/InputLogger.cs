@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Concurrent;
+using System.Concurrent;
 using System.IO;
 using System.Threading;
 
@@ -39,6 +39,8 @@ namespace UsbInputMapper.Core
 
                 _logThread = new Thread(ProcessLogQueue) { IsBackground = true, Name = "AsyncLoggerThread" };
                 _logThread.Start();
+
+                AppDomain.CurrentDomain.ProcessExit += (s, e) => FlushAndStop();
             }
             catch { }
         }
@@ -66,18 +68,25 @@ namespace UsbInputMapper.Core
 
         private static void ProcessLogQueue()
         {
-            while (_isRunning)
+            while (_isRunning || !_logQueue.IsEmpty)
             {
-                _logSignal.WaitOne();
+                _logSignal.WaitOne(100);
                 while (_logQueue.TryDequeue(out string msg))
                 {
                     try
                     {
                         File.AppendAllText(_logFilePath, msg + Environment.NewLine);
                     }
-                    catch { } // ログ書き込み自体の失敗は無視する
+                    catch { }
                 }
             }
+        }
+
+        public static void FlushAndStop()
+        {
+            _isRunning = false;
+            _logSignal.Set();
+            _logThread?.Join(500);
         }
     }
 }

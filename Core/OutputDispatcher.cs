@@ -11,7 +11,6 @@ using Nefarius.ViGEm.Client.Targets.Xbox360;
 
 namespace UsbInputMapper.Core
 {
-    // ★追加: 現在のアクティブなレイヤーを管理
     public static class LayerManager
     {
         public static volatile int CurrentLayer = 0;
@@ -19,6 +18,9 @@ namespace UsbInputMapper.Core
 
     public class OutputDispatcher
     {
+        // 他クラスからアクセス可能なInstanceプロパティ
+        public static OutputDispatcher Instance { get; private set; }
+
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(SendInputNative.POINT p);
         [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
@@ -43,7 +45,11 @@ namespace UsbInputMapper.Core
         private readonly ConcurrentDictionary<int, byte> _pressedMouseButtons = new ConcurrentDictionary<int, byte>();
         private readonly ConcurrentDictionary<string, bool> _toggleStates = new ConcurrentDictionary<string, bool>();
 
-        public OutputDispatcher(ViGEmOutput viGEmOutput) { _viGEmOutput = viGEmOutput; }
+        public OutputDispatcher(ViGEmOutput viGEmOutput) 
+        { 
+            _viGEmOutput = viGEmOutput; 
+            Instance = this;
+        }
 
         public void ReleaseAllInputs()
         {
@@ -64,7 +70,7 @@ namespace UsbInputMapper.Core
                 _pressedMouseButtons.Clear();
                 
                 _toggleStates.Clear();
-                LayerManager.CurrentLayer = 0; // パニック時にレイヤーも初期化
+                LayerManager.CurrentLayer = 0;
                 _viGEmOutput.Reset();
             }
             catch (Exception ex) { InputLogger.LogError("Failed to release inputs", ex); }
@@ -93,12 +99,11 @@ namespace UsbInputMapper.Core
                         if (action.MultipleKeys != null && action.MultipleKeys.Count > 0) SendKeyboardInputs(action.MultipleKeys, nextState);
                         else SendKeyboardInputs(new List<int> { action.ArgumentNum }, nextState);
                         
-                        // ★ HUD通知表示
                         string actName = action.MultipleKeys?.Count > 0 ? string.Join("+", action.MultipleKeys.Select(k => ((Keys)k).ToString())) : ((Keys)action.ArgumentNum).ToString();
                         UI.ToggleOverlayForm.ShowNotification($"Toggle: {actName}", nextState);
                         break;
                         
-                    case ActionType.LayerShift: // ★ レイヤー切り替えの処理
+                    case ActionType.LayerShift:
                         LayerManager.CurrentLayer = isDown ? action.LayerIndex : 0;
                         UI.ToggleOverlayForm.ShowNotification($"Layer {action.LayerIndex}", isDown);
                         break;

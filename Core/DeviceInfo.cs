@@ -13,13 +13,17 @@ namespace UsbInputMapper.Core
 
         public string GetIdentifier()
         {
-            // デバイスを一意に識別するためのID
-            return $"{VendorId}_{ProductId}_{DevicePath}";
+            string vid = string.IsNullOrEmpty(VendorId) ? "0000" : VendorId;
+            string pid = string.IsNullOrEmpty(ProductId) ? "0000" : ProductId;
+            string path = string.IsNullOrEmpty(DevicePath) ? Handle.ToString() : DevicePath;
+            
+            return $"{vid}_{pid}_{path}";
         }
 
         public override string ToString()
         {
-            return string.IsNullOrEmpty(Nickname) ? $"Device [{VendorId}:{ProductId}]" : Nickname;
+            if (!string.IsNullOrEmpty(Nickname)) return Nickname;
+            return $"Device [{VendorId ?? "VID"}:{ProductId ?? "PID"}] ({Handle})";
         }
     }
 }

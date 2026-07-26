@@ -1,3 +1,4 @@
+// FILE: Profiles/ProfileManager.cs
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,15 +8,25 @@ using UsbInputMapper.Core;
 
 namespace UsbInputMapper.Profiles
 {
+    public class GlobalSettings
+    {
+        public bool EnableChatteringCanceler { get; set; } = false;
+        public int ChatteringThresholdMs { get; set; } = 20;
+        public int DoubleClickTimeMs { get; set; } = 300;
+        public int TripleClickTimeMs { get; set; } = 300;
+    }
+
     public class ProfileManager
     {
         private readonly string _settingsFilePath;
         private readonly string _controllerBaseFilePath;
+        private readonly string _globalSettingsFilePath;
         private readonly string _baseFolder;
         private readonly object _saveLock = new object();
         
         public List<Profile> Profiles { get; private set; }
         public List<Binding> ControllerBaseBindings { get; private set; } 
+        public GlobalSettings GlobalConfig { get; private set; }
         
         public Profile CurrentProfile { get; private set; }
         public Profile TemporaryProfile { get; set; }
@@ -43,15 +54,23 @@ namespace UsbInputMapper.Profiles
 
             _settingsFilePath = Path.Combine(_baseFolder, "profiles.json");
             _controllerBaseFilePath = Path.Combine(_baseFolder, "controller_base.json");
+            _globalSettingsFilePath = Path.Combine(_baseFolder, "global_settings.json");
             
             Profiles = new List<Profile>();
             ControllerBaseBindings = new List<Binding>();
+            GlobalConfig = new GlobalSettings();
         }
 
         public void Load()
         {
             lock (_saveLock)
             {
+                if (File.Exists(_globalSettingsFilePath))
+                {
+                    try { GlobalConfig = JsonConvert.DeserializeObject<GlobalSettings>(File.ReadAllText(_globalSettingsFilePath)) ?? new GlobalSettings(); }
+                    catch { GlobalConfig = new GlobalSettings(); }
+                }
+
                 if (File.Exists(_settingsFilePath))
                 {
                     try { Profiles = JsonConvert.DeserializeObject<List<Profile>>(File.ReadAllText(_settingsFilePath)) ?? new List<Profile>(); }
@@ -76,9 +95,11 @@ namespace UsbInputMapper.Profiles
                 {
                     ManageBackups(_settingsFilePath);
                     ManageBackups(_controllerBaseFilePath);
+                    ManageBackups(_globalSettingsFilePath);
 
                     SaveToFileAtomic(_settingsFilePath, Profiles);
                     SaveToFileAtomic(_controllerBaseFilePath, ControllerBaseBindings);
+                    SaveToFileAtomic(_globalSettingsFilePath, GlobalConfig);
                     
                     OnSettingsChanged?.Invoke(this, EventArgs.Empty);
                 }
@@ -156,7 +177,6 @@ namespace UsbInputMapper.Profiles
             if (CurrentProfile != def) { ChangeProfileInternal(def); } 
         }
 
-        // ★追加：明示的なプロファイル切替用
         public void SwitchToProfile(string profileName)
         {
             TemporaryProfile = null;
@@ -167,7 +187,6 @@ namespace UsbInputMapper.Profiles
             }
         }
 
-        // ★追加：ホールド中の一時的なプロファイル適用
         public void SetTemporaryProfile(string profileName, bool enable)
         {
             if (enable)

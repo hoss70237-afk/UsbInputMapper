@@ -39,7 +39,7 @@
       <HintPath>..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="Nefarius.ViGEm.Client">
-      <HintPath>..\packages\Nefarius.ViGEm.Client.1.21.156\lib\net462\Nefarius.ViGEm.Client.dll</HintPath>
+      <HintPath>..\packages\Nefarius.ViGEm.Client.1.21.156\lib\net452\Nefarius.ViGEm.Client.dll</HintPath>
     </Reference>
     <Reference Include="SharpDX">
       <HintPath>..\packages\SharpDX.4.2.0\lib\net45\SharpDX.dll</HintPath>
@@ -61,7 +61,7 @@
     <Compile Include="Core\ViGEmOutput.cs" />
     <Compile Include="Core\OutputDispatcher.cs" />
     <Compile Include="Core\PanicKeyWatcher.cs" />
-    <Compile Include="Core\DirectInputManager.cs" />
+    <Compile Include="Core/DirectInputManager.cs" />
     <Compile Include="Core\InputLogger.cs" />
     <Compile Include="Core\VibrationManager.cs" />
     <Compile Include="Core\HidHideManager.cs" />

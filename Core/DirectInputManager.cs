@@ -64,8 +64,8 @@ namespace UsbInputMapper.Core
             foreach (var d in _devices) 
             { 
                 try { d.Joystick.Unacquire(); } catch { }
-                d.Joystick.Dispose(); 
-                d.NotificationEvent.Dispose();
+                try { d.Joystick.Dispose(); } catch { }
+                try { d.NotificationEvent.Dispose(); } catch { }
             }
             _devices.Clear();
             
@@ -109,7 +109,20 @@ namespace UsbInputMapper.Core
                         _refreshRequested = false;
                     }
 
-                    DeviceState[] activeDevices = _devices.ToArray();
+                    // 修正: 状態変更を安全に取り扱う
+                    DeviceState[] activeDevices;
+                    lock (_devices)
+                    {
+                        activeDevices = _devices.ToArray();
+                    }
+
+                    if (activeDevices.Length == 0)
+                    {
+                        // デバイスがない場合は少し待機してCPU負荷を下げる
+                        if (WaitHandle.WaitAny(new WaitHandle[] { _stopEvent }, 1000) == 0) break;
+                        continue;
+                    }
+
                     WaitHandle[] waitHandles = new WaitHandle[activeDevices.Length + 1];
                     waitHandles[0] = _stopEvent;
                     
@@ -199,8 +212,8 @@ namespace UsbInputMapper.Core
             foreach (var d in _devices) 
             { 
                 try { d.Joystick.Unacquire(); } catch { } 
-                d.Joystick.Dispose(); 
-                d.NotificationEvent?.Dispose(); 
+                try { d.Joystick.Dispose(); } catch { }
+                try { d.NotificationEvent?.Dispose(); } catch { }
             } 
             _devices.Clear();
             _stopEvent.Dispose();

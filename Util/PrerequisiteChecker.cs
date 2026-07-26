@@ -13,9 +13,7 @@ namespace UsbInputMapper.Util
 
         private static bool CheckViGEmBus()
         {
-            // 通常のSystem32パス
             string system32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
-            // 64bitOS環境で32bitアプリとして動いたとき用のSysnativeパス
             string sysnative = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Sysnative");
             
             string driverPath1 = Path.Combine(system32, @"drivers\ViGEmBus.sys");
@@ -28,7 +26,7 @@ namespace UsbInputMapper.Util
                     "仮想コントローラー(Xbox出力)機能を使用するには、ViGEmBusのインストールが必要です。\r\n\r\n" +
                     "※キーボードやマウスの出力のみを使用する場合は、このまま「はい」を押して続行できます。\r\n\r\n" +
                     "起動を続行しますか？",
-                    "UsbInputMapper - 環境警告",
+                    "UsbInputMapper - 環境確認",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 

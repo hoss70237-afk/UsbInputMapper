@@ -12,6 +12,9 @@ namespace UsbInputMapper.UI
         public int SelectedDirectionIndex { get; private set; } = -1;
         private Point _centerPoint;
         private Timer _drawTimer;
+        
+        // 描画最適化用（前回状態のキャッシュ）
+        private int _lastIndex = -2;
 
         public RadialMenuHudForm(ActionDef actionDef)
         {
@@ -43,10 +46,48 @@ namespace UsbInputMapper.UI
 
             this.DoubleBuffered = true;
             _drawTimer = new Timer { Interval = 16 };
-            _drawTimer.Tick += (s, e) => {
-                if (!this.IsDisposed) this.Invalidate();
-            };
+            _drawTimer.Tick += UpdateSelection;
             _drawTimer.Start();
+        }
+
+        private void UpdateSelection(object sender, EventArgs e)
+        {
+            if (this.IsDisposed) return;
+            if (!SendInputNative.GetCursorPos(out var pt)) return;
+
+            int slices = _actionDef.RadialMenuSlices;
+            int radius = this.Width / 2;
+            int cancelRadius = (int)(radius * 0.3);
+
+            int dx = pt.X - _centerPoint.X;
+            int dy = pt.Y - _centerPoint.Y;
+            double dist = Math.Sqrt(dx * dx + dy * dy);
+
+            int newIndex = -1;
+
+            if (dist > cancelRadius)
+            {
+                double angle = Math.Atan2(dy, dx);
+                angle += Math.PI / 2.0;
+
+                if (angle < 0) angle += 2 * Math.PI;
+                if (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
+
+                double sliceAngle = 2 * Math.PI / slices;
+                
+                angle += sliceAngle / 2.0;
+                if (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
+                
+                newIndex = (int)(angle / sliceAngle);
+            }
+
+            // 選択している項目が変わった時のみ画面を再描画する（CPU負荷の大幅な削減）
+            if (newIndex != _lastIndex)
+            {
+                SelectedDirectionIndex = newIndex;
+                _lastIndex = newIndex;
+                this.Invalidate();
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -62,32 +103,11 @@ namespace UsbInputMapper.UI
                 int radius = this.Width / 2;
                 int cancelRadius = (int)(radius * 0.3); 
 
-                if (!SendInputNative.GetCursorPos(out var pt)) return;
-
-                int dx = pt.X - _centerPoint.X;
-                int dy = pt.Y - _centerPoint.Y;
-                double dist = Math.Sqrt(dx * dx + dy * dy);
-
-                SelectedDirectionIndex = -1;
-                
-                if (dist > cancelRadius)
-                {
-                    double angle = Math.Atan2(dy, dx);
-                    angle += Math.PI / 2.0;
-
-                    if (angle < 0) angle += 2 * Math.PI;
-                    if (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
-
-                    double sliceAngle = 2 * Math.PI / slices;
-                    
-                    angle += sliceAngle / 2.0;
-                    if (angle >= 2 * Math.PI) angle -= 2 * Math.PI;
-                    
-                    SelectedDirectionIndex = (int)(angle / sliceAngle);
-                }
-
                 Rectangle rect = new Rectangle(0, 0, this.Width, this.Height);
-                using (Brush bgBrush = new SolidBrush(Color.FromArgb(160, 0, 0, 0))) { e.Graphics.FillEllipse(bgBrush, rect); }
+                using (Brush bgBrush = new SolidBrush(Color.FromArgb(160, 0, 0, 0))) 
+                { 
+                    e.Graphics.FillEllipse(bgBrush, rect); 
+                }
 
                 float sweep = 360f / slices;
                 using (Font f = new Font("MS UI Gothic", 9))

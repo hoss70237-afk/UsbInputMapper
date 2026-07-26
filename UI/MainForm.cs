@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Windows.Forms;
+using System.IO;
 using Microsoft.Win32;
 using Newtonsoft.Json;
 using UsbInputMapper.Profiles;
@@ -18,8 +19,6 @@ namespace UsbInputMapper.UI
         private ContextMenuStrip _bindingsContextMenu;
         
         private Timer _monitorTimer;
-
-        // 診断ログ用
         private DiagnosticEvent _lastPhys = null;
         private DiagnosticEvent _lastVirt = null;
         private ListViewItem _lastDiagItem = null;
@@ -165,14 +164,55 @@ namespace UsbInputMapper.UI
             mnuCopy.Click += (s, e) => { _clipboardBindings.Clear(); foreach (ListViewItem item in lvwBindings.SelectedItems) { string json = JsonConvert.SerializeObject(item.Tag); _clipboardBindings.Add(JsonConvert.DeserializeObject<UsbInputMapper.Profiles.Binding>(json)); } };
             var mnuPaste = new ToolStripMenuItem("貼り付け");
             mnuPaste.Click += (s, e) => { if (lstProfiles.SelectedItem is Profile p && _clipboardBindings.Count > 0) { foreach (var b in _clipboardBindings) { string json = JsonConvert.SerializeObject(b); p.Bindings.Add(JsonConvert.DeserializeObject<UsbInputMapper.Profiles.Binding>(json)); } _profileManager.Save(); RefreshBindings(); } };
+            
+            var mnuExportB64 = new ToolStripMenuItem("クリップボードにエクスポート (Base64)");
+            mnuExportB64.Click += (s, e) => {
+                if (lvwBindings.SelectedItems.Count > 0) {
+                    var list = lvwBindings.SelectedItems.Cast<ListViewItem>().Select(x => x.Tag as UsbInputMapper.Profiles.Binding).ToList();
+                    string json = JsonConvert.SerializeObject(list);
+                    string b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json));
+                    Clipboard.SetText("UIMB:" + b64);
+                    MessageBox.Show("クリップボードにエクスポートしました。\n他のPCやプロファイルでインポートできます。", "エクスポート成功");
+                }
+            };
+            
+            var mnuImportB64 = new ToolStripMenuItem("クリップボードからインポート");
+            mnuImportB64.Click += (s, e) => {
+                try {
+                    string text = Clipboard.GetText();
+                    if (text.StartsWith("UIMB:")) {
+                        string json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(text.Substring(5)));
+                        var list = JsonConvert.DeserializeObject<List<UsbInputMapper.Profiles.Binding>>(json);
+                        if (lstProfiles.SelectedItem is Profile p) {
+                            p.Bindings.AddRange(list);
+                            _profileManager.Save();
+                            RefreshBindings();
+                            MessageBox.Show($"{list.Count} 件のアイテムをインポートしました。", "インポート成功");
+                        }
+                    } else {
+                        MessageBox.Show("クリップボードに有効なデータがありません。", "エラー");
+                    }
+                } catch (Exception ex) { MessageBox.Show("インポートに失敗しました:\n" + ex.Message, "エラー"); }
+            };
+
             var mnuDelete = new ToolStripMenuItem("削除");
             mnuDelete.Click += (s, e) => btnDeleteBinding_Click(this, EventArgs.Empty);
             var mnuSelectAll = new ToolStripMenuItem("全て選択");
             mnuSelectAll.Click += (s, e) => { foreach (ListViewItem item in lvwBindings.Items) item.Selected = true; };
             
-            _bindingsContextMenu.Items.Add(mnuCopy); _bindingsContextMenu.Items.Add(mnuPaste); _bindingsContextMenu.Items.Add(new ToolStripSeparator()); _bindingsContextMenu.Items.Add(mnuDelete); _bindingsContextMenu.Items.Add(new ToolStripSeparator()); _bindingsContextMenu.Items.Add(mnuSelectAll);
+            _bindingsContextMenu.Items.Add(mnuCopy); _bindingsContextMenu.Items.Add(mnuPaste); 
+            _bindingsContextMenu.Items.Add(new ToolStripSeparator()); 
+            _bindingsContextMenu.Items.Add(mnuExportB64); _bindingsContextMenu.Items.Add(mnuImportB64);
+            _bindingsContextMenu.Items.Add(new ToolStripSeparator()); 
+            _bindingsContextMenu.Items.Add(mnuDelete); _bindingsContextMenu.Items.Add(new ToolStripSeparator()); _bindingsContextMenu.Items.Add(mnuSelectAll);
+            
             lvwBindings.ContextMenuStrip = _bindingsContextMenu;
-            _bindingsContextMenu.Opening += (s, e) => { mnuCopy.Enabled = lvwBindings.SelectedItems.Count > 0; mnuPaste.Enabled = _clipboardBindings.Count > 0 && lstProfiles.SelectedItem != null; mnuDelete.Enabled = lvwBindings.SelectedItems.Count > 0; };
+            _bindingsContextMenu.Opening += (s, e) => { 
+                mnuCopy.Enabled = lvwBindings.SelectedItems.Count > 0; 
+                mnuPaste.Enabled = _clipboardBindings.Count > 0 && lstProfiles.SelectedItem != null; 
+                mnuExportB64.Enabled = lvwBindings.SelectedItems.Count > 0;
+                mnuDelete.Enabled = lvwBindings.SelectedItems.Count > 0; 
+            };
         }
 
         private void LoadProfiles()
@@ -260,6 +300,46 @@ namespace UsbInputMapper.UI
         private void btnUpProfile_Click(object sender, EventArgs e) { if (lstProfiles.SelectedIndex > 0) { _profileManager.MoveProfile(lstProfiles.SelectedIndex, -1); LoadProfiles(); } }
         private void btnDownProfile_Click(object sender, EventArgs e) { if (lstProfiles.SelectedIndex >= 0 && lstProfiles.SelectedIndex < lstProfiles.Items.Count - 1) { _profileManager.MoveProfile(lstProfiles.SelectedIndex, 1); LoadProfiles(); } }
 
+        private void btnExportProfile_Click(object sender, EventArgs e)
+        {
+            if (lstProfiles.SelectedItem is Profile p)
+            {
+                using (var sfd = new SaveFileDialog { Filter = "プロファイル JSON (*.json)|*.json", FileName = $"{p.Name}.json" })
+                {
+                    if (sfd.ShowDialog() == DialogResult.OK)
+                    {
+                        File.WriteAllText(sfd.FileName, JsonConvert.SerializeObject(p, Formatting.Indented));
+                        MessageBox.Show("プロファイルをエクスポートしました。", "成功");
+                    }
+                }
+            }
+        }
+
+        private void btnImportProfile_Click(object sender, EventArgs e)
+        {
+            using (var ofd = new OpenFileDialog { Filter = "プロファイル JSON (*.json)|*.json" })
+            {
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        var p = JsonConvert.DeserializeObject<Profile>(File.ReadAllText(ofd.FileName));
+                        p.Name += " (インポート)";
+                        p.IsDefault = false;
+                        _profileManager.Profiles.Add(p);
+                        _profileManager.Save();
+                        LoadProfiles();
+                        lstProfiles.SelectedIndex = lstProfiles.Items.Count - 1;
+                        MessageBox.Show("プロファイルをインポートしました。", "成功");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show("プロファイルの読み込みに失敗しました:\n" + ex.Message, "エラー");
+                    }
+                }
+            }
+        }
+
         private void btnAddBinding_Click(object sender, EventArgs e)
         {
             if (!(lstProfiles.SelectedItem is Profile p)) return;
@@ -269,12 +349,10 @@ namespace UsbInputMapper.UI
                 if (res == DialogResult.OK && capture.CapturedEvent != null)
                 {
                     var evt = capture.CapturedEvent;
-                    
                     var newBinding = new UsbInputMapper.Profiles.Binding();
                     newBinding.DeviceIdentifier = evt.DeviceIdentifier;
                     newBinding.InputType = evt.Type;
                     newBinding.InputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags;
-                    
                     newBinding.Name = UsbInputMapper.Profiles.Binding.GetCodeName(newBinding.InputType, newBinding.InputCode);
 
                     using (var ed = new BindingEditorForm(newBinding, _profileManager.Profiles.Select(x => x.Name).ToList()))

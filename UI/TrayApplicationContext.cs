@@ -46,6 +46,9 @@ namespace UsbInputMapper.UI
                 _dispatcher = new OutputDispatcher(_vigem);
 
                 _mainForm = new MainForm(_profileManager, _diManager);
+                
+                // ★ 起動直後にウィンドウハンドルを強制生成し、設定画面を開かなくてもBeginInvokeが機能するようにする
+                IntPtr forceHandleCreation = _mainForm.Handle;
 
                 // 2. アクティブウィンドウ監視の開始（自動プロファイル切替）
                 _appWatcher = new ForegroundAppWatcher();
@@ -100,6 +103,26 @@ namespace UsbInputMapper.UI
                 InputLogger.LogError("Initialization Failed", ex);
                 MessageBox.Show("起動に失敗しました。\n" + ex.Message, "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 ExitApplication();
+            }
+        }
+
+        // ★ 安全なUIスレッド呼び出しヘルパー
+        private void InvokeOnUI(Action action)
+        {
+            if (_mainForm == null || _mainForm.IsDisposed) return;
+
+            if (!_mainForm.IsHandleCreated)
+            {
+                IntPtr h = _mainForm.Handle; // ハンドルの強制生成
+            }
+
+            if (_mainForm.InvokeRequired)
+            {
+                _mainForm.BeginInvoke(action);
+            }
+            else
+            {
+                action();
             }
         }
 
@@ -195,7 +218,6 @@ namespace UsbInputMapper.UI
 
                 if (b.InputType == e.Type && b.InputCode == e.Code)
                 {
-                    // ★ ラジアルメニュー発火処理（オートリピート保護＆モード分岐）
                     if (b.Action.ActionType == ActionType.RadialMenu)
                     {
                         int mode = b.Action.RadialMenuMode; // 0: 離して確定, 1: クリック確定
@@ -204,7 +226,6 @@ namespace UsbInputMapper.UI
                         {
                             if (e.IsDown)
                             {
-                                // ★ 表示中（長押し中）の場合はキーリピートイベントを無視する
                                 if (_activeRadialHud == null)
                                 {
                                     ShowRadialHudUI(b.Action);
@@ -250,23 +271,18 @@ namespace UsbInputMapper.UI
 
         private void ShowRadialHudUI(ActionDef action)
         {
-            if (_mainForm == null || _mainForm.IsDisposed) return;
-
-            _mainForm.BeginInvoke(new Action(() => {
-                // 重複表示・連続リリフレッシュのガード
+            InvokeOnUI(() => {
                 if (_activeRadialHud != null) return;
 
                 _activeRadialAction = action;
                 _activeRadialHud = new RadialMenuHudForm(action);
                 _activeRadialHud.Show();
-            }));
+            });
         }
 
         private void ExecuteAndCloseRadialHudUI()
         {
-            if (_mainForm == null || _mainForm.IsDisposed) return;
-
-            _mainForm.BeginInvoke(new Action(() => {
+            InvokeOnUI(() => {
                 if (_activeRadialHud != null && _activeRadialAction != null)
                 {
                     int selectedIdx = _activeRadialHud.SelectedDirectionIndex;
@@ -286,14 +302,12 @@ namespace UsbInputMapper.UI
                     _activeRadialAction = null;
                 }
                 _hookManager.IsRadialMenuClickCapturing = false;
-            }));
+            });
         }
 
         private void CloseRadialHudUI()
         {
-            if (_mainForm == null || _mainForm.IsDisposed) return;
-
-            _mainForm.BeginInvoke(new Action(() => {
+            InvokeOnUI(() => {
                 if (_activeRadialHud != null)
                 {
                     _activeRadialHud.Close();
@@ -302,7 +316,7 @@ namespace UsbInputMapper.UI
                 }
                 _activeRadialAction = null;
                 _hookManager.IsRadialMenuClickCapturing = false;
-            }));
+            });
         }
 
         public void ShowMainForm()

@@ -20,14 +20,17 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.CheckBox chkNotifyBeep;
         private System.Windows.Forms.CheckBox chkNotifyTTS;
         
-        // 個別チャタリング設定用
         private System.Windows.Forms.GroupBox grpChatter;
         private System.Windows.Forms.CheckBox chkOverrideGlobalChattering;
         private System.Windows.Forms.CheckBox chkEnableChatteringCanceler;
         private System.Windows.Forms.NumericUpDown numChatteringThresholdMs;
         private System.Windows.Forms.Label lblChatterMs;
 
-        protected override void Dispose(bool disposing) { if (disposing && (components != null)) components.Dispose(); base.Dispose(disposing); }
+        protected override void Dispose(bool disposing) 
+        { 
+            if (disposing && (components != null)) components.Dispose(); 
+            base.Dispose(disposing); 
+        }
 
         private void InitializeComponent()
         {
@@ -69,7 +72,6 @@ namespace UsbInputMapper.UI
             this.lblTargetPicker.AutoSize = true; this.lblTargetPicker.Font = new System.Drawing.Font("MS UI Gothic", 24F); this.lblTargetPicker.ForeColor = System.Drawing.Color.DodgerBlue; this.lblTargetPicker.Location = new System.Drawing.Point(293, 122); this.lblTargetPicker.Text = "◎"; this.lblTargetPicker.Cursor = System.Windows.Forms.Cursors.Hand;
             this.lblTargetDesc.AutoSize = true; this.lblTargetDesc.Font = new System.Drawing.Font("MS UI Gothic", 8.25F); this.lblTargetDesc.ForeColor = System.Drawing.SystemColors.ControlDarkDark; this.lblTargetDesc.Location = new System.Drawing.Point(12, 154); this.lblTargetDesc.Text = "※◎アイコンを起動中のゲーム画面にドラッグすると自動登録";
             
-            // 通知設定グループ
             this.grpNotification.Location = new System.Drawing.Point(14, 175);
             this.grpNotification.Size = new System.Drawing.Size(338, 65);
             this.grpNotification.Text = "切替時の通知アクション";
@@ -84,13 +86,12 @@ namespace UsbInputMapper.UI
             
             this.chkNotifyTTS.AutoSize = true;
             this.chkNotifyTTS.Location = new System.Drawing.Point(170, 40);
-            this.chkNotifyTTS.Text = "プロファイル名を音声で読み上げ (TTS)";
+            this.chkNotifyTTS.Text = "プロファイル名を音声読み上げ";
             
             this.grpNotification.Controls.Add(this.chkNotifyVibration);
             this.grpNotification.Controls.Add(this.chkNotifyBeep);
             this.grpNotification.Controls.Add(this.chkNotifyTTS);
 
-            // チャタリング設定グループ
             this.grpChatter.Location = new System.Drawing.Point(14, 250);
             this.grpChatter.Size = new System.Drawing.Size(338, 70);
             this.grpChatter.Text = "チャタリング設定";

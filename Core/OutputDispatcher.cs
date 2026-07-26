@@ -11,6 +11,12 @@ using Nefarius.ViGEm.Client.Targets.Xbox360;
 
 namespace UsbInputMapper.Core
 {
+    // ★追加: 現在のアクティブなレイヤーを管理
+    public static class LayerManager
+    {
+        public static volatile int CurrentLayer = 0;
+    }
+
     public class OutputDispatcher
     {
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
@@ -58,12 +64,10 @@ namespace UsbInputMapper.Core
                 _pressedMouseButtons.Clear();
                 
                 _toggleStates.Clear();
+                LayerManager.CurrentLayer = 0; // パニック時にレイヤーも初期化
                 _viGEmOutput.Reset();
             }
-            catch (Exception ex)
-            {
-                InputLogger.LogError("Failed to release inputs during cleanup", ex);
-            }
+            catch (Exception ex) { InputLogger.LogError("Failed to release inputs", ex); }
         }
 
         public void Dispatch(ActionDef action, bool isDown)
@@ -88,6 +92,15 @@ namespace UsbInputMapper.Core
                         
                         if (action.MultipleKeys != null && action.MultipleKeys.Count > 0) SendKeyboardInputs(action.MultipleKeys, nextState);
                         else SendKeyboardInputs(new List<int> { action.ArgumentNum }, nextState);
+                        
+                        // ★ HUD通知表示
+                        string actName = action.MultipleKeys?.Count > 0 ? string.Join("+", action.MultipleKeys.Select(k => ((Keys)k).ToString())) : ((Keys)action.ArgumentNum).ToString();
+                        UI.ToggleOverlayForm.ShowNotification($"Toggle: {actName}", nextState);
+                        break;
+                        
+                    case ActionType.LayerShift: // ★ レイヤー切り替えの処理
+                        LayerManager.CurrentLayer = isDown ? action.LayerIndex : 0;
+                        UI.ToggleOverlayForm.ShowNotification($"Layer {action.LayerIndex}", isDown);
                         break;
 
                     case ActionType.MouseClick: SendMouseClick(action.ArgumentNum, isDown); break;
@@ -103,7 +116,7 @@ namespace UsbInputMapper.Core
                     case ActionType.AhkRun:
                         if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
                     case ActionType.FolderOpen:
-                        if (isDown && !string.IsNullOrEmpty(action.ArgumentStr)) { try { Process.Start("explorer.exe", action.ArgumentStr); } catch(Exception ex) { InputLogger.LogError("FolderOpen Error", ex); } } break;
+                        if (isDown && !string.IsNullOrEmpty(action.ArgumentStr)) { try { Process.Start("explorer.exe", action.ArgumentStr); } catch { } } break;
                     case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
                     case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
                     case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; 
@@ -124,19 +137,13 @@ namespace UsbInputMapper.Core
                         break;
                 }
             }
-            catch (Exception ex)
-            {
-                InputLogger.LogError($"OutputDispatcher Dispatch Error (Action:{action.ActionType})", ex);
-            }
+            catch (Exception ex) { InputLogger.LogError($"OutputDispatcher Error (Action:{action.ActionType})", ex); }
         }
 
         private void PlayWav(string path)
         {
             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
-            Task.Run(() => {
-                try { using (var player = new System.Media.SoundPlayer(path)) { player.PlaySync(); } } 
-                catch (Exception ex) { InputLogger.LogError("PlayWav Error", ex); }
-            });
+            Task.Run(() => { try { using (var player = new System.Media.SoundPlayer(path)) { player.PlaySync(); } } catch { } });
         }
 
         private async Task ExecuteMacroAsync(ActionDef action)
@@ -172,10 +179,7 @@ namespace UsbInputMapper.Core
                             await Task.Run(() => { try { proc.WaitForExit(); } catch { } });
                         }
                     }
-                    else
-                    {
-                        Dispatch(stepAct, true);
-                    }
+                    else Dispatch(stepAct, true);
                 }
                 
                 if (step.PressState == StepPressState.Tap) await Task.Delay(10);
@@ -199,7 +203,6 @@ namespace UsbInputMapper.Core
             {
                 ushort vKey = (ushort)keysToProcess[i];
                 if (isDown) _pressedKeys.TryAdd(vKey, 1); else _pressedKeys.TryRemove(vKey, out _);
-
                 inputs[i].type = SendInputNative.INPUT_KEYBOARD;
                 inputs[i].u.ki.wVk = vKey;
                 uint flags = 0;
@@ -213,7 +216,6 @@ namespace UsbInputMapper.Core
         public void SendMouseClick(int buttonId, bool isDown)
         {
             if (buttonId >= 1 && buttonId <= 3) { if (isDown) _pressedMouseButtons.TryAdd(buttonId, 1); else _pressedMouseButtons.TryRemove(buttonId, out _); }
-
             var inputs = new SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
             if (buttonId == 1) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_LEFTDOWN : SendInputNative.MOUSEEVENTF_LEFTUP;
@@ -245,7 +247,6 @@ namespace UsbInputMapper.Core
                         targetX = pt.X + x; targetY = pt.Y + y;
                     }
                 }
-
                 int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
                 inputs[0].u.mi.dx = (targetX * 65535) / sW; inputs[0].u.mi.dy = (targetY * 65535) / sH;
                 inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE | SendInputNative.MOUSEEVENTF_ABSOLUTE | SendInputNative.MOUSEEVENTF_VIRTUALDESK;
@@ -287,7 +288,6 @@ namespace UsbInputMapper.Core
         {
             IntPtr hWndParent = FindWindow(string.IsNullOrEmpty(action.BgClassName) ? null : action.BgClassName, string.IsNullOrEmpty(action.BgWindowName) ? null : action.BgWindowName);
             if (hWndParent == IntPtr.Zero) return;
-
             IntPtr hWndTarget = hWndParent;
             if (action.BgControlId != 0)
             {
@@ -297,30 +297,16 @@ namespace UsbInputMapper.Core
                 }, IntPtr.Zero);
                 if (found != IntPtr.Zero) hWndTarget = found;
             }
-
-            if (action.BgActionMode == 0) // Click
-            {
-                if (isDown) SendMessage(hWndTarget, 0x00F5 /* BM_CLICK */, IntPtr.Zero, IntPtr.Zero);
-            }
-            else if (action.BgActionMode == 1) // Key
-            {
-                SendMessage(hWndTarget, isDown ? 0x0100u /* WM_KEYDOWN */ : 0x0101u /* WM_KEYUP */, (IntPtr)action.ArgumentNum, IntPtr.Zero);
-            }
+            if (action.BgActionMode == 0) { if (isDown) SendMessage(hWndTarget, 0x00F5 /* BM_CLICK */, IntPtr.Zero, IntPtr.Zero); }
+            else if (action.BgActionMode == 1) SendMessage(hWndTarget, isDown ? 0x0100u /* WM_KEYDOWN */ : 0x0101u /* WM_KEYUP */, (IntPtr)action.ArgumentNum, IntPtr.Zero);
         }
 
         private Process LaunchApp(string path, string args)
         {
-            if (!string.IsNullOrEmpty(path)) 
-            {
-                try 
-                { 
-                    bool useShell = path.ToLower().EndsWith(".ahk") || !path.ToLower().EndsWith(".exe");
+            if (!string.IsNullOrEmpty(path)) {
+                try { bool useShell = path.ToLower().EndsWith(".ahk") || !path.ToLower().EndsWith(".exe");
                     return Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = useShell }); 
-                } 
-                catch (Exception ex) 
-                {
-                    InputLogger.LogError($"AppLaunch Error ({path})", ex);
-                }
+                } catch { }
             }
             return null;
         }

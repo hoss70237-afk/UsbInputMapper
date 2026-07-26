@@ -64,6 +64,7 @@
     <Compile Include="Core\DirectInputManager.cs" />
     <Compile Include="Core\InputLogger.cs" />
     <Compile Include="Core\VibrationManager.cs" />
+    <Compile Include="Core\HidHideManager.cs" />
     <Compile Include="Profiles\ActionDef.cs" />
     <Compile Include="Profiles\Binding.cs" />
     <Compile Include="Profiles\MacroStep.cs" />
@@ -89,6 +90,7 @@
     <Compile Include="UI\RadialMenuSetupForm.cs"><SubType>Form</SubType></Compile>
     <Compile Include="UI\RadialMenuHudForm.cs"><SubType>Form</SubType></Compile>
     <Compile Include="UI\ProfileOverlayForm.cs"><SubType>Form</SubType></Compile>
+    <Compile Include="UI\ToggleOverlayForm.cs"><SubType>Form</SubType></Compile>
     <Compile Include="Util\StartupRegistrar.cs" />
     <Compile Include="Util\SingleInstance.cs" />
     <Compile Include="Util\PrerequisiteChecker.cs" />

@@ -53,7 +53,7 @@ namespace UsbInputMapper.UI
                 foreach (var app in profile.TargetApplicationPaths) lstApps.Items.Add(app);
             }
 
-            if (_existingProfiles != null && _existingProfiles.Count > 0)
+            if (_existingProfiles != null && _existingProfiles.Count > 0 && !profile.IsDefault)
             {
                 _lblCopyFrom = new Label { Text = "コピー元:", Location = new Point(12, 332), AutoSize = true };
                 _cmbCopyFrom = new ComboBox { Location = new Point(87, 329), Size = new Size(265, 20), DropDownStyle = ComboBoxStyle.DropDownList };
@@ -93,7 +93,21 @@ namespace UsbInputMapper.UI
                     if (hwnd != IntPtr.Zero)
                     {
                         GetWindowThreadProcessId(hwnd, out uint pid);
-                        if (pid > 0) { string path = GetExecutablePathProcessId(pid); if (!string.IsNullOrEmpty(path)) { string exeName = Path.GetFileName(path); if (!lstApps.Items.Contains(exeName)) { lstApps.Items.Add(exeName); lblStatus.Text = $"追加しました: {exeName}"; lblStatus.ForeColor = Color.Green; } } else { lblStatus.Text = "取得失敗"; lblStatus.ForeColor = Color.Red; } }
+                        if (pid > 0) { 
+                            string path = GetExecutablePathProcessId(pid); 
+                            if (!string.IsNullOrEmpty(path)) { 
+                                string exeName = Path.GetFileName(path); 
+                                if (!lstApps.Items.Contains(exeName)) { 
+                                    lstApps.Items.Add(exeName); 
+                                    lblStatus.Text = $"追加しました: {exeName}"; 
+                                    lblStatus.ForeColor = Color.Green; 
+                                } 
+                            } 
+                            else { 
+                                lblStatus.Text = "プロセスパス取得失敗 (管理者権限が必要です)"; 
+                                lblStatus.ForeColor = Color.Red; 
+                            } 
+                        }
                     }
                 }
             };
@@ -101,12 +115,29 @@ namespace UsbInputMapper.UI
 
         private string GetExecutablePathProcessId(uint pid)
         {
-            IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid); if (hProcess == IntPtr.Zero) return null;
-            try { StringBuilder sb = new StringBuilder(1024); uint size = (uint)sb.Capacity; if (QueryFullProcessImageName(hProcess, 0, sb, ref size)) return sb.ToString(); } finally { CloseHandle(hProcess); }
+            IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid); 
+            if (hProcess == IntPtr.Zero) return null;
+            try { 
+                StringBuilder sb = new StringBuilder(1024); 
+                uint size = (uint)sb.Capacity; 
+                if (QueryFullProcessImageName(hProcess, 0, sb, ref size)) return sb.ToString(); 
+            } 
+            finally { CloseHandle(hProcess); }
             return null;
         }
 
-        private void btnAddApp_Click(object sender, EventArgs e) { using (OpenFileDialog ofd = new OpenFileDialog { Filter = "実行ファイル (*.exe)|*.exe|すべてのファイル (*.*)|*.*" }) { if (ofd.ShowDialog() == DialogResult.OK) { string exeName = Path.GetFileName(ofd.FileName); if (!lstApps.Items.Contains(exeName)) lstApps.Items.Add(exeName); } } }
+        private void btnAddApp_Click(object sender, EventArgs e) 
+        { 
+            using (OpenFileDialog ofd = new OpenFileDialog { Filter = "実行ファイル (*.exe)|*.exe|すべてのファイル (*.*)|*.*" }) 
+            { 
+                if (ofd.ShowDialog() == DialogResult.OK) 
+                { 
+                    string exeName = Path.GetFileName(ofd.FileName); 
+                    if (!lstApps.Items.Contains(exeName)) lstApps.Items.Add(exeName); 
+                } 
+            } 
+        }
+
         private void btnRemoveApp_Click(object sender, EventArgs e) { if (lstApps.SelectedIndex >= 0) lstApps.Items.RemoveAt(lstApps.SelectedIndex); }
 
         private void btnOK_Click(object sender, EventArgs e)
@@ -129,10 +160,14 @@ namespace UsbInputMapper.UI
                 if (_cmbCopyFrom != null && _cmbCopyFrom.SelectedIndex > 0)
                 {
                     var src = _existingProfiles.Find(p => p.Name == _cmbCopyFrom.SelectedItem.ToString());
-                    if (src != null) { TargetProfile.Bindings = JsonConvert.DeserializeObject<List<UsbInputMapper.Profiles.Binding>>(JsonConvert.SerializeObject(src.Bindings)); TargetProfile.EnableXInput = src.EnableXInput; }
+                    if (src != null) { 
+                        TargetProfile.Bindings = JsonConvert.DeserializeObject<List<UsbInputMapper.Profiles.Binding>>(JsonConvert.SerializeObject(src.Bindings)); 
+                        TargetProfile.EnableXInput = src.EnableXInput; 
+                    }
                 }
             }
-            this.DialogResult = DialogResult.OK; this.Close();
+            this.DialogResult = DialogResult.OK; 
+            this.Close();
         }
 
         private void btnCancel_Click(object sender, EventArgs e) { this.DialogResult = DialogResult.Cancel; this.Close(); }

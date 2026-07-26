@@ -8,7 +8,7 @@ namespace UsbInputMapper.UI
 {
     public class RadialMenuSetupForm : Form
     {
-        public Binding ResultBinding { get; private set; }
+        public UsbInputMapper.Profiles
         private List<string> _profileNames;
 
         private TabControl _tabs;
@@ -24,7 +24,7 @@ namespace UsbInputMapper.UI
         private int _triggerCode = -1;
         private string _triggerDevId = "Any";
 
-        public RadialMenuSetupForm(Binding existingBinding = null, List<string> profileNames = null)
+        public RadialMenuSetupForm(UsbInputMapper.Profiles.Binding existingBinding = null, List<string> profileNames = null)
         {
             _profileNames = profileNames ?? new List<string>();
             this.Text = "ラジアルメニュー / ベゼル設定";

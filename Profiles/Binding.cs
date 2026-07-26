@@ -1,10 +1,10 @@
+// FILE: Profiles/Binding.cs
 using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
 
 namespace UsbInputMapper.Profiles
 {
-    // ★追加: Sync (同期入力)
     public enum TriggerCondition { Normal, Hold, RapidFire, Release, Sync }
     public class TriggerKey { public string DeviceIdentifier { get; set; } public int Type { get; set; } public int Code { get; set; } public override string ToString() => Binding.GetCodeName(Type, Code); }
 
@@ -17,6 +17,10 @@ namespace UsbInputMapper.Profiles
         
         public List<TriggerKey> SubTriggers { get; set; }
         
+        public int ClickTriggerCount { get; set; } = 1; // 1:Single, 2:Double, 3:Triple
+        public bool ExecuteSingleSimultaneously { get; set; } = false;
+        public bool ExecuteDoubleSimultaneously { get; set; } = false;
+
         public TriggerCondition Condition { get; set; }
         public int ConditionParam { get; set; }
         public ActionDef Action { get; set; }
@@ -42,7 +46,9 @@ namespace UsbInputMapper.Profiles
             string mainTrigger = GetCodeName(InputType, InputCode);
             string sub = "";
             if (SubTriggers != null && SubTriggers.Count > 0) foreach (var t in SubTriggers) sub += t.ToString() + " + ";
-            return $"{sub}{mainTrigger}";
+            
+            string clickStr = ClickTriggerCount == 2 ? "[Double] " : (ClickTriggerCount == 3 ? "[Triple] " : "");
+            return $"{sub}{clickStr}{mainTrigger}";
         }
 
         public static string GetCodeName(int type, int code)

@@ -39,16 +39,22 @@ namespace UsbInputMapper.Core
 
         public DirectInputManager()
         {
-            _directInput = new DirectInput();
-            _refreshRequested = true;
-            _isRunning = true;
-            _pollingThread = new Thread(EventWaitLoop) { IsBackground = true, Priority = ThreadPriority.Highest };
-            _pollingThread.Start();
+            try
+            {
+                _directInput = new DirectInput();
+                _refreshRequested = true;
+                _isRunning = true;
+                _pollingThread = new Thread(EventWaitLoop) { IsBackground = true, Priority = ThreadPriority.Highest, Name = "DirectInputPollingThread" };
+                _pollingThread.Start();
+            }
+            catch (Exception ex)
+            {
+                InputLogger.LogError("Failed to initialize DirectInputManager", ex);
+            }
         }
 
         public void RefreshDevices()
         {
-            // スレッドセーフに再構築を要求するだけ（Waitループ側で安全に処理させる）
             _refreshRequested = true;
             _stopEvent.Set();
         }
@@ -63,21 +69,31 @@ namespace UsbInputMapper.Core
             }
             _devices.Clear();
             
-            foreach (var instance in _directInput.GetDevices(DeviceClass.GameControl, DeviceEnumerationFlags.AttachedOnly))
+            try
             {
-                try
+                foreach (var instance in _directInput.GetDevices(DeviceClass.GameControl, DeviceEnumerationFlags.AttachedOnly))
                 {
-                    var joystick = new Joystick(_directInput, instance.InstanceGuid);
-                    joystick.SetCooperativeLevel(IntPtr.Zero, CooperativeLevel.Background | CooperativeLevel.NonExclusive);
-                    joystick.Properties.BufferSize = 128;
-                    
-                    var notifyEvent = new AutoResetEvent(false);
-                    joystick.SetNotification(notifyEvent);
-                    joystick.Acquire();
-                    
-                    _devices.Add(new DeviceState { Joystick = joystick, Identifier = instance.InstanceGuid.ToString(), NotificationEvent = notifyEvent });
-                } 
-                catch { }
+                    try
+                    {
+                        var joystick = new Joystick(_directInput, instance.InstanceGuid);
+                        joystick.SetCooperativeLevel(IntPtr.Zero, CooperativeLevel.Background | CooperativeLevel.NonExclusive);
+                        joystick.Properties.BufferSize = 128;
+                        
+                        var notifyEvent = new AutoResetEvent(false);
+                        joystick.SetNotification(notifyEvent);
+                        joystick.Acquire();
+                        
+                        _devices.Add(new DeviceState { Joystick = joystick, Identifier = instance.InstanceGuid.ToString(), NotificationEvent = notifyEvent });
+                    } 
+                    catch (Exception ex)
+                    {
+                        InputLogger.LogError($"Failed to acquire device {instance.InstanceGuid}", ex);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                InputLogger.LogError("Error enumerating DirectInput devices", ex);
             }
         }
 
@@ -85,80 +101,91 @@ namespace UsbInputMapper.Core
         {
             while (_isRunning)
             {
-                if (_refreshRequested)
+                try
                 {
-                    RebuildDevices();
-                    _refreshRequested = false;
-                }
-
-                WaitHandle[] waitHandles;
-                DeviceState[] activeDevices = _devices.ToArray();
-                
-                waitHandles = new WaitHandle[activeDevices.Length + 1];
-                waitHandles[0] = _stopEvent; // 0番目は停止または再構築シグナル
-                for (int i = 0; i < activeDevices.Length; i++)
-                {
-                    waitHandles[i + 1] = activeDevices[i].NotificationEvent;
-                }
-
-                int waitResult = WaitHandle.WaitAny(waitHandles, 2000); 
-
-                if (!_isRunning) break;
-                if (waitResult == WaitHandle.WaitTimeout || waitResult == 0) continue;
-
-                int deviceIndex = waitResult - 1;
-                if (deviceIndex >= 0 && deviceIndex < activeDevices.Length)
-                {
-                    var d = activeDevices[deviceIndex];
-                    try
+                    if (_refreshRequested)
                     {
-                        d.Joystick.Poll();
-                        var datas = d.Joystick.GetBufferedData();
-                        if (datas == null) continue;
+                        RebuildDevices();
+                        _refreshRequested = false;
+                    }
 
-                        foreach (var data in datas)
+                    DeviceState[] activeDevices = _devices.ToArray();
+                    WaitHandle[] waitHandles = new WaitHandle[activeDevices.Length + 1];
+                    waitHandles[0] = _stopEvent;
+                    
+                    for (int i = 0; i < activeDevices.Length; i++)
+                    {
+                        waitHandles[i + 1] = activeDevices[i].NotificationEvent;
+                    }
+
+                    int waitResult = WaitHandle.WaitAny(waitHandles, 2000); 
+
+                    if (!_isRunning) break;
+                    if (waitResult == WaitHandle.WaitTimeout || waitResult == 0) continue;
+
+                    int deviceIndex = waitResult - 1;
+                    if (deviceIndex >= 0 && deviceIndex < activeDevices.Length)
+                    {
+                        var d = activeDevices[deviceIndex];
+                        try
                         {
-                            int type = -1, code = -1, value = data.Value;
+                            d.Joystick.Poll();
+                            var datas = d.Joystick.GetBufferedData();
+                            if (datas == null) continue;
 
-                            if (data.Offset >= JoystickOffset.Buttons0 && data.Offset <= JoystickOffset.Buttons127)
+                            foreach (var data in datas)
                             {
-                                type = 10; code = data.Offset - JoystickOffset.Buttons0; value = (data.Value > 0) ? 1 : 0;
+                                int type = -1, code = -1, value = data.Value;
+
+                                if (data.Offset >= JoystickOffset.Buttons0 && data.Offset <= JoystickOffset.Buttons127)
+                                {
+                                    type = 10; code = data.Offset - JoystickOffset.Buttons0; value = (data.Value > 0) ? 1 : 0;
+                                }
+                                else if (data.Offset >= JoystickOffset.PointOfViewControllers0 && data.Offset <= JoystickOffset.PointOfViewControllers3)
+                                {
+                                    type = 12; code = data.Offset - JoystickOffset.PointOfViewControllers0; value = data.Value;
+                                }
+                                else
+                                {
+                                    type = 11;
+                                    if (!HasAxisBindings && !ForceEnableAxisEvents) continue;
+
+                                    switch (data.Offset)
+                                    {
+                                        case JoystickOffset.X: code = 0; break; case JoystickOffset.Y: code = 1; break;
+                                        case JoystickOffset.Z: code = 2; break; case JoystickOffset.RotationX: code = 3; break;
+                                        case JoystickOffset.RotationY: code = 4; break; case JoystickOffset.RotationZ: code = 5; break;
+                                        case JoystickOffset.Sliders0: code = 6; break; case JoystickOffset.Sliders1: code = 7; break;
+                                    }
+
+                                    if (code != -1)
+                                    {
+                                        if (d.LastAxisValues.TryGetValue(code, out int lastVal)) { if (Math.Abs(lastVal - value) < 150) continue; }
+                                        d.LastAxisValues[code] = value;
+                                    }
+                                }
+
+                                if (type != -1) 
+                                    OnInputEvent?.Invoke(this, new DirectInputEvent { DeviceIdentifier = d.Identifier, Type = type, Code = code, Value = value });
                             }
-                            else if (data.Offset >= JoystickOffset.PointOfViewControllers0 && data.Offset <= JoystickOffset.PointOfViewControllers3)
+                        }
+                        catch (SharpDXException e)
+                        {
+                            if (e.ResultCode == SharpDX.DirectInput.ResultCode.NotAcquired || e.ResultCode == SharpDX.DirectInput.ResultCode.InputLost)
                             {
-                                type = 12; code = data.Offset - JoystickOffset.PointOfViewControllers0; value = data.Value;
+                                try { d.Joystick.Acquire(); } catch { Thread.Sleep(100); }
                             }
                             else
                             {
-                                type = 11;
-                                if (!HasAxisBindings && !ForceEnableAxisEvents) continue;
-
-                                switch (data.Offset)
-                                {
-                                    case JoystickOffset.X: code = 0; break; case JoystickOffset.Y: code = 1; break;
-                                    case JoystickOffset.Z: code = 2; break; case JoystickOffset.RotationX: code = 3; break;
-                                    case JoystickOffset.RotationY: code = 4; break; case JoystickOffset.RotationZ: code = 5; break;
-                                    case JoystickOffset.Sliders0: code = 6; break; case JoystickOffset.Sliders1: code = 7; break;
-                                }
-
-                                if (code != -1)
-                                {
-                                    if (d.LastAxisValues.TryGetValue(code, out int lastVal)) { if (Math.Abs(lastVal - value) < 150) continue; }
-                                    d.LastAxisValues[code] = value;
-                                }
+                                InputLogger.LogError("DirectInput polling error", e);
                             }
-
-                            if (type != -1) 
-                                OnInputEvent?.Invoke(this, new DirectInputEvent { DeviceIdentifier = d.Identifier, Type = type, Code = code, Value = value });
                         }
                     }
-                    catch (SharpDXException e)
-                    {
-                        if (e.ResultCode == SharpDX.DirectInput.ResultCode.NotAcquired || e.ResultCode == SharpDX.DirectInput.ResultCode.InputLost)
-                        {
-                            try { d.Joystick.Acquire(); } catch { Thread.Sleep(100); }
-                        }
-                    }
+                }
+                catch (Exception ex)
+                {
+                    InputLogger.LogError("DirectInput EventWaitLoop unexpected error", ex);
+                    Thread.Sleep(1000); // 連続クラッシュ防止
                 }
             }
         }
@@ -167,13 +194,13 @@ namespace UsbInputMapper.Core
         {
             _isRunning = false;
             _stopEvent.Set();
-            _pollingThread?.Join(500);
+            _pollingThread?.Join(1000);
             
             foreach (var d in _devices) 
             { 
                 try { d.Joystick.Unacquire(); } catch { } 
                 d.Joystick.Dispose(); 
-                if (d.NotificationEvent != null) d.NotificationEvent.Dispose(); 
+                d.NotificationEvent?.Dispose(); 
             } 
             _devices.Clear();
             _stopEvent.Dispose();

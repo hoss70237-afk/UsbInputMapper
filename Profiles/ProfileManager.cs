@@ -115,12 +115,20 @@ namespace UsbInputMapper.Profiles
             string tempPath = filePath + ".tmp";
             string json = JsonConvert.SerializeObject(data, Formatting.Indented);
             File.WriteAllText(tempPath, json);
-            if (File.Exists(filePath))
+            try
             {
-                string backupPath = filePath + ".bak";
-                File.Replace(tempPath, filePath, backupPath, true);
+                if (File.Exists(filePath))
+                {
+                    string backupPath = filePath + ".bak";
+                    File.Replace(tempPath, filePath, backupPath, true);
+                }
+                else File.Move(tempPath, filePath);
             }
-            else File.Move(tempPath, filePath);
+            catch
+            {
+                if (File.Exists(filePath)) File.Delete(filePath);
+                File.Move(tempPath, filePath);
+            }
         }
 
         private void ManageBackups(string filePath)
@@ -226,7 +234,6 @@ namespace UsbInputMapper.Profiles
             Task.Run(() => {
                 try
                 {
-                    // リフレクションを用いてdynamicキーワードを使用せずにメソッドを呼び出し、コンパイルエラーを回避する
                     Type synthType = Type.GetType("System.Speech.Synthesis.SpeechSynthesizer, System.Speech, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35");
                     if (synthType != null)
                     {

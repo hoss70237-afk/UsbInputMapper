@@ -55,7 +55,7 @@ namespace UsbInputMapper.Profiles
         public int MouseX { get; set; }
         public int MouseY { get; set; }
         
-        public int ActionState { get; set; } = 0; // 0:連動, 1:Downのみ, 2:Upのみ
+        public int ActionState { get; set; } = 0; 
         
         public bool JiggleCursor { get; set; } = false;
 
@@ -72,7 +72,7 @@ namespace UsbInputMapper.Profiles
         [JsonProperty("GestureSize")]
         public int RadialMenuSize { get; set; } = 200;
         [JsonProperty("GestureMode")]
-        public int RadialMenuMode { get; set; } = 0; 
+        public int RadialMenuMode { get; set; } = 0; // ★ 0: 離して確定(ホールド), 1: クリックで確定
         [JsonProperty("GestureDirections")]
         public List<RadialMenuDirection> RadialMenuDirections { get; set; }
 
@@ -140,7 +140,9 @@ namespace UsbInputMapper.Profiles
                 case ActionType.Macro: return $"マクロ実行({MacroSteps?.Count ?? 0}ステップ)";
                 case ActionType.ProfileSwitch: return "プロファイル切替: " + ArgumentStr;
                 case ActionType.StickToMouse: return $"スティックマウス(最高速度:{StickMaxSpeed})";
-                case ActionType.RadialMenu: return $"ラジアルメニュー({RadialMenuSlices}分割)";
+                case ActionType.RadialMenu: 
+                    string modeStr = RadialMenuMode == 1 ? "クリック確定" : "離して確定";
+                    return $"ラジアルメニュー({RadialMenuSlices}分割 / {modeStr})";
                 case ActionType.BackgroundControl: return $"バックグラウンド操作: {(string.IsNullOrEmpty(BgWindowName)?BgClassName:BgWindowName)}";
                 case ActionType.CursorVisibility: 
                     return CursorVisMode == 0 ? "カーソル非表示" : CursorVisMode == 1 ? "カーソル表示" : "カーソル表示トグル";

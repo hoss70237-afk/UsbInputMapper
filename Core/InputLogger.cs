@@ -1,4 +1,3 @@
-// FILE: Core/InputLogger.cs
 using System;
 
 namespace UsbInputMapper.Core

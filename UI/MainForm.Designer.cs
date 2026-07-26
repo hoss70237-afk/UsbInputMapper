@@ -10,7 +10,7 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.TabPage tabGeneral;
         
         private System.Windows.Forms.ListBox lstProfiles;
-        private System.Windows.Forms.ListView lvwBindings; // ★ListBoxからListViewへ変更
+        private System.Windows.Forms.ListView lvwBindings;
         
         private System.Windows.Forms.Button btnAddProfile;
         private System.Windows.Forms.Button btnEditProfile;
@@ -40,7 +40,7 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.CheckBox chkStartup;
         private System.Windows.Forms.Button btnControllerBase;
 
-        private System.Windows.Forms.ListView lvwDiagnostic; // ★テキストボックスから変更
+        private System.Windows.Forms.ListView lvwDiagnostic;
         private System.Windows.Forms.CheckBox chkLog;
         private System.Windows.Forms.Label lblChatterCount; 
         private System.Windows.Forms.Button btnResetChatter; 
@@ -55,7 +55,7 @@ namespace UsbInputMapper.UI
             this.tabGeneral = new System.Windows.Forms.TabPage();
 
             this.lstProfiles = new System.Windows.Forms.ListBox(); 
-            this.lvwBindings = new System.Windows.Forms.ListView(); // ★変更
+            this.lvwBindings = new System.Windows.Forms.ListView();
             
             this.btnAddProfile = new System.Windows.Forms.Button(); this.btnEditProfile = new System.Windows.Forms.Button();
             this.btnDuplicateProfile = new System.Windows.Forms.Button(); this.btnDeleteProfile = new System.Windows.Forms.Button();
@@ -78,7 +78,7 @@ namespace UsbInputMapper.UI
             this.chkStartup = new System.Windows.Forms.CheckBox(); 
             this.btnControllerBase = new System.Windows.Forms.Button();
 
-            this.lvwDiagnostic = new System.Windows.Forms.ListView(); // ★変更
+            this.lvwDiagnostic = new System.Windows.Forms.ListView();
             this.chkLog = new System.Windows.Forms.CheckBox();
             this.lblChatterCount = new System.Windows.Forms.Label();
             this.btnResetChatter = new System.Windows.Forms.Button();
@@ -92,7 +92,6 @@ namespace UsbInputMapper.UI
             ((System.ComponentModel.ISupportInitialize)(this.numTripleClick)).BeginInit();
             this.SuspendLayout();
             
-            // タブの並び順を "プロファイル設定" "入力テスト/診断" "基本設定" の順にする
             this.tabControl1.Controls.Add(this.tabProfile);
             this.tabControl1.Controls.Add(this.tabDiagnostic);
             this.tabControl1.Controls.Add(this.tabGeneral);
@@ -107,11 +106,10 @@ namespace UsbInputMapper.UI
             this.tabProfile.Controls.Add(this.btnDownBinding); this.tabProfile.Controls.Add(this.btnUpBinding); this.tabProfile.Controls.Add(this.btnDeleteBinding); this.tabProfile.Controls.Add(this.btnEditBinding); this.tabProfile.Controls.Add(this.btnAddBinding);
             this.tabProfile.Controls.Add(this.btnDownProfile); this.tabProfile.Controls.Add(this.btnUpProfile); this.tabProfile.Controls.Add(this.btnDeleteProfile); this.tabProfile.Controls.Add(this.btnDuplicateProfile); this.tabProfile.Controls.Add(this.btnEditProfile); this.tabProfile.Controls.Add(this.btnAddProfile);
             this.tabProfile.Controls.Add(this.lblBindings); this.tabProfile.Controls.Add(this.lblProfiles); 
-            this.tabProfile.Controls.Add(this.lvwBindings); this.tabProfile.Controls.Add(this.lstProfiles); // ★変更
+            this.tabProfile.Controls.Add(this.lvwBindings); this.tabProfile.Controls.Add(this.lstProfiles);
 
             this.lstProfiles.FormattingEnabled = true; this.lstProfiles.ItemHeight = 12; this.lstProfiles.Location = new System.Drawing.Point(6, 24); this.lstProfiles.Size = new System.Drawing.Size(220, 268); this.lstProfiles.SelectedIndexChanged += new System.EventHandler(this.lstProfiles_SelectedIndexChanged);
             
-            // ★ ListView (lvwBindings) の設定
             this.lvwBindings.View = System.Windows.Forms.View.Details;
             this.lvwBindings.FullRowSelect = true;
             this.lvwBindings.GridLines = true;
@@ -149,7 +147,7 @@ namespace UsbInputMapper.UI
             this.tabDiagnostic.Controls.Add(this.chkLog);
             this.tabDiagnostic.Controls.Add(this.lblChatterCount);
             this.tabDiagnostic.Controls.Add(this.btnResetChatter);
-            this.tabDiagnostic.Controls.Add(this.lvwDiagnostic); // ★変更
+            this.tabDiagnostic.Controls.Add(this.lvwDiagnostic);
             
             this.chkLog.AutoSize = true; this.chkLog.Location = new System.Drawing.Point(6, 12); this.chkLog.Text = "入力テスト(ログ取得)を有効にする"; this.chkLog.CheckedChanged += new System.EventHandler(this.chkLog_CheckedChanged);
             
@@ -158,7 +156,6 @@ namespace UsbInputMapper.UI
             
             this.btnResetChatter.Location = new System.Drawing.Point(520, 7); this.btnResetChatter.Size = new System.Drawing.Size(100, 23); this.btnResetChatter.Text = "回数リセット"; this.btnResetChatter.Click += new System.EventHandler(this.btnResetChatter_Click);
             
-            // ★ ListView (lvwDiagnostic) の設定
             this.lvwDiagnostic.View = System.Windows.Forms.View.Details;
             this.lvwDiagnostic.FullRowSelect = true;
             this.lvwDiagnostic.GridLines = true;
@@ -192,6 +189,7 @@ namespace UsbInputMapper.UI
             this.numTripleClick.Location = new System.Drawing.Point(220, 158); this.numTripleClick.Maximum = 1000; this.numTripleClick.Size = new System.Drawing.Size(60, 19); this.numTripleClick.ValueChanged += new System.EventHandler(this.numTripleClick_ValueChanged);
 
             this.ClientSize = new System.Drawing.Size(680, 420);
+            this.Controls.Add(this.tabControl1);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle; this.MaximizeBox = false; this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen; this.Text = "UsbInputMapper - 設定";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
             

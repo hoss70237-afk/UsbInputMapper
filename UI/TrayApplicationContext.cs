@@ -195,7 +195,7 @@ namespace UsbInputMapper.UI
 
                 if (b.InputType == e.Type && b.InputCode == e.Code)
                 {
-                    // ★ ラジアルメニュー発火処理（UIスレッド安全化 ＆ モード分岐）
+                    // ★ ラジアルメニュー発火処理（オートリピート保護＆モード分岐）
                     if (b.Action.ActionType == ActionType.RadialMenu)
                     {
                         int mode = b.Action.RadialMenuMode; // 0: 離して確定, 1: クリック確定
@@ -204,7 +204,11 @@ namespace UsbInputMapper.UI
                         {
                             if (e.IsDown)
                             {
-                                ShowRadialHudUI(b.Action);
+                                // ★ 表示中（長押し中）の場合はキーリピートイベントを無視する
+                                if (_activeRadialHud == null)
+                                {
+                                    ShowRadialHudUI(b.Action);
+                                }
                             }
                             else
                             {
@@ -249,11 +253,9 @@ namespace UsbInputMapper.UI
             if (_mainForm == null || _mainForm.IsDisposed) return;
 
             _mainForm.BeginInvoke(new Action(() => {
-                if (_activeRadialHud != null)
-                {
-                    _activeRadialHud.Close();
-                    _activeRadialHud.Dispose();
-                }
+                // 重複表示・連続リリフレッシュのガード
+                if (_activeRadialHud != null) return;
+
                 _activeRadialAction = action;
                 _activeRadialHud = new RadialMenuHudForm(action);
                 _activeRadialHud.Show();

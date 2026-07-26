@@ -21,13 +21,15 @@ namespace UsbInputMapper.UI
         private bool _isUpdatingUI = false;
         private bool _isTimelineMode = false;
 
-        // タイムライン用変数
         private const int ROW_HEIGHT = 20;
-        private float _msPerPixel = 5.0f; // ズームで可変にする
+        private float _msPerPixel = 5.0f; 
         private int _draggingStepIndex = -1;
         private int _dragStartX = 0;
         private int _dragStartDelay = 0;
-        private int _scrollX = 0; // 横スクロール位置
+        private int _scrollX = 0; 
+
+        // 追加: 移動平滑化ボタン
+        private Button btnSimplify;
 
         public MacroEditorForm(ActionDef action, List<string> profileNames = null)
         {
@@ -66,11 +68,62 @@ namespace UsbInputMapper.UI
             
             hScrollBarTimeline.Scroll += (s, e) => { _scrollX = hScrollBarTimeline.Value; pnlTimeline.Invalidate(); };
 
-            AttachPropertyEvents();
+            // マウス移動の平滑化ボタンの追加
+            btnSimplify = new Button { Text = "マウス移動の平滑化", Location = new Point(490, 190), Size = new Size(80, 40) };
+            btnSimplify.Click += BtnSimplify_Click;
+            this.Controls.Add(btnSimplify);
 
+            AttachPropertyEvents();
             RefreshMacroList();
             UpdateControlsByMode();
             UpdateDetailPanelState();
+        }
+
+        private void BtnSimplify_Click(object sender, EventArgs e)
+        {
+            if (_action.MacroSteps.Count == 0) return;
+
+            var newSteps = new List<MacroStep>();
+            MacroStep lastMove = null;
+
+            foreach (var step in _action.MacroSteps)
+            {
+                if (step.ActionType == ActionType.MouseMoveAbsoluteHoverWin || step.ActionType == ActionType.MouseMoveAbsoluteDesk || step.ActionType == ActionType.MouseMoveRelative)
+                {
+                    if (lastMove == null)
+                    {
+                        lastMove = step;
+                        newSteps.Add(step);
+                    }
+                    else
+                    {
+                        // 前の移動との距離が短すぎる場合はスキップ（間引き）
+                        int dx = step.MouseX - lastMove.MouseX;
+                        int dy = step.MouseY - lastMove.MouseY;
+                        if (Math.Sqrt(dx * dx + dy * dy) < 15) // 15px以下の移動は統合
+                        {
+                            lastMove.DelayMs += step.DelayMs;
+                            lastMove.MouseX = step.MouseX;
+                            lastMove.MouseY = step.MouseY;
+                        }
+                        else
+                        {
+                            lastMove = step;
+                            newSteps.Add(step);
+                        }
+                    }
+                }
+                else
+                {
+                    lastMove = null; // 移動以外の操作が挟まったらリセット
+                    newSteps.Add(step);
+                }
+            }
+
+            int removed = _action.MacroSteps.Count - newSteps.Count;
+            _action.MacroSteps = newSteps;
+            RefreshMacroList();
+            MessageBox.Show($"不要なマウス移動パスを {removed} 件削除しました。", "最適化完了");
         }
 
         private void AttachPropertyEvents()
@@ -164,7 +217,6 @@ namespace UsbInputMapper.UI
             }
             if (selectIndex >= 0 && selectIndex < lstSteps.Items.Count) lstSteps.SelectedIndex = selectIndex;
             
-            // スクロールバーの最大値更新
             if (totalMs > 0)
             {
                 int maxPx = (int)(totalMs / _msPerPixel) + 100;
@@ -274,14 +326,19 @@ namespace UsbInputMapper.UI
             }
             else
             {
-                if (e.IsDown)
+                if (e.IsDown || (e.Type == 0 && e.Code == -1)) // Click or MouseMove
                 {
-                    int targetX = e.X; int targetY = e.Y;
-                    var moveStep = new MacroStep { UseDelay = true, DelayMs = delay, PressState = StepPressState.Tap, ActionType = ActionType.MouseMoveAbsoluteHoverWin, MouseX = targetX, MouseY = targetY };
-                    _action.MacroSteps.Add(moveStep);
-                    var clickStep = new MacroStep { UseDelay = false, DelayMs = 0, PressState = StepPressState.Down, ActionType = ActionType.MouseClick, ArgumentNum = e.Code };
-                    if (cmbPlaybackMode.SelectedIndex != 3) clickStep.PressState = StepPressState.Tap;
-                    _action.MacroSteps.Add(clickStep);
+                    if (e.Code == -1 && e.IsDown == false) // 便宜上 Code=-1をMouseMoveとして扱う
+                    {
+                        var moveStep = new MacroStep { UseDelay = true, DelayMs = delay, PressState = StepPressState.Tap, ActionType = ActionType.MouseMoveAbsoluteHoverWin, MouseX = e.X, MouseY = e.Y };
+                        _action.MacroSteps.Add(moveStep);
+                    }
+                    else
+                    {
+                        var clickStep = new MacroStep { UseDelay = true, DelayMs = delay, PressState = StepPressState.Down, ActionType = ActionType.MouseClick, ArgumentNum = e.Code };
+                        if (cmbPlaybackMode.SelectedIndex != 3) clickStep.PressState = StepPressState.Tap;
+                        _action.MacroSteps.Add(clickStep);
+                    }
                 }
                 else if (cmbPlaybackMode.SelectedIndex == 3)
                 {
@@ -335,7 +392,6 @@ namespace UsbInputMapper.UI
 
         private void btnZoomIn_Click(object sender, EventArgs e) { ZoomIn(); }
         private void btnZoomOut_Click(object sender, EventArgs e) { ZoomOut(); }
-
         private void ZoomIn() { _msPerPixel *= 0.5f; if (_msPerPixel < 0.1f) _msPerPixel = 0.1f; UpdateScaleLabel(); RefreshMacroList(); }
         private void ZoomOut() { _msPerPixel *= 2.0f; if (_msPerPixel > 100.0f) _msPerPixel = 100.0f; UpdateScaleLabel(); RefreshMacroList(); }
         private void UpdateScaleLabel() { lblScale.Text = $"1px = {_msPerPixel}ms"; }
@@ -351,7 +407,6 @@ namespace UsbInputMapper.UI
             using (Pen gridPen = new Pen(Color.LightGray))
             using (Pen gridPenBold = new Pen(Color.DarkGray))
             {
-                // 目盛りの間隔(ms)
                 int tickMs = 100;
                 if (_msPerPixel > 10) tickMs = 1000;
                 if (_msPerPixel > 50) tickMs = 5000;
@@ -412,9 +467,6 @@ namespace UsbInputMapper.UI
                     int px = (int)(currentAbsTime / _msPerPixel) - _scrollX;
                     int py = i * ROW_HEIGHT;
                     
-                    Rectangle rect = new Rectangle(px, py, 15, ROW_HEIGHT - 2);
-                    
-                    // クリック判定を少し広げる（文字部分も含む）
                     Rectangle hitRect = new Rectangle(px, py, 200, ROW_HEIGHT);
                     
                     if (hitRect.Contains(e.Location))

@@ -14,6 +14,7 @@ namespace UsbInputMapper.UI
         private ProfileManager _profileManager;
         
         enum ReqType { Button, Axis, Trigger, POV }
+
         private class SetupStep
         {
             public string Instruction { get; set; }
@@ -34,7 +35,6 @@ namespace UsbInputMapper.UI
             _profileManager = profileManager;
             _diManager = diManager;
 
-            // ★追加: セットアップ中は割り当てがなくても一時的にスティックの監視を強制オンにする
             if (_diManager != null)
             {
                 _diManager.ForceEnableAxisEvents = true;
@@ -65,7 +65,10 @@ namespace UsbInputMapper.UI
             };
 
             UpdateUI();
-            _diManager.OnInputEvent += DiManager_OnInputEvent;
+            if (_diManager != null)
+            {
+                _diManager.OnInputEvent += DiManager_OnInputEvent;
+            }
         }
 
         private void DiManager_OnInputEvent(object sender, DirectInputEvent e)
@@ -174,33 +177,47 @@ namespace UsbInputMapper.UI
             }
         }
 
-        private void UpdateUI() { lblProgress.Text = $"ステップ: {_currentStepIndex + 1} / {_steps.Count}"; lblInstruction.Text = _steps[_currentStepIndex].Instruction; }
+        private void UpdateUI() 
+        { 
+            lblProgress.Text = $"ステップ: {_currentStepIndex + 1} / {_steps.Count}"; 
+            lblInstruction.Text = _steps[_currentStepIndex].Instruction; 
+        }
 
         private void FinishSetup()
         {
-            _diManager.OnInputEvent -= DiManager_OnInputEvent;
-            
-            // ★追加: セットアップが終わったらスティックの強制監視を解除
-            if (_diManager != null) _diManager.ForceEnableAxisEvents = false;
-
+            Cleanup();
             MessageBox.Show("コントローラーのベース設定が完了しました！\r\nXInput出力を有効にしたプロファイルで適用されます。", "完了");
-            this.DialogResult = DialogResult.OK; this.Close();
+            this.DialogResult = DialogResult.OK; 
+            this.Close();
         }
 
-        private void btnSkip_Click(object sender, EventArgs e) { _waitingForNeutral = false; _currentStepIndex++; if (_currentStepIndex >= _steps.Count) FinishSetup(); else UpdateUI(); }
+        private void Cleanup()
+        {
+            if (_diManager != null)
+            {
+                _diManager.OnInputEvent -= DiManager_OnInputEvent;
+                _diManager.ForceEnableAxisEvents = false;
+            }
+        }
+
+        private void btnSkip_Click(object sender, EventArgs e) 
+        { 
+            _waitingForNeutral = false; 
+            _currentStepIndex++; 
+            if (_currentStepIndex >= _steps.Count) FinishSetup(); 
+            else UpdateUI(); 
+        }
         
         private void btnCancel_Click(object sender, EventArgs e) 
         { 
+            Cleanup();
             this.DialogResult = DialogResult.Cancel; 
             this.Close(); 
         }
         
         private void ControllerSetupForm_FormClosed(object sender, FormClosedEventArgs e) 
         { 
-            _diManager.OnInputEvent -= DiManager_OnInputEvent; 
-            
-            // ★追加: キャンセルや×ボタンで閉じられた場合も強制監視を解除
-            if (_diManager != null) _diManager.ForceEnableAxisEvents = false;
+            Cleanup();
         }
     }
 }

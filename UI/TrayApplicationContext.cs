@@ -10,7 +10,6 @@ namespace UsbInputMapper.UI
         private NotifyIcon _trayIcon;
         public static TrayApplicationContext Instance { get; private set; }
 
-        // 引数なしコンストラクタに戻し、Program.cs のエラーを解消
         public TrayApplicationContext()
         {
             Instance = this;
@@ -43,19 +42,15 @@ namespace UsbInputMapper.UI
 
         public void ShowMainForm()
         {
-            // 開かれているMainFormを探して表示する
-            foreach (Form form in Application.OpenForms)
+            // 静的インスタンスを利用して確実にアクセス
+            if (MainForm.Instance != null)
             {
-                if (form is MainForm mainForm)
+                MainForm.Instance.Show();
+                if (MainForm.Instance.WindowState == FormWindowState.Minimized)
                 {
-                    mainForm.Show();
-                    if (mainForm.WindowState == FormWindowState.Minimized)
-                    {
-                        mainForm.WindowState = FormWindowState.Normal;
-                    }
-                    mainForm.Activate();
-                    return;
+                    MainForm.Instance.WindowState = FormWindowState.Normal;
                 }
+                MainForm.Instance.Activate();
             }
         }
 
@@ -76,8 +71,10 @@ namespace UsbInputMapper.UI
         {
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
+            
             OutputDispatcher.Instance?.ReleaseAllInputs(); 
             HidHideManager.EnableHiding(false); 
+            
             Application.Exit();
         }
     }

@@ -7,7 +7,7 @@ namespace UsbInputMapper.Core
 {
     public class RawInputManager : NativeWindow, IDisposable
     {
-        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        [DllImport("kernel32.dll")]
         private static extern ulong GetTickCount64();
 
         public event EventHandler<InputEvent> OnInputEvent;
@@ -99,9 +99,19 @@ namespace UsbInputMapper.Core
                         EmitMouseEvent(evt, ms.usButtonFlags, 0x0040, 0x0080, 6); 
                         EmitMouseEvent(evt, ms.usButtonFlags, 0x0100, 0x0200, 7); 
 
+                        // 垂直ホイール (0x0400)
                         if ((ms.usButtonFlags & 0x0400) != 0) 
                         {
-                            evt.Code = ms.usButtonData > 0 ? 4 : 5;
+                            short delta = ms.usButtonData;
+                            evt.Code = delta > 0 ? 4 : 5; // 4:上, 5:下
+                            evt.IsDown = true;
+                            OnInputEvent?.Invoke(this, evt);
+                        }
+                        // 水平ホイール (0x0800)
+                        else if ((ms.usButtonFlags & 0x0800) != 0)
+                        {
+                            short delta = ms.usButtonData;
+                            evt.Code = delta > 0 ? 8 : 9; // 8:右, 9:左
                             evt.IsDown = true;
                             OnInputEvent?.Invoke(this, evt);
                         }

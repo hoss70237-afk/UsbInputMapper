@@ -12,11 +12,25 @@ namespace UsbInputMapper.UI
         private bool _isFadingOut = false;
         private Profile _profile;
 
-        // リソースのキャッシュ化（GCスパイク防止用）
         private Brush _bgBrush;
         private Pen _borderPen;
         private Font _markFont;
         private Font _nameFont;
+
+        // ★ ゲーム等のアクティブウィンドウからフォーカスを奪わない設定
+        protected override bool ShowWithoutActivation => true;
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
+                cp.ExStyle |= 0x00080000; // WS_EX_LAYERED
+                cp.ExStyle |= 0x00000020; // WS_EX_TRANSPARENT
+                return cp;
+            }
+        }
 
         public ProfileOverlayForm(Profile profile)
         {
@@ -28,8 +42,6 @@ namespace UsbInputMapper.UI
             this.StartPosition = FormStartPosition.Manual;
             this.BackColor = Color.Black;
             
-            int initialStyle = GetWindowLong(this.Handle, GWL_EXSTYLE);
-            SetWindowLong(this.Handle, GWL_EXSTYLE, initialStyle | WS_EX_TRANSPARENT | WS_EX_LAYERED);
             SetLayeredWindowAttributes(this.Handle, 0, 0, LWA_ALPHA);
 
             this.Size = new Size(300, 60);
@@ -46,8 +58,7 @@ namespace UsbInputMapper.UI
             this.Location = new Point(x, y);
             this.DoubleBuffered = true;
 
-            // 描画リソースの事前初期化
-            _bgBrush = new SolidBrush(Color.FromArgb(160, 0, 0, 0));
+            _bgBrush = new SolidBrush(Color.FromArgb(180, 20, 20, 20));
             _borderPen = new Pen(Color.DodgerBlue, 2);
             _markFont = new Font("MS UI Gothic", 16, FontStyle.Bold);
             _nameFont = new Font("Meiryo", 12, FontStyle.Bold);
@@ -61,7 +72,7 @@ namespace UsbInputMapper.UI
         {
             if (this.IsDisposed)
             {
-                _fadeTimer.Stop();
+                _fadeTimer?.Stop();
                 return;
             }
 
@@ -70,11 +81,11 @@ namespace UsbInputMapper.UI
                 if (!_isFadingOut)
                 {
                     _alpha += 25;
-                    if (_alpha >= 200) 
+                    if (_alpha >= 220) 
                     {
-                        _alpha = 200;
+                        _alpha = 220;
                         _isFadingOut = true;
-                        _fadeTimer.Interval = _profile.OverlayDurationMs; 
+                        _fadeTimer.Interval = Math.Max(500, _profile.OverlayDurationMs); 
                     }
                 }
                 else
@@ -94,7 +105,7 @@ namespace UsbInputMapper.UI
             }
             catch
             {
-                _fadeTimer.Stop();
+                _fadeTimer?.Stop();
             }
         }
 
@@ -111,17 +122,17 @@ namespace UsbInputMapper.UI
                 e.Graphics.FillRectangle(_bgBrush, rect);
                 e.Graphics.DrawRectangle(_borderPen, 1, 1, this.Width - 2, this.Height - 2);
 
-                int textX = 10;
+                int textX = 15;
                 
                 if (_profile.OverlayShowMark)
                 {
-                    e.Graphics.DrawString("🎮", _markFont, Brushes.White, textX, 15);
-                    textX += 40;
+                    e.Graphics.DrawString("🎮", _markFont, Brushes.DodgerBlue, textX, 15);
+                    textX += 35;
                 }
 
                 if (_profile.OverlayShowName)
                 {
-                    e.Graphics.DrawString($"Profile: {_profile.Name}", _nameFont, Brushes.White, textX, 15);
+                    e.Graphics.DrawString($"Profile: {_profile.Name}", _nameFont, Brushes.White, textX, 16);
                 }
             }
             catch { }
@@ -144,18 +155,9 @@ namespace UsbInputMapper.UI
             base.Dispose(disposing);
         }
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-        
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-        
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
-        private const int GWL_EXSTYLE = -20;
-        private const int WS_EX_LAYERED = 0x80000;
-        private const int WS_EX_TRANSPARENT = 0x20;
         private const uint LWA_ALPHA = 0x2;
     }
 }

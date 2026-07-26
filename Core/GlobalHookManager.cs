@@ -54,8 +54,6 @@ namespace UsbInputMapper.Core
         private static extern bool UnhookWindowsHookEx(IntPtr hhk);
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);
 
         private IntPtr _keyboardHookID = IntPtr.Zero;
         private IntPtr _mouseHookID = IntPtr.Zero;
@@ -105,13 +103,10 @@ namespace UsbInputMapper.Core
             _keyboardProc = KeyboardHookCallback;
             _mouseProc = MouseHookCallback;
 
-            using (Process curProcess = Process.GetCurrentProcess())
-            using (ProcessModule curModule = curProcess.MainModule)
-            {
-                IntPtr hMod = GetModuleHandle(curModule.ModuleName);
-                _keyboardHookID = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, hMod, 0);
-                _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, hMod, 0);
-            }
+            // 修正: 確実なモジュールハンドルの取得
+            IntPtr hMod = Marshal.GetHINSTANCE(typeof(GlobalHookManager).Module);
+            _keyboardHookID = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, hMod, 0);
+            _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, hMod, 0);
         }
 
         private long GetHookKey(int type, int code) => ((long)type << 32) | (uint)code;
@@ -167,7 +162,8 @@ namespace UsbInputMapper.Core
                     if (IsRecording && !isInjected)
                     {
                         var evt = new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now };
-                        try { OnRecordedInput?.Invoke(this, evt); } catch(Exception ex) { InputLogger.LogError("OnRecordedInput Error", ex); }
+                        // 修正: フック解除を防ぐため非同期でイベント発火
+                        Task.Run(() => { try { OnRecordedInput?.Invoke(this, evt); } catch(Exception ex) { InputLogger.LogError("OnRecordedInput Error", ex); } });
                     }
                     
                     if (!isInjected)
@@ -178,9 +174,8 @@ namespace UsbInputMapper.Core
                             _recentBlocked[key] = now;
                             var evt = new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now };
                             
-                            // ★同期的に発火させつつ例外はキャッチしてフック全体が死ぬのを防ぐ
-                            try { OnBlockedInputFired?.Invoke(this, evt); } 
-                            catch (Exception ex) { InputLogger.LogError("OnBlockedInputFired (KB) Error", ex); }
+                            // 修正: 非同期で発火
+                            Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, evt); } catch (Exception ex) { InputLogger.LogError("OnBlockedInputFired (KB) Error", ex); } });
                             
                             return (IntPtr)1; 
                         }
@@ -189,7 +184,7 @@ namespace UsbInputMapper.Core
                     if (InputLogger.IsLoggingEnabled)
                     {
                         var diagEvt = new DiagnosticEvent { IsPhysical = false, Timestamp = now, Type = 1, Code = vkCode, IsDown = isDown };
-                        try { InputLogger.LogDiagnostic(diagEvt); } catch { }
+                        Task.Run(() => { try { InputLogger.LogDiagnostic(diagEvt); } catch { } });
                     }
                 }
                 catch (Exception ex)
@@ -213,7 +208,7 @@ namespace UsbInputMapper.Core
                     
                     if (msg == WM_MOUSEMOVE && !isInjected)
                     {
-                        try { OnMouseMove?.Invoke(this, ms.pt); } catch(Exception ex) { InputLogger.LogError("OnMouseMove Error", ex); }
+                        Task.Run(() => { try { OnMouseMove?.Invoke(this, ms.pt); } catch(Exception ex) { InputLogger.LogError("OnMouseMove Error", ex); } });
                     }
                     
                     int code = -1;
@@ -264,7 +259,7 @@ namespace UsbInputMapper.Core
                             if (IsRecording)
                             {
                                 var evt = new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now };
-                                try { OnRecordedInput?.Invoke(this, evt); } catch(Exception ex) { InputLogger.LogError("OnRecordedInput(Mouse) Error", ex); }
+                                Task.Run(() => { try { OnRecordedInput?.Invoke(this, evt); } catch(Exception ex) { InputLogger.LogError("OnRecordedInput(Mouse) Error", ex); } });
                             }
                             
                             long key = GetHookKey(0, code);
@@ -273,9 +268,7 @@ namespace UsbInputMapper.Core
                                 _recentBlocked[key] = now; 
                                 var evt = new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now };
                                 
-                                // ★同期的に発火させつつ例外はキャッチしてフック全体が死ぬのを防ぐ
-                                try { OnBlockedInputFired?.Invoke(this, evt); } 
-                                catch (Exception ex) { InputLogger.LogError("OnBlockedInputFired (Mouse) Error", ex); }
+                                Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, evt); } catch (Exception ex) { InputLogger.LogError("OnBlockedInputFired (Mouse) Error", ex); } });
                                 
                                 return (IntPtr)1; 
                             }
@@ -285,7 +278,7 @@ namespace UsbInputMapper.Core
                     if (code != -1 && InputLogger.IsLoggingEnabled)
                     {
                         var diagEvt = new DiagnosticEvent { IsPhysical = false, Timestamp = now, Type = 0, Code = code, IsDown = isDown };
-                        try { InputLogger.LogDiagnostic(diagEvt); } catch { }
+                        Task.Run(() => { try { InputLogger.LogDiagnostic(diagEvt); } catch { } });
                     }
                 }
                 catch (Exception ex)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json;
 
 namespace UsbInputMapper.Profiles
@@ -31,7 +32,7 @@ namespace UsbInputMapper.Profiles
         BackgroundControl,
         CursorVisibility,    
         SystemMouseSettings,
-        LayerShift          // ★追加: レイヤー切り替え(シフト)機能
+        LayerShift          
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }
@@ -54,7 +55,7 @@ namespace UsbInputMapper.Profiles
         public int MouseX { get; set; }
         public int MouseY { get; set; }
         
-        public int ActionState { get; set; } = 0;
+        public int ActionState { get; set; } = 0; // 0:連動, 1:Downのみ, 2:Upのみ
         
         public bool JiggleCursor { get; set; } = false;
 
@@ -90,7 +91,7 @@ namespace UsbInputMapper.Profiles
         public int SystemScrollLines { get; set; } = 3; 
         public int SystemHorizontalScroll { get; set; } = 3;
         
-        public int LayerIndex { get; set; } = 1; // ★追加: 対象のレイヤー番号
+        public int LayerIndex { get; set; } = 1;
 
         public ActionDef()
         {
@@ -101,6 +102,12 @@ namespace UsbInputMapper.Profiles
             StepTimeoutMs = 1000;
         }
 
+        public ActionDef Clone()
+        {
+            string json = JsonConvert.SerializeObject(this);
+            return JsonConvert.DeserializeObject<ActionDef>(json);
+        }
+
         public override string ToString()
         {
             switch (ActionType)
@@ -109,36 +116,36 @@ namespace UsbInputMapper.Profiles
                 case ActionType.Keyboard: 
                 case ActionType.ToggleHold:
                     string kState = ActionState == 1 ? " [押す]" : ActionState == 2 ? " [離す]" : "";
-                    if (MultipleKeys != null && MultipleKeys.Count > 0) return (ActionType == ActionType.ToggleHold ? "トグル: " : "キーボード: ") + string.Join("+", MultipleKeys) + kState;
-                    return (ActionType == ActionType.ToggleHold ? "トグル: " : "キーボード: ") + (System.Windows.Forms.Keys)ArgumentNum + kState;
+                    string prefix = (ActionType == ActionType.ToggleHold ? "トグル: " : "");
+                    if (MultipleKeys != null && MultipleKeys.Count > 0) 
+                        return prefix + string.Join("+", MultipleKeys.Select(k => ((System.Windows.Forms.Keys)k).ToString())) + kState;
+                    return prefix + (System.Windows.Forms.Keys)ArgumentNum + kState;
                 case ActionType.MouseClick: 
                     string mState = ActionState == 1 ? " [押す]" : ActionState == 2 ? " [離す]" : "";
-                    return "マウスクリック: " + ArgumentNum + mState;
-                case ActionType.MouseMoveRelative: return $"マウス移動(相対): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らす]":"");
-                case ActionType.MouseMoveAbsoluteDesk: return $"マウス絶対(デスク): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らす]":"");
-                case ActionType.MouseMoveAbsoluteWin: return $"マウス絶対(アクティブ): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らす]":"");
-                case ActionType.MouseMoveAbsoluteHoverWin: return $"マウス絶対(ポインタ下): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らす]":"");
+                    string mBtn = ArgumentNum == 1 ? "左" : ArgumentNum == 2 ? "右" : ArgumentNum == 3 ? "中" : ArgumentNum == 4 ? "ホイール上" : ArgumentNum == 5 ? "ホイール下" : ArgumentNum.ToString();
+                    return "マウスクリック: " + mBtn + mState;
+                case ActionType.MouseMoveRelative: return $"マウス相対移動: X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らし]":"");
+                case ActionType.MouseMoveAbsoluteDesk: return $"マウス絶対(デスク): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らし]":"");
+                case ActionType.MouseMoveAbsoluteWin: return $"マウス絶対(アクティブ): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らし]":"");
+                case ActionType.MouseMoveAbsoluteHoverWin: return $"マウス絶対(ポインタ下): X={MouseX}, Y={MouseY}" + (JiggleCursor?" [揺らし]":"");
                 case ActionType.XboxController: 
                     string xState = ActionState == 1 ? " [押す]" : ActionState == 2 ? " [離す]" : "";
                     return "Xboxボタン: " + ArgumentNum + xState;
                 case ActionType.XboxAxis: return "Xboxスティック軸: " + ArgumentNum;
                 case ActionType.XboxTrigger: return "Xboxトリガー: " + ArgumentNum;
                 case ActionType.AppLaunch: return "アプリ起動: " + System.IO.Path.GetFileName(ArgumentStr);
-                case ActionType.FileOpen: return "ファイルを開く: " + System.IO.Path.GetFileName(ArgumentStr);
-                case ActionType.FolderOpen: return "フォルダを開く: " + ArgumentStr;
-                case ActionType.AhkRun: return "AHKスクリプト実行: " + System.IO.Path.GetFileName(ArgumentStr);
-                case ActionType.Macro: return "マクロ実行";
+                case ActionType.FileOpen: return "ファイル実行: " + System.IO.Path.GetFileName(ArgumentStr);
+                case ActionType.FolderOpen: return "フォルダ開く: " + ArgumentStr;
+                case ActionType.AhkRun: return "AHK実行: " + System.IO.Path.GetFileName(ArgumentStr);
+                case ActionType.Macro: return $"マクロ実行({MacroSteps?.Count ?? 0}ステップ)";
                 case ActionType.ProfileSwitch: return "プロファイル切替: " + ArgumentStr;
                 case ActionType.StickToMouse: return $"スティックマウス(最高速度:{StickMaxSpeed})";
                 case ActionType.RadialMenu: return $"ラジアルメニュー({RadialMenuSlices}分割)";
                 case ActionType.BackgroundControl: return $"バックグラウンド操作: {(string.IsNullOrEmpty(BgWindowName)?BgClassName:BgWindowName)}";
-                
                 case ActionType.CursorVisibility: 
-                    return CursorVisMode == 0 ? "カーソル: 非表示" : CursorVisMode == 1 ? "カーソル: 表示" : "カーソル: トグル";
-                case ActionType.SystemMouseSettings: return $"OSマウス設定";
-                
-                case ActionType.LayerShift: return $"レイヤーシフト: Layer {LayerIndex}"; // ★追加
-                
+                    return CursorVisMode == 0 ? "カーソル非表示" : CursorVisMode == 1 ? "カーソル表示" : "カーソル表示トグル";
+                case ActionType.SystemMouseSettings: return $"OSマウス設定適用";
+                case ActionType.LayerShift: return $"レイヤーシフト: Layer {LayerIndex}";
                 default: return ActionType.ToString();
             }
         }

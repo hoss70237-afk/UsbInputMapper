@@ -53,7 +53,6 @@ namespace UsbInputMapper.Core
             public ushort wParamH;
         }
 
-        // ★ 32bit/64bit双方のマーシャラーで安全な明示的レイアウト
         [StructLayout(LayoutKind.Explicit)]
         public struct InputUnion
         {
@@ -62,6 +61,7 @@ namespace UsbInputMapper.Core
             [FieldOffset(0)] public HARDWAREINPUT hi;
         }
 
+        // 修正: 32bit/64bit(AnyCPU)環境でサイズとオフセットの差異を無くし安全に動作させる
         [StructLayout(LayoutKind.Sequential)]
         public struct INPUT
         {

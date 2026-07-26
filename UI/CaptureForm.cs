@@ -78,7 +78,7 @@ namespace UsbInputMapper.UI
                 _pendingHidEvents.Clear(); 
             }
 
-            if (e.Type == 2)
+            if (e.Type == 2) // HID入力の遅延評価
             {
                 if (now - _lastStandardInputTime < 50) return;
                 
@@ -110,6 +110,14 @@ namespace UsbInputMapper.UI
         private void ProcessFinalInput(InputEvent e)
         {
             if (IsDisposed || _cts.IsCancellationRequested) return;
+
+            // ★ ゲームパッドの軸(Type 11)判定：ニュートラルから大きく傾いた時のみキャプチャ
+            if (e.Type == 11)
+            {
+                int diff = Math.Abs(e.Value - 32767);
+                if (diff < 15000) return; // デッドゾーン内は無視
+                e.IsDown = true;
+            }
 
             if (Mode == CaptureMode.SingleAny)
             {

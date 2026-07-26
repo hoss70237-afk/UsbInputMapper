@@ -35,87 +35,98 @@ namespace UsbInputMapper.Core
 
         private readonly ConcurrentDictionary<int, byte> _pressedKeys = new ConcurrentDictionary<int, byte>();
         private readonly ConcurrentDictionary<int, byte> _pressedMouseButtons = new ConcurrentDictionary<int, byte>();
-        
-        // ★追加：ToggleHoldの状態管理
         private readonly ConcurrentDictionary<string, bool> _toggleStates = new ConcurrentDictionary<string, bool>();
 
         public OutputDispatcher(ViGEmOutput viGEmOutput) { _viGEmOutput = viGEmOutput; }
 
         public void ReleaseAllInputs()
         {
-            var keysToRelease = _pressedKeys.Keys.ToList();
-            if (keysToRelease.Count > 0) 
-            { 
-                SendKeyboardInputs(keysToRelease, false); 
-                _pressedKeys.Clear(); 
+            try
+            {
+                var keysToRelease = _pressedKeys.Keys.ToList();
+                if (keysToRelease.Count > 0) 
+                { 
+                    SendKeyboardInputs(keysToRelease, false); 
+                    _pressedKeys.Clear(); 
+                }
+                
+                var mouseBtnsToRelease = _pressedMouseButtons.Keys.ToList();
+                foreach (var mb in mouseBtnsToRelease) 
+                { 
+                    SendMouseClick(mb, false); 
+                }
+                _pressedMouseButtons.Clear();
+                
+                _toggleStates.Clear();
+                _viGEmOutput.Reset();
             }
-            
-            var mouseBtnsToRelease = _pressedMouseButtons.Keys.ToList();
-            foreach (var mb in mouseBtnsToRelease) 
-            { 
-                SendMouseClick(mb, false); 
+            catch (Exception ex)
+            {
+                InputLogger.LogError("Failed to release inputs during cleanup", ex);
             }
-            _pressedMouseButtons.Clear();
-            
-            _toggleStates.Clear();
-            _viGEmOutput.Reset();
         }
 
         public void Dispatch(ActionDef action, bool isDown)
         {
-            if (action.ActionState == 1) { if (!isDown) return; isDown = true; }
-            else if (action.ActionState == 2) { if (!isDown) return; isDown = false; }
-
-            switch (action.ActionType)
+            try
             {
-                case ActionType.Keyboard:
-                    if (action.MultipleKeys != null && action.MultipleKeys.Count > 0) SendKeyboardInputs(action.MultipleKeys, isDown);
-                    else SendKeyboardInputs(new List<int> { action.ArgumentNum }, isDown);
-                    break;
-                    
-                // ★追加：正しいToggleHoldの実装
-                case ActionType.ToggleHold:
-                    if (!isDown) return; 
-                    string key = $"{action.ArgumentNum}_{string.Join(",", action.MultipleKeys ?? new List<int>())}";
-                    bool nextState = !_toggleStates.GetOrAdd(key, false);
-                    _toggleStates[key] = nextState;
-                    
-                    if (action.MultipleKeys != null && action.MultipleKeys.Count > 0) SendKeyboardInputs(action.MultipleKeys, nextState);
-                    else SendKeyboardInputs(new List<int> { action.ArgumentNum }, nextState);
-                    break;
+                if (action.ActionState == 1) { if (!isDown) return; isDown = true; }
+                else if (action.ActionState == 2) { if (!isDown) return; isDown = false; }
 
-                case ActionType.MouseClick: SendMouseClick(action.ArgumentNum, isDown); break;
-                case ActionType.MouseMoveRelative: if (isDown) SendMouseMove(action.MouseX, action.MouseY, false, false, action.JiggleCursor); break;
-                case ActionType.MouseMoveAbsoluteDesk: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, false, action.JiggleCursor); break;
-                case ActionType.MouseMoveAbsoluteWin: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, true, action.JiggleCursor); break;
-                case ActionType.MouseMoveAbsoluteHoverWin: if (isDown) SendMouseMoveHover(action.MouseX, action.MouseY, action.JiggleCursor); break;
-                case ActionType.MousePosSave: if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt); break;
-                case ActionType.MousePosRestore:
-                    if (isDown && _mousePositionStack.TryPop(out var popPt)) { SendMouseMove(popPt.X, popPt.Y, true, false, false); } break;
-                case ActionType.AppLaunch: 
-                case ActionType.FileOpen:
-                case ActionType.AhkRun:
-                    if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
-                case ActionType.FolderOpen:
-                    if (isDown && !string.IsNullOrEmpty(action.ArgumentStr)) { try { Process.Start("explorer.exe", action.ArgumentStr); } catch { } } break;
-                case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
-                case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
-                case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; 
-                
-                case ActionType.CursorVisibility: 
-                    if (isDown) { 
-                        int mode = action.CursorVisMode;
-                        if (mode == 2) mode = SystemMouseManager.IsCursorHidden ? 1 : 0;
-                        if (mode == 1) SystemMouseManager.ShowCursor(); else SystemMouseManager.HideCursor(); 
-                    } 
-                    break;
-                case ActionType.SystemMouseSettings: 
-                    if (isDown) { 
-                        SystemMouseManager.SetMouseSpeed(action.SystemMouseSpeed); 
-                        SystemMouseManager.SetScrollLines(action.SystemScrollLines, action.SystemScrollType == 1); 
-                        SystemMouseManager.SetHorizontalScrollChars(action.SystemHorizontalScroll);
-                    } 
-                    break;
+                switch (action.ActionType)
+                {
+                    case ActionType.Keyboard:
+                        if (action.MultipleKeys != null && action.MultipleKeys.Count > 0) SendKeyboardInputs(action.MultipleKeys, isDown);
+                        else SendKeyboardInputs(new List<int> { action.ArgumentNum }, isDown);
+                        break;
+                        
+                    case ActionType.ToggleHold:
+                        if (!isDown) return; 
+                        string key = $"{action.ArgumentNum}_{string.Join(",", action.MultipleKeys ?? new List<int>())}";
+                        bool nextState = !_toggleStates.GetOrAdd(key, false);
+                        _toggleStates[key] = nextState;
+                        
+                        if (action.MultipleKeys != null && action.MultipleKeys.Count > 0) SendKeyboardInputs(action.MultipleKeys, nextState);
+                        else SendKeyboardInputs(new List<int> { action.ArgumentNum }, nextState);
+                        break;
+
+                    case ActionType.MouseClick: SendMouseClick(action.ArgumentNum, isDown); break;
+                    case ActionType.MouseMoveRelative: if (isDown) SendMouseMove(action.MouseX, action.MouseY, false, false, action.JiggleCursor); break;
+                    case ActionType.MouseMoveAbsoluteDesk: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, false, action.JiggleCursor); break;
+                    case ActionType.MouseMoveAbsoluteWin: if (isDown) SendMouseMove(action.MouseX, action.MouseY, true, true, action.JiggleCursor); break;
+                    case ActionType.MouseMoveAbsoluteHoverWin: if (isDown) SendMouseMoveHover(action.MouseX, action.MouseY, action.JiggleCursor); break;
+                    case ActionType.MousePosSave: if (isDown && SendInputNative.GetCursorPos(out var pt)) _mousePositionStack.Push(pt); break;
+                    case ActionType.MousePosRestore:
+                        if (isDown && _mousePositionStack.TryPop(out var popPt)) { SendMouseMove(popPt.X, popPt.Y, true, false, false); } break;
+                    case ActionType.AppLaunch: 
+                    case ActionType.FileOpen:
+                    case ActionType.AhkRun:
+                        if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
+                    case ActionType.FolderOpen:
+                        if (isDown && !string.IsNullOrEmpty(action.ArgumentStr)) { try { Process.Start("explorer.exe", action.ArgumentStr); } catch(Exception ex) { InputLogger.LogError("FolderOpen Error", ex); } } break;
+                    case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
+                    case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
+                    case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; 
+                    
+                    case ActionType.CursorVisibility: 
+                        if (isDown) { 
+                            int mode = action.CursorVisMode;
+                            if (mode == 2) mode = SystemMouseManager.IsCursorHidden ? 1 : 0;
+                            if (mode == 1) SystemMouseManager.ShowCursor(); else SystemMouseManager.HideCursor(); 
+                        } 
+                        break;
+                    case ActionType.SystemMouseSettings: 
+                        if (isDown) { 
+                            SystemMouseManager.SetMouseSpeed(action.SystemMouseSpeed); 
+                            SystemMouseManager.SetScrollLines(action.SystemScrollLines, action.SystemScrollType == 1); 
+                            SystemMouseManager.SetHorizontalScrollChars(action.SystemHorizontalScroll);
+                        } 
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                InputLogger.LogError($"OutputDispatcher Dispatch Error (Action:{action.ActionType})", ex);
             }
         }
 
@@ -123,7 +134,8 @@ namespace UsbInputMapper.Core
         {
             if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return;
             Task.Run(() => {
-                try { using (var player = new System.Media.SoundPlayer(path)) { player.PlaySync(); } } catch { }
+                try { using (var player = new System.Media.SoundPlayer(path)) { player.PlaySync(); } } 
+                catch (Exception ex) { InputLogger.LogError("PlayWav Error", ex); }
             });
         }
 
@@ -304,7 +316,11 @@ namespace UsbInputMapper.Core
                 { 
                     bool useShell = path.ToLower().EndsWith(".ahk") || !path.ToLower().EndsWith(".exe");
                     return Process.Start(new ProcessStartInfo { FileName = path, Arguments = args ?? "", UseShellExecute = useShell }); 
-                } catch { }
+                } 
+                catch (Exception ex) 
+                {
+                    InputLogger.LogError($"AppLaunch Error ({path})", ex);
+                }
             }
             return null;
         }

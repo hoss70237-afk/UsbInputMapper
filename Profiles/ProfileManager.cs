@@ -1,8 +1,8 @@
-// FILE: Profiles/ProfileManager.cs
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UsbInputMapper.Core;
 
@@ -105,7 +105,7 @@ namespace UsbInputMapper.Profiles
                 }
                 catch (Exception ex)
                 {
-                    InputLogger.Log($"設定の保存に失敗しました: {ex.Message}");
+                    InputLogger.LogError("設定の保存に失敗しました", ex);
                 }
             }
         }
@@ -114,18 +114,13 @@ namespace UsbInputMapper.Profiles
         {
             string tempPath = filePath + ".tmp";
             string json = JsonConvert.SerializeObject(data, Formatting.Indented);
-            
             File.WriteAllText(tempPath, json);
-            
             if (File.Exists(filePath))
             {
                 string backupPath = filePath + ".bak";
                 File.Replace(tempPath, filePath, backupPath, true);
             }
-            else
-            {
-                File.Move(tempPath, filePath);
-            }
+            else File.Move(tempPath, filePath);
         }
 
         private void ManageBackups(string filePath)
@@ -135,23 +130,11 @@ namespace UsbInputMapper.Profiles
             string name = Path.GetFileNameWithoutExtension(filePath);
             string ext = Path.GetExtension(filePath);
             string backupPath = Path.Combine(dir, $"{name}_{DateTime.Now:yyyyMMdd_HHmmss}{ext}");
-            
             try
             {
                 File.Copy(filePath, backupPath, true);
-                
-                var backups = Directory.GetFiles(dir, $"{name}_*{ext}")
-                                       .Select(f => new FileInfo(f))
-                                       .OrderByDescending(f => f.CreationTime)
-                                       .ToList();
-                
-                if (backups.Count > 5)
-                {
-                    for (int i = 5; i < backups.Count; i++)
-                    {
-                        backups[i].Delete();
-                    }
-                }
+                var backups = Directory.GetFiles(dir, $"{name}_*{ext}").Select(f => new FileInfo(f)).OrderByDescending(f => f.CreationTime).ToList();
+                if (backups.Count > 5) for (int i = 5; i < backups.Count; i++) backups[i].Delete();
             }
             catch { }
         }
@@ -181,10 +164,7 @@ namespace UsbInputMapper.Profiles
         {
             TemporaryProfile = null;
             var target = Profiles.Find(p => p.Name == profileName);
-            if (target != null && CurrentProfile != target)
-            {
-                ChangeProfileInternal(target);
-            }
+            if (target != null && CurrentProfile != target) ChangeProfileInternal(target);
         }
 
         public void SetTemporaryProfile(string profileName, bool enable)
@@ -195,7 +175,7 @@ namespace UsbInputMapper.Profiles
                 if (target != null && TemporaryProfile != target)
                 {
                     TemporaryProfile = target;
-                    SystemMouseManager.RestoreAllSafely();
+                    ApplyProfileState(TemporaryProfile);
                     OnProfileChanged?.Invoke(this, EventArgs.Empty);
                 }
             }
@@ -204,7 +184,7 @@ namespace UsbInputMapper.Profiles
                 if (TemporaryProfile != null)
                 {
                     TemporaryProfile = null;
-                    SystemMouseManager.RestoreAllSafely();
+                    ApplyProfileState(CurrentProfile);
                     OnProfileChanged?.Invoke(this, EventArgs.Empty);
                 }
             }
@@ -213,13 +193,59 @@ namespace UsbInputMapper.Profiles
         private void ChangeProfileInternal(Profile newProfile)
         {
             CurrentProfile = newProfile;
-            SystemMouseManager.RestoreAllSafely();
+            ApplyProfileState(newProfile);
             OnProfileChanged?.Invoke(this, EventArgs.Empty);
+        }
+        
+        private void ApplyProfileState(Profile profile)
+        {
+            SystemMouseManager.RestoreAllSafely();
+            
+            // HidHide連携 (二重入力防止)
+            if (profile.EnableXInput)
+            {
+                HidHideManager.WhitelistCurrentProcess();
+                HidHideManager.EnableHiding(true);
+            }
+            else
+            {
+                HidHideManager.EnableHiding(false);
+            }
+
+            // 音声・サウンド通知
+            if (profile.NotifyProfileChangeBeep)
+            {
+                Task.Run(() => System.Media.SystemSounds.Beep.Play());
+            }
+            if (profile.NotifyProfileChangeTTS)
+            {
+                PlayTTS($"Profile {profile.Name}");
+            }
+        }
+
+        private void PlayTTS(string text)
+        {
+            Task.Run(() => {
+                try
+                {
+                    // 参照欠落時に落ちないようリフレクションを使用
+                    Type synthType = Type.GetType("System.Speech.Synthesis.SpeechSynthesizer, System.Speech, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35");
+                    if (synthType != null)
+                    {
+                        dynamic synth = Activator.CreateInstance(synthType);
+                        synth.Speak(text);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    InputLogger.LogError("TTS Playback Failed", ex);
+                }
+            });
         }
 
         public void NotifyProfileSwitchedManually() 
         { 
-            SystemMouseManager.RestoreAllSafely();
+            ApplyProfileState(CurrentActiveProfile);
             OnProfileChanged?.Invoke(this, EventArgs.Empty); 
         }
     }

@@ -29,6 +29,9 @@ namespace UsbInputMapper.UI
         private NumericUpDown numDeadZone;
         private ComboBox cmbCurve;
         private Button btnSetupStickMouse;
+        private Button btnSetupRadialMenu;
+        private NumericUpDown numLayerIndex;
+        private Label lblLayerIndex;
         private bool _isDraggingBg = false;
 
         public BindingEditorForm(UsbInputMapper.Profiles.Binding existingBinding = null, List<string> profileNames = null)
@@ -57,6 +60,18 @@ namespace UsbInputMapper.UI
             btnSetupStickMouse.Click += (s, e) => { using (var smf = new StickMouseSetupForm(ResultBinding.Action)) { smf.ShowDialog(this); } };
             this.Controls.Add(btnSetupStickMouse);
 
+            btnSetupRadialMenu = new Button { Location = new Point(90, 285), Size = new Size(240, 23), Text = "ラジアルメニュー構成...", Visible = false };
+            btnSetupRadialMenu.Click += (s, e) => {
+                using (var rmf = new RadialMenuSetupForm(ResultBinding, _profileNames)) {
+                    if (rmf.ShowDialog(this) == DialogResult.OK) ResultBinding = rmf.ResultBinding;
+                }
+            };
+            this.Controls.Add(btnSetupRadialMenu);
+
+            lblLayerIndex = new Label { Text = "対象レイヤー:", Location = new Point(90, 288), AutoSize = true, Visible = false };
+            numLayerIndex = new NumericUpDown { Location = new Point(180, 286), Size = new Size(60, 20), Minimum = 1, Maximum = 10, Value = 1, Visible = false };
+            this.Controls.Add(lblLayerIndex); this.Controls.Add(numLayerIndex);
+
             lblBgPicker.MouseDown += (s, e) => { _isDraggingBg = true; lblBgPicker.Capture = true; Cursor.Current = Cursors.Cross; };
             lblBgPicker.MouseMove += (s, e) => { if (_isDraggingBg) Cursor.Current = Cursors.Cross; };
             lblBgPicker.MouseUp += (s, e) => {
@@ -82,7 +97,7 @@ namespace UsbInputMapper.UI
                 UpdateMainTriggerLabel();
                 if (ResultBinding.SubTriggers != null) foreach (var st in ResultBinding.SubTriggers) lstSubTriggers.Items.Add(st);
                 
-                cmbClickCount.SelectedIndex = existingBinding.ClickTriggerCount - 1;
+                cmbClickCount.SelectedIndex = Math.Max(0, existingBinding.ClickTriggerCount - 1);
                 chkExecuteSingle.Checked = existingBinding.ExecuteSingleSimultaneously;
                 chkExecuteDouble.Checked = existingBinding.ExecuteDoubleSimultaneously;
 
@@ -111,6 +126,7 @@ namespace UsbInputMapper.UI
                 cmbActionState.SelectedIndex = existingBinding.Action.ActionState;
                 chkJiggle.Checked = existingBinding.Action.JiggleCursor;
                 cmbCursorVis.SelectedIndex = existingBinding.Action.CursorVisMode;
+                numLayerIndex.Value = Math.Max(1, existingBinding.Action.LayerIndex);
                 
                 if (existingBinding.Action.ActionType == ActionType.SystemMouseSettings)
                 {
@@ -169,6 +185,8 @@ namespace UsbInputMapper.UI
             cmbActionType.Items.Add(new ComboItem { Text = "Xboxアナログスティック", Value = (int)ActionType.XboxAxis });
             cmbActionType.Items.Add(new ComboItem { Text = "Xboxアナログトリガー", Value = (int)ActionType.XboxTrigger });
             cmbActionType.Items.Add(new ComboItem { Text = "スティックでマウス移動", Value = (int)ActionType.StickToMouse });
+            cmbActionType.Items.Add(new ComboItem { Text = "ラジアルメニュー表示", Value = (int)ActionType.RadialMenu });
+            cmbActionType.Items.Add(new ComboItem { Text = "レイヤーシフト (切り替え)", Value = (int)ActionType.LayerShift });
             cmbActionType.Items.Add(new ComboItem { Text = "アプリケーション起動", Value = (int)ActionType.AppLaunch });
             cmbActionType.Items.Add(new ComboItem { Text = "ファイルを開く", Value = (int)ActionType.FileOpen });
             cmbActionType.Items.Add(new ComboItem { Text = "フォルダを開く", Value = (int)ActionType.FolderOpen }); 
@@ -276,7 +294,6 @@ namespace UsbInputMapper.UI
                 {
                     cmbActionState.SelectedIndex = 0; 
                     cmbActionState.Enabled = false;
-                    
                     if (!allowed) SetActionTypeCombo(ActionType.None);
                 }
                 else
@@ -303,6 +320,7 @@ namespace UsbInputMapper.UI
             }
             
             cmbKeyButton.Visible = txtAppPath.Visible = btnBrowseApp.Visible = txtAppArgs.Visible = lblAppArgs.Visible = pnlMouseMove.Visible = pnlBackground.Visible = btnEditMacro.Visible = cmbProfileSwitchTarget.Visible = cmbProfileSwitchMode.Visible = btnSetupStickMouse.Visible = false;
+            btnSetupRadialMenu.Visible = lblLayerIndex.Visible = numLayerIndex.Visible = false;
             cmbCursorVis.Visible = pnlSysMouse.Visible = cmbActionState.Visible = chkJiggle.Visible = false;
             cmbKeyButton.Items.Clear();
             cmbKeyButton.SelectedIndexChanged -= cmbKeyButton_SelectedIndexChanged;
@@ -339,6 +357,8 @@ namespace UsbInputMapper.UI
                 case ActionType.Macro: btnEditMacro.Visible = true; break;
                 case ActionType.ProfileSwitch: cmbProfileSwitchTarget.Visible = true; cmbProfileSwitchMode.Visible = true; break;
                 case ActionType.StickToMouse: btnSetupStickMouse.Visible = true; break;
+                case ActionType.RadialMenu: btnSetupRadialMenu.Visible = true; break;
+                case ActionType.LayerShift: lblLayerIndex.Visible = true; numLayerIndex.Visible = true; break;
                 
                 case ActionType.CursorVisibility: cmbCursorVis.Visible = true; break;
                 case ActionType.SystemMouseSettings: pnlSysMouse.Visible = true; break;
@@ -389,6 +409,7 @@ namespace UsbInputMapper.UI
             }
 
             if (ResultBinding.Action.ActionType == ActionType.ProfileSwitch) { ResultBinding.Action.ArgumentStr = cmbProfileSwitchTarget.SelectedItem?.ToString(); ResultBinding.Action.ArgumentNum = cmbProfileSwitchMode.SelectedIndex; }
+            else if (ResultBinding.Action.ActionType == ActionType.LayerShift) { ResultBinding.Action.LayerIndex = (int)numLayerIndex.Value; }
             else if (ResultBinding.Action.ActionType == ActionType.BackgroundControl) {
                 ResultBinding.Action.BgClassName = txtBgClassName.Text; ResultBinding.Action.BgWindowName = txtBgWindowName.Text;
                 ResultBinding.Action.BgControlId = (int)numBgControlId.Value; ResultBinding.Action.BgActionMode = cmbBgAction.SelectedIndex;

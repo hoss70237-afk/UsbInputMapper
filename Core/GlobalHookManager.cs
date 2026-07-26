@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace UsbInputMapper.Core
 {
@@ -103,7 +104,6 @@ namespace UsbInputMapper.Core
             _keyboardProc = KeyboardHookCallback;
             _mouseProc = MouseHookCallback;
 
-            // 修正: 確実なモジュールハンドルの取得
             IntPtr hMod = Marshal.GetHINSTANCE(typeof(GlobalHookManager).Module);
             _keyboardHookID = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, hMod, 0);
             _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, hMod, 0);
@@ -146,6 +146,58 @@ namespace UsbInputMapper.Core
             _coordinateCaptureCallback = null; 
         }
 
+        // ★ ベゼルタッチ（16領域）の判定アルゴリズム (25pxマージン)
+        private int CalculateBezelCode(int x, int y)
+        {
+            int sW = Screen.PrimaryScreen.Bounds.Width;
+            int sH = Screen.PrimaryScreen.Bounds.Height;
+            int m = 25; // ベゼル幅
+
+            bool isLeft = x < m;
+            bool isRight = x > sW - m;
+            bool isTop = y < m;
+            bool isBottom = y > sH - m;
+
+            if (!isLeft && !isRight && !isTop && !isBottom) return -1; // ベゼル外
+
+            // 四隅
+            if (isLeft && isTop) return 0;       // 左上隅
+            if (isRight && isTop) return 4;      // 右上隅
+            if (isRight && isBottom) return 8;   // 右下隅
+            if (isLeft && isBottom) return 12;   // 左下隅
+
+            // 上辺 (1:左, 2:中, 3:右)
+            if (isTop)
+            {
+                if (x < sW / 3) return 1;
+                if (x < (sW * 2) / 3) return 2;
+                return 3;
+            }
+            // 右辺 (5:上, 6:中, 7:下)
+            if (isRight)
+            {
+                if (y < sH / 3) return 5;
+                if (y < (sH * 2) / 3) return 6;
+                return 7;
+            }
+            // 下辺 (9:右, 10:中, 11:左)
+            if (isBottom)
+            {
+                if (x > (sW * 2) / 3) return 9;
+                if (x > sW / 3) return 10;
+                return 11;
+            }
+            // 左辺 (13:下, 14:中, 15:上)
+            if (isLeft)
+            {
+                if (y > (sH * 2) / 3) return 13;
+                if (y > sH / 3) return 14;
+                return 15;
+            }
+
+            return -1;
+        }
+
         private IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode >= 0)
@@ -162,7 +214,6 @@ namespace UsbInputMapper.Core
                     if (IsRecording && !isInjected)
                     {
                         var evt = new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now };
-                        // 修正: フック解除を防ぐため非同期でイベント発火
                         Task.Run(() => { try { OnRecordedInput?.Invoke(this, evt); } catch(Exception ex) { InputLogger.LogError("OnRecordedInput Error", ex); } });
                     }
                     
@@ -173,10 +224,7 @@ namespace UsbInputMapper.Core
                         { 
                             _recentBlocked[key] = now;
                             var evt = new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now };
-                            
-                            // 修正: 非同期で発火
                             Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, evt); } catch (Exception ex) { InputLogger.LogError("OnBlockedInputFired (KB) Error", ex); } });
-                            
                             return (IntPtr)1; 
                         }
                     }
@@ -225,6 +273,22 @@ namespace UsbInputMapper.Core
 
                     if (!isInjected)
                     {
+                        // ★ ベゼルタッチ判定の実行
+                        if (code == 1 || code == 2) // 左/右クリック時
+                        {
+                            int bezelCode = CalculateBezelCode(ms.pt.x, ms.pt.y);
+                            if (bezelCode != -1)
+                            {
+                                long bezelKey = GetHookKey(5, bezelCode); // Type 5 = Bezel
+                                if (_blockList.ContainsKey(bezelKey))
+                                {
+                                    var bezelEvt = new HookInputEvent { Type = 5, Code = bezelCode, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now };
+                                    Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, bezelEvt); } catch { } });
+                                    return (IntPtr)1;
+                                }
+                            }
+                        }
+
                         if (code != -1 && isDown && EnableChatteringCanceler && code <= 3) 
                         {
                             if (_lastMouseClickTime.TryGetValue(code, out long lastTime))
@@ -267,9 +331,7 @@ namespace UsbInputMapper.Core
                             { 
                                 _recentBlocked[key] = now; 
                                 var evt = new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now };
-                                
                                 Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, evt); } catch (Exception ex) { InputLogger.LogError("OnBlockedInputFired (Mouse) Error", ex); } });
-                                
                                 return (IntPtr)1; 
                             }
                         }

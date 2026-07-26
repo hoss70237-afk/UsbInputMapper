@@ -14,7 +14,11 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Label lblStatus;
         private System.Windows.Forms.Label lblTargetPicker;
         private System.Windows.Forms.Label lblTargetDesc;
+        
+        private System.Windows.Forms.GroupBox grpNotification;
         private System.Windows.Forms.CheckBox chkNotifyVibration;
+        private System.Windows.Forms.CheckBox chkNotifyBeep;
+        private System.Windows.Forms.CheckBox chkNotifyTTS;
         
         // 個別チャタリング設定用
         private System.Windows.Forms.GroupBox grpChatter;
@@ -38,7 +42,11 @@ namespace UsbInputMapper.UI
             this.lblStatus = new System.Windows.Forms.Label();
             this.lblTargetPicker = new System.Windows.Forms.Label();
             this.lblTargetDesc = new System.Windows.Forms.Label();
+            
+            this.grpNotification = new System.Windows.Forms.GroupBox();
             this.chkNotifyVibration = new System.Windows.Forms.CheckBox();
+            this.chkNotifyBeep = new System.Windows.Forms.CheckBox();
+            this.chkNotifyTTS = new System.Windows.Forms.CheckBox();
             
             this.grpChatter = new System.Windows.Forms.GroupBox();
             this.chkOverrideGlobalChattering = new System.Windows.Forms.CheckBox();
@@ -46,6 +54,7 @@ namespace UsbInputMapper.UI
             this.numChatteringThresholdMs = new System.Windows.Forms.NumericUpDown();
             this.lblChatterMs = new System.Windows.Forms.Label();
             
+            this.grpNotification.SuspendLayout();
             this.grpChatter.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.numChatteringThresholdMs)).BeginInit();
             this.SuspendLayout();
@@ -60,10 +69,29 @@ namespace UsbInputMapper.UI
             this.lblTargetPicker.AutoSize = true; this.lblTargetPicker.Font = new System.Drawing.Font("MS UI Gothic", 24F); this.lblTargetPicker.ForeColor = System.Drawing.Color.DodgerBlue; this.lblTargetPicker.Location = new System.Drawing.Point(293, 122); this.lblTargetPicker.Text = "◎"; this.lblTargetPicker.Cursor = System.Windows.Forms.Cursors.Hand;
             this.lblTargetDesc.AutoSize = true; this.lblTargetDesc.Font = new System.Drawing.Font("MS UI Gothic", 8.25F); this.lblTargetDesc.ForeColor = System.Drawing.SystemColors.ControlDarkDark; this.lblTargetDesc.Location = new System.Drawing.Point(12, 154); this.lblTargetDesc.Text = "※◎アイコンを起動中のゲーム画面にドラッグすると自動登録";
             
-            this.chkNotifyVibration.AutoSize = true; this.chkNotifyVibration.Location = new System.Drawing.Point(14, 175); this.chkNotifyVibration.Text = "このプロファイルに切り替わった時、コントローラーを振動させる";
+            // 通知設定グループ
+            this.grpNotification.Location = new System.Drawing.Point(14, 175);
+            this.grpNotification.Size = new System.Drawing.Size(338, 65);
+            this.grpNotification.Text = "切替時の通知アクション";
+            
+            this.chkNotifyVibration.AutoSize = true;
+            this.chkNotifyVibration.Location = new System.Drawing.Point(15, 20);
+            this.chkNotifyVibration.Text = "コントローラーを振動させる";
+            
+            this.chkNotifyBeep.AutoSize = true;
+            this.chkNotifyBeep.Location = new System.Drawing.Point(15, 40);
+            this.chkNotifyBeep.Text = "システム音 (Beep) を鳴らす";
+            
+            this.chkNotifyTTS.AutoSize = true;
+            this.chkNotifyTTS.Location = new System.Drawing.Point(170, 40);
+            this.chkNotifyTTS.Text = "プロファイル名を音声で読み上げ (TTS)";
+            
+            this.grpNotification.Controls.Add(this.chkNotifyVibration);
+            this.grpNotification.Controls.Add(this.chkNotifyBeep);
+            this.grpNotification.Controls.Add(this.chkNotifyTTS);
 
             // チャタリング設定グループ
-            this.grpChatter.Location = new System.Drawing.Point(14, 200);
+            this.grpChatter.Location = new System.Drawing.Point(14, 250);
             this.grpChatter.Size = new System.Drawing.Size(338, 70);
             this.grpChatter.Text = "チャタリング設定";
             
@@ -89,16 +117,18 @@ namespace UsbInputMapper.UI
             this.grpChatter.Controls.Add(this.lblChatterMs);
             this.grpChatter.Controls.Add(this.numChatteringThresholdMs);
 
-            this.btnOK.Location = new System.Drawing.Point(196, 280); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "OK"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
-            this.btnCancel.Location = new System.Drawing.Point(277, 280); this.btnCancel.Size = new System.Drawing.Size(75, 23); this.btnCancel.Text = "キャンセル"; this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
-            this.lblStatus.AutoSize = true; this.lblStatus.Location = new System.Drawing.Point(12, 285);
+            this.btnOK.Location = new System.Drawing.Point(196, 330); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "OK"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
+            this.btnCancel.Location = new System.Drawing.Point(277, 330); this.btnCancel.Size = new System.Drawing.Size(75, 23); this.btnCancel.Text = "キャンセル"; this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
+            this.lblStatus.AutoSize = true; this.lblStatus.Location = new System.Drawing.Point(12, 335);
             
-            this.ClientSize = new System.Drawing.Size(364, 311);
+            this.ClientSize = new System.Drawing.Size(364, 361);
+            this.Controls.Add(this.grpNotification);
             this.Controls.Add(this.grpChatter);
-            this.Controls.Add(this.chkNotifyVibration);
             this.Controls.Add(this.lblTargetDesc); this.Controls.Add(this.lblTargetPicker); this.Controls.Add(this.lblStatus); this.Controls.Add(this.btnCancel); this.Controls.Add(this.btnOK); this.Controls.Add(this.btnRemoveApp); this.Controls.Add(this.btnAddApp); this.Controls.Add(this.lstApps); this.Controls.Add(this.label2); this.Controls.Add(this.txtName); this.Controls.Add(this.label1);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog; this.MaximizeBox = false; this.MinimizeBox = false; this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent; this.Text = "プロファイル編集";
             
+            this.grpNotification.ResumeLayout(false);
+            this.grpNotification.PerformLayout();
             this.grpChatter.ResumeLayout(false);
             this.grpChatter.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.numChatteringThresholdMs)).EndInit();

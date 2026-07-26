@@ -5,7 +5,15 @@ using System.Windows.Forms;
 namespace UsbInputMapper.Profiles
 {
     public enum TriggerCondition { Normal, Hold, RapidFire, Release, Sync }
-    public class TriggerKey { public string DeviceIdentifier { get; set; } public int Type { get; set; } public int Code { get; set; } public override string ToString() => Binding.GetCodeName(Type, Code); }
+
+    public class TriggerKey 
+    { 
+        public string DeviceIdentifier { get; set; } 
+        public int Type { get; set; } 
+        public int Code { get; set; } 
+
+        public override string ToString() => Binding.GetCodeName(Type, Code); 
+    }
 
     public class Binding
     {
@@ -23,7 +31,7 @@ namespace UsbInputMapper.Profiles
         public TriggerCondition Condition { get; set; }
         public int ConditionParam { get; set; }
         
-        public int RequiredLayer { get; set; } = 0; // ★追加: 0なら全レイヤー共通、1以上ならそのレイヤー時のみ発動
+        public int RequiredLayer { get; set; } = 0; // 0:全レイヤー共通, 1以上:指定レイヤー時のみ
 
         public ActionDef Action { get; set; }
         public bool BlockOriginalInput { get; set; }
@@ -47,18 +55,37 @@ namespace UsbInputMapper.Profiles
         {
             string mainTrigger = GetCodeName(InputType, InputCode);
             string sub = "";
-            if (SubTriggers != null && SubTriggers.Count > 0) foreach (var t in SubTriggers) sub += t.ToString() + " + ";
+            if (SubTriggers != null && SubTriggers.Count > 0)
+            {
+                foreach (var t in SubTriggers) sub += t.ToString() + " + ";
+            }
             
             string clickStr = ClickTriggerCount == 2 ? "[Double] " : (ClickTriggerCount == 3 ? "[Triple] " : "");
-            string layerStr = RequiredLayer > 0 ? $"[L{RequiredLayer}] " : "";
+            string layerStr = RequiredLayer > 0 ? $"[Layer {RequiredLayer}] " : "";
             
             return $"{layerStr}{sub}{clickStr}{mainTrigger}";
         }
 
         public static string GetCodeName(int type, int code)
         {
-            if (type == 1) return "キーボード: " + ((Keys)code).ToString();
-            else if (type == 0) return $"マウスボタン: {code}";
+            if (type == 1) 
+                return "キー: " + ((Keys)code).ToString();
+            else if (type == 0)
+            {
+                switch (code)
+                {
+                    case 1: return "マウス: 左ボタン";
+                    case 2: return "マウス: 右ボタン";
+                    case 3: return "マウス: 中ボタン";
+                    case 4: return "マウス: ホイール上";
+                    case 5: return "マウス: ホイール下";
+                    case 6: return "マウス: サイド1(戻る)";
+                    case 7: return "マウス: サイド2(進む)";
+                    case 8: return "マウス: ホイール右";
+                    case 9: return "マウス: ホイール左";
+                    default: return $"マウスボタン: {code}";
+                }
+            }
             else if (type == 2) return $"HIDボタン: {code}"; 
             else if (type == 10) return $"パッドボタン: {code}";
             else if (type == 11) return $"パッド軸: {code}";
@@ -72,8 +99,13 @@ namespace UsbInputMapper.Profiles
             }
             else if (type == 5)
             {
-                string[] bNames = { "左上隅", "上辺(左)", "上辺(中)", "上辺(右)", "右上隅", "右辺(上)", "右辺(中)", "右辺(下)", "右下隅", "下辺(右)", "下辺(中)", "下辺(左)", "左下隅", "左辺(下)", "左辺(中)", "左辺(上)" };
-                if (code >= 0 && code < bNames.Length) return "ベゼルタッチ: " + bNames[code];
+                string[] bNames = { 
+                    "左上隅", "上辺(左)", "上辺(中)", "上辺(右)", 
+                    "右上隅", "右辺(上)", "右辺(中)", "右辺(下)", 
+                    "右下隅", "下辺(右)", "下辺(中)", "下辺(左)", 
+                    "左下隅", "左辺(下)", "左辺(中)", "左辺(上)" 
+                };
+                if (code >= 0 && code < bNames.Length) return "ベゼル: " + bNames[code];
                 return "ベゼルタッチ: 不明";
             }
             return "不明";

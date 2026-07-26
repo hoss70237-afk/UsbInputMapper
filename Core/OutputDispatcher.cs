@@ -18,7 +18,6 @@ namespace UsbInputMapper.Core
 
     public class OutputDispatcher
     {
-        // 他クラスからアクセス可能なInstanceプロパティ
         public static OutputDispatcher Instance { get; private set; }
 
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
@@ -71,13 +70,14 @@ namespace UsbInputMapper.Core
                 
                 _toggleStates.Clear();
                 LayerManager.CurrentLayer = 0;
-                _viGEmOutput.Reset();
+                _viGEmOutput?.Reset();
             }
             catch (Exception ex) { InputLogger.LogError("Failed to release inputs", ex); }
         }
 
         public void Dispatch(ActionDef action, bool isDown)
         {
+            if (action == null) return;
             try
             {
                 if (action.ActionState == 1) { if (!isDown) return; isDown = true; }

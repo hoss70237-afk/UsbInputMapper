@@ -44,14 +44,14 @@ namespace UsbInputMapper.Profiles
 
         public event EventHandler<string> OnForegroundAppChanged;
         
-        private WinEventDelegate _winEventProc;
+        private readonly WinEventDelegate _winEventProc;
         private IntPtr _hWinEventHook = IntPtr.Zero;
         private string _lastAppPath = string.Empty;
         private readonly object _lockObj = new object();
 
         public ForegroundAppWatcher()
         {
-            // デリゲートがGCに回収されないように保持
+            // GCによるデリゲート回収を防ぐため参照を保持
             _winEventProc = new WinEventDelegate(WinEventCallback);
         }
 
@@ -62,7 +62,7 @@ namespace UsbInputMapper.Profiles
                 if (_hWinEventHook == IntPtr.Zero)
                 {
                     _hWinEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
-                    Task.Run(() => CheckCurrentForeground()); // 初回チェックは非同期で行いUIブロックを回避
+                    Task.Run(() => CheckCurrentForeground());
                 }
             }
         }
@@ -81,7 +81,6 @@ namespace UsbInputMapper.Profiles
 
         private void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            // コールバック内は極力軽くし、別タスクで重い処理（プロセス情報取得等）を行う
             Task.Run(() => CheckCurrentForeground());
         }
 
@@ -93,6 +92,7 @@ namespace UsbInputMapper.Profiles
             StringBuilder className = new StringBuilder(256);
             GetClassName(hwnd, className, className.Capacity);
 
+            // UWPアプリ等のラッパーウィンドウ対策
             if (className.ToString() == "ApplicationFrameWindow")
             {
                 IntPtr realHwnd = IntPtr.Zero;
@@ -115,7 +115,7 @@ namespace UsbInputMapper.Profiles
             if (pid == 0) return;
 
             string currentAppPath = GetExecutablePathProcessId(pid);
-            if (!string.IsNullOrEmpty(currentAppPath) && currentAppPath != _lastAppPath)
+            if (!string.IsNullOrEmpty(currentAppPath) && !string.Equals(currentAppPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
             {
                 _lastAppPath = currentAppPath;
                 OnForegroundAppChanged?.Invoke(this, currentAppPath);

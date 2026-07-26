@@ -1,3 +1,4 @@
+// FILE: Profiles/Profile.cs
 using System;
 using System.Collections.Generic;
 
@@ -12,11 +13,10 @@ namespace UsbInputMapper.Profiles
         public bool EnableXInput { get; set; } = false;
         public bool NotifyProfileChangeVibration { get; set; } = false;
         
-        // ★追加: チャタリングキャンセラー設定
+        public bool OverrideGlobalChattering { get; set; } = false;
         public bool EnableChatteringCanceler { get; set; } = false;
         public int ChatteringThresholdMs { get; set; } = 20;
         
-        // ★追加: オーバーレイ設定
         public bool OverlayShowMark { get; set; } = true;
         public bool OverlayShowName { get; set; } = true;
         public int OverlayPosX { get; set; } = -1; // -1はデフォルト(右上)

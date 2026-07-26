@@ -485,51 +485,76 @@ namespace UsbInputMapper.UI
             }
             else if (action.ActionType == ActionType.RadialMenu)
             {
-                if (isDown)
+                if (action.RadialMenuMode == 1) // クリックで実行 (トグル開閉)
                 {
-                    _currentRadialMenuDef = action;
-                    _syncContext.Post(_ => {
-                        try {
-                            if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed) _radialMenuHudForm.Close();
-                            _radialMenuHudForm = new RadialMenuHudForm(action);
-                            _radialMenuHudForm.Show();
-                        } catch { }
-                    }, null);
-
-                    if (action.RadialMenuMode == 1) // クリックで実行
+                    if (isDown)
                     {
-                        GlobalHookManager.Instance.IsRadialMenuClickCapturing = true;
-                        GlobalHookManager.Instance.OnRadialMenuClickCaptured = () => {
+                        if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed)
+                        {
+                            // すでに開いている場合はトグルで閉じる
+                            GlobalHookManager.Instance.IsRadialMenuClickCapturing = false;
+                            GlobalHookManager.Instance.OnRadialMenuClickCaptured = null;
+                            _syncContext.Post(_ => {
+                                try { _radialMenuHudForm.Close(); _radialMenuHudForm = null; } catch { }
+                            }, null);
+                            _currentRadialMenuDef = null;
+                        }
+                        else
+                        {
+                            // 開く
+                            _currentRadialMenuDef = action;
                             _syncContext.Post(_ => {
                                 try {
-                                    if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed)
-                                    {
-                                        int dir = _radialMenuHudForm.SelectedDirectionIndex;
-                                        _radialMenuHudForm.Close();
-                                        _radialMenuHudForm = null;
-
-                                        if (dir >= 0 && _currentRadialMenuDef != null && dir < _currentRadialMenuDef.RadialMenuDirections.Count)
-                                        {
-                                            var dAction = _currentRadialMenuDef.RadialMenuDirections[dir].Action;
-                                            if (dAction != null && dAction.ActionType != ActionType.None)
-                                            {
-                                                Task.Run(async () => {
-                                                    _dispatcher.Dispatch(dAction, true);
-                                                    await Task.Delay(50);
-                                                    _dispatcher.Dispatch(dAction, false);
-                                                });
-                                            }
-                                        }
-                                        _currentRadialMenuDef = null;
-                                    }
+                                    _radialMenuHudForm = new RadialMenuHudForm(action);
+                                    _radialMenuHudForm.Show();
                                 } catch { }
                             }, null);
-                        };
+
+                            GlobalHookManager.Instance.IsRadialMenuClickCapturing = true;
+                            GlobalHookManager.Instance.OnRadialMenuClickCaptured = () => {
+                                _syncContext.Post(_ => {
+                                    try {
+                                        if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed)
+                                        {
+                                            int dir = _radialMenuHudForm.SelectedDirectionIndex;
+                                            _radialMenuHudForm.Close();
+                                            _radialMenuHudForm = null;
+
+                                            if (dir >= 0 && _currentRadialMenuDef != null && dir < _currentRadialMenuDef.RadialMenuDirections.Count)
+                                            {
+                                                var dAction = _currentRadialMenuDef.RadialMenuDirections[dir].Action;
+                                                if (dAction != null && dAction.ActionType != ActionType.None)
+                                                {
+                                                    Task.Run(async () => {
+                                                        _dispatcher.Dispatch(dAction, true);
+                                                        await Task.Delay(50);
+                                                        _dispatcher.Dispatch(dAction, false);
+                                                    });
+                                                }
+                                            }
+                                            _currentRadialMenuDef = null;
+                                        }
+                                    } catch { }
+                                }, null);
+                            };
+                        }
                     }
+                    // 離した時(isDown == false)は何もしない(開いたままにするため)
                 }
-                else
+                else // 0: ホールド(離した時に実行)
                 {
-                    if (action.RadialMenuMode == 0) // ホールド(離した時実行)
+                    if (isDown)
+                    {
+                        _currentRadialMenuDef = action;
+                        _syncContext.Post(_ => {
+                            try {
+                                if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed) _radialMenuHudForm.Close();
+                                _radialMenuHudForm = new RadialMenuHudForm(action);
+                                _radialMenuHudForm.Show();
+                            } catch { }
+                        }, null);
+                    }
+                    else
                     {
                         _syncContext.Post(_ => {
                             try {
@@ -552,21 +577,6 @@ namespace UsbInputMapper.UI
                                         }
                                     }
                                     _currentRadialMenuDef = null;
-                                }
-                            } catch { }
-                        }, null);
-                    }
-                    else // クリック実行モードでボタンを離した場合はキャンセルとして消す
-                    {
-                        GlobalHookManager.Instance.IsRadialMenuClickCapturing = false;
-                        GlobalHookManager.Instance.OnRadialMenuClickCaptured = null;
-                        
-                        _syncContext.Post(_ => {
-                            try {
-                                if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed)
-                                {
-                                    _radialMenuHudForm.Close();
-                                    _radialMenuHudForm = null;
                                 }
                             } catch { }
                         }, null);

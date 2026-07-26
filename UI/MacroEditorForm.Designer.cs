@@ -5,11 +5,11 @@ namespace UsbInputMapper.UI
         private System.ComponentModel.IContainer components = null;
         private System.Windows.Forms.ListBox lstSteps;
         private System.Windows.Forms.Panel pnlTimeline;
-        private System.Windows.Forms.HScrollBar hScrollBarTimeline; // ★追加
+        private System.Windows.Forms.HScrollBar hScrollBarTimeline;
         private System.Windows.Forms.Button btnToggleTimeline; 
-        private System.Windows.Forms.Button btnZoomIn;  // ★追加
-        private System.Windows.Forms.Button btnZoomOut; // ★追加
-        private System.Windows.Forms.Label lblScale;    // ★追加
+        private System.Windows.Forms.Button btnZoomIn;  
+        private System.Windows.Forms.Button btnZoomOut; 
+        private System.Windows.Forms.Label lblScale;    
         
         private System.Windows.Forms.Button btnAdd;
         private System.Windows.Forms.Button btnEditStep;
@@ -40,7 +40,11 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.CheckBox chkRecord;
         private System.Windows.Forms.ComboBox cmbRecordMode;
 
-        protected override void Dispose(bool disposing) { if (disposing && (components != null)) components.Dispose(); base.Dispose(disposing); }
+        protected override void Dispose(bool disposing) 
+        { 
+            if (disposing && (components != null)) components.Dispose(); 
+            base.Dispose(disposing); 
+        }
 
         private void InitializeComponent()
         {
@@ -52,21 +56,40 @@ namespace UsbInputMapper.UI
             this.btnZoomOut = new System.Windows.Forms.Button();
             this.lblScale = new System.Windows.Forms.Label();
             
-            this.btnAdd = new System.Windows.Forms.Button(); this.btnEditStep = new System.Windows.Forms.Button(); this.btnRemove = new System.Windows.Forms.Button(); this.btnUpStep = new System.Windows.Forms.Button(); this.btnDownStep = new System.Windows.Forms.Button();
+            this.btnAdd = new System.Windows.Forms.Button(); 
+            this.btnEditStep = new System.Windows.Forms.Button(); 
+            this.btnRemove = new System.Windows.Forms.Button(); 
+            this.btnUpStep = new System.Windows.Forms.Button(); 
+            this.btnDownStep = new System.Windows.Forms.Button();
             
             this.pnlStepDetails = new System.Windows.Forms.Panel();
-            this.chkUseDelay = new System.Windows.Forms.CheckBox(); this.numDelay = new System.Windows.Forms.NumericUpDown();
-            this.chkUseFluctuation = new System.Windows.Forms.CheckBox(); this.numFluctuation = new System.Windows.Forms.NumericUpDown();
-            this.lblPressState = new System.Windows.Forms.Label(); this.cmbPressState = new System.Windows.Forms.ComboBox();
-            this.lblWavStart = new System.Windows.Forms.Label(); this.txtWavStart = new System.Windows.Forms.TextBox(); this.btnBrowseWavStart = new System.Windows.Forms.Button();
-            this.lblWavEnd = new System.Windows.Forms.Label(); this.txtWavEnd = new System.Windows.Forms.TextBox(); this.btnBrowseWavEnd = new System.Windows.Forms.Button();
+            this.chkUseDelay = new System.Windows.Forms.CheckBox(); 
+            this.numDelay = new System.Windows.Forms.NumericUpDown();
+            this.chkUseFluctuation = new System.Windows.Forms.CheckBox(); 
+            this.numFluctuation = new System.Windows.Forms.NumericUpDown();
+            this.lblPressState = new System.Windows.Forms.Label(); 
+            this.cmbPressState = new System.Windows.Forms.ComboBox();
+            this.lblWavStart = new System.Windows.Forms.Label(); 
+            this.txtWavStart = new System.Windows.Forms.TextBox(); 
+            this.btnBrowseWavStart = new System.Windows.Forms.Button();
+            this.lblWavEnd = new System.Windows.Forms.Label(); 
+            this.txtWavEnd = new System.Windows.Forms.TextBox(); 
+            this.btnBrowseWavEnd = new System.Windows.Forms.Button();
             this.chkWaitForExit = new System.Windows.Forms.CheckBox();
 
-            this.label2 = new System.Windows.Forms.Label(); this.cmbPlaybackMode = new System.Windows.Forms.ComboBox(); this.lblTimeout = new System.Windows.Forms.Label(); this.numTimeout = new System.Windows.Forms.NumericUpDown(); this.btnOK = new System.Windows.Forms.Button();
-            this.chkRecord = new System.Windows.Forms.CheckBox(); this.cmbRecordMode = new System.Windows.Forms.ComboBox();
+            this.label2 = new System.Windows.Forms.Label(); 
+            this.cmbPlaybackMode = new System.Windows.Forms.ComboBox(); 
+            this.lblTimeout = new System.Windows.Forms.Label(); 
+            this.numTimeout = new System.Windows.Forms.NumericUpDown(); 
+            this.btnOK = new System.Windows.Forms.Button();
+            this.chkRecord = new System.Windows.Forms.CheckBox(); 
+            this.cmbRecordMode = new System.Windows.Forms.ComboBox();
             
             this.pnlStepDetails.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.numDelay)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numFluctuation)).BeginInit(); ((System.ComponentModel.ISupportInitialize)(this.numTimeout)).BeginInit(); this.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numDelay)).BeginInit(); 
+            ((System.ComponentModel.ISupportInitialize)(this.numFluctuation)).BeginInit(); 
+            ((System.ComponentModel.ISupportInitialize)(this.numTimeout)).BeginInit(); 
+            this.SuspendLayout();
             
             this.lstSteps.FormattingEnabled = true; this.lstSteps.ItemHeight = 12; this.lstSteps.Location = new System.Drawing.Point(12, 40); this.lstSteps.Size = new System.Drawing.Size(260, 244);
             
@@ -104,8 +127,10 @@ namespace UsbInputMapper.UI
             this.pnlStepDetails.Controls.Add(this.chkUseDelay); this.pnlStepDetails.Controls.Add(this.numDelay);
             this.pnlStepDetails.Controls.Add(this.chkUseFluctuation); this.pnlStepDetails.Controls.Add(this.numFluctuation);
             this.pnlStepDetails.Controls.Add(this.lblPressState); this.pnlStepDetails.Controls.Add(this.cmbPressState);
-            this.pnlStepDetails.Controls.Add(this.lblWavStart); this.pnlStepDetails.Controls.Add(this.txtWavStart); this.pnlStepDetails.Controls.Add(this.btnBrowseWavStart);
-            this.pnlStepDetails.Controls.Add(this.lblWavEnd); this.pnlStepDetails.Controls.Add(this.txtWavEnd); this.pnlStepDetails.Controls.Add(this.btnBrowseWavEnd);
+            this.pnlStepDetails.Controls.Add(this.lblWavStart); this.pnlStepDetails.Controls.Add(this.txtWavStart);
+            this.pnlStepDetails.Controls.Add(this.btnBrowseWavStart);
+            this.pnlStepDetails.Controls.Add(this.lblWavEnd); this.pnlStepDetails.Controls.Add(this.txtWavEnd);
+            this.pnlStepDetails.Controls.Add(this.btnBrowseWavEnd);
             this.pnlStepDetails.Controls.Add(this.chkWaitForExit);
             
             this.btnAdd.Location = new System.Drawing.Point(490, 40); this.btnAdd.Size = new System.Drawing.Size(80, 23); this.btnAdd.Text = "追加/編集..."; this.btnAdd.Click += new System.EventHandler(this.btnAdd_Click);

@@ -19,6 +19,7 @@ namespace UsbInputMapper.UI
         private Label _lblTrigger;
         private CheckBox _chkBlockOriginalInput;
         private ComboBox _cmbSlices;
+        private ComboBox _cmbMode; // ★ 起動モード選択用ComboBox
         private NumericUpDown _numSize;
         private ListBox _lstDirections;
         private Button _btnEditDirectionAction;
@@ -44,14 +45,14 @@ namespace UsbInputMapper.UI
         {
             _profileNames = profileNames ?? new List<string>();
             this.Text = "ラジアルメニュー / ベゼル設定";
-            this.Size = new Size(460, 420);
+            this.Size = new Size(460, 450);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
 
             ResultBinding = existingBinding ?? new UsbInputMapper.Profiles.Binding();
 
-            _tabs = new TabControl { Location = new Point(10, 10), Size = new Size(424, 320) };
+            _tabs = new TabControl { Location = new Point(10, 10), Size = new Size(424, 350) };
             _tabRadialMenu = new TabPage("ラジアルメニュー");
             _tabBezel = new TabPage("ベゼルタッチ");
             _tabs.TabPages.Add(_tabRadialMenu); _tabs.TabPages.Add(_tabBezel);
@@ -59,9 +60,9 @@ namespace UsbInputMapper.UI
             SetupRadialMenuUI();
             SetupBezelUI();
 
-            Button btnOk = new Button { Text = "OK", Location = new Point(270, 340), Size = new Size(75, 25) };
+            Button btnOk = new Button { Text = "OK", Location = new Point(270, 370), Size = new Size(75, 25) };
             btnOk.Click += BtnOk_Click;
-            Button btnCancel = new Button { Text = "キャンセル", Location = new Point(355, 340), Size = new Size(75, 25) };
+            Button btnCancel = new Button { Text = "キャンセル", Location = new Point(355, 370), Size = new Size(75, 25) };
             btnCancel.Click += (s, e) => { this.DialogResult = DialogResult.Cancel; this.Close(); };
 
             this.Controls.Add(_tabs); this.Controls.Add(btnOk); this.Controls.Add(btnCancel);
@@ -85,26 +86,35 @@ namespace UsbInputMapper.UI
                 }
             };
 
-            _chkBlockOriginalInput = new CheckBox { Text = "本来の入力をブロック", Location = new Point(10, 50), AutoSize = true };
+            _chkBlockOriginalInput = new CheckBox { Text = "本来の入力をブロック", Location = new Point(10, 48), AutoSize = true };
             
-            Label lblSlices = new Label { Text = "分割数:", Location = new Point(10, 80), AutoSize = true };
-            _cmbSlices = new ComboBox { Location = new Point(60, 77), Size = new Size(70, 20), DropDownStyle = ComboBoxStyle.DropDownList };
+            // ★ 起動モードの選択項目（再実装）
+            Label lblMode = new Label { Text = "起動モード:", Location = new Point(10, 75), AutoSize = true };
+            _cmbMode = new ComboBox { Location = new Point(80, 72), Size = new Size(200, 20), DropDownStyle = ComboBoxStyle.DropDownList };
+            _cmbMode.Items.Add("ホールド (ボタンを離して確定)");
+            _cmbMode.Items.Add("クリック (方向を選んでクリック確定)");
+            _cmbMode.SelectedIndex = 0;
+
+            Label lblSlices = new Label { Text = "分割数:", Location = new Point(10, 105), AutoSize = true };
+            _cmbSlices = new ComboBox { Location = new Point(60, 102), Size = new Size(70, 20), DropDownStyle = ComboBoxStyle.DropDownList };
             _cmbSlices.Items.Add("8分割"); _cmbSlices.Items.Add("12分割");
             _cmbSlices.SelectedIndex = 0;
             _cmbSlices.SelectedIndexChanged += (s, e) => RebuildDirectionsList();
 
-            Label lblSize = new Label { Text = "サイズ:", Location = new Point(150, 80), AutoSize = true };
-            _numSize = new NumericUpDown { Location = new Point(200, 77), Size = new Size(60, 20), Minimum = 100, Maximum = 1000, Value = 200 };
+            Label lblSize = new Label { Text = "サイズ:", Location = new Point(150, 105), AutoSize = true };
+            _numSize = new NumericUpDown { Location = new Point(200, 102), Size = new Size(60, 20), Minimum = 100, Maximum = 1000, Value = 200 };
 
-            Label lblDirs = new Label { Text = "各方向のアクション設定:", Location = new Point(10, 110), AutoSize = true };
-            _lstDirections = new ListBox { Location = new Point(10, 130), Size = new Size(280, 140) };
+            Label lblDirs = new Label { Text = "各方向のアクション設定:", Location = new Point(10, 135), AutoSize = true };
+            _lstDirections = new ListBox { Location = new Point(10, 155), Size = new Size(280, 150) };
             
-            _btnEditDirectionAction = new Button { Text = "アクション編集...", Location = new Point(300, 130), Size = new Size(100, 30) };
+            _btnEditDirectionAction = new Button { Text = "アクション編集...", Location = new Point(300, 155), Size = new Size(100, 30) };
             _btnEditDirectionAction.Click += BtnEditDirectionAction_Click;
 
             _tabRadialMenu.Controls.Add(_btnCaptureTrigger);
             _tabRadialMenu.Controls.Add(_lblTrigger);
             _tabRadialMenu.Controls.Add(_chkBlockOriginalInput);
+            _tabRadialMenu.Controls.Add(lblMode);
+            _tabRadialMenu.Controls.Add(_cmbMode);
             _tabRadialMenu.Controls.Add(lblSlices);
             _tabRadialMenu.Controls.Add(_cmbSlices);
             _tabRadialMenu.Controls.Add(lblSize);
@@ -137,7 +147,7 @@ namespace UsbInputMapper.UI
 
         private void LoadBindingData()
         {
-            if (ResultBinding.InputType == 5) // ベゼルタッチ
+            if (ResultBinding.InputType == 5) // ベゼル
             {
                 _tabs.SelectedTab = _tabBezel;
                 _cmbBezelArea.SelectedIndex = Math.Min(15, Math.Max(0, ResultBinding.InputCode));
@@ -155,6 +165,7 @@ namespace UsbInputMapper.UI
                     _lblTrigger.Text = $"開始ボタン: {UsbInputMapper.Profiles.Binding.GetCodeName(_triggerType, _triggerCode)}";
 
                 _chkBlockOriginalInput.Checked = ResultBinding.BlockOriginalInput;
+                _cmbMode.SelectedIndex = (ResultBinding.Action.RadialMenuMode == 1) ? 1 : 0; // モード反映
                 _cmbSlices.SelectedIndex = (ResultBinding.Action.RadialMenuSlices == 12) ? 1 : 0;
                 _numSize.Value = Math.Max(100, ResultBinding.Action.RadialMenuSize);
 
@@ -236,12 +247,13 @@ namespace UsbInputMapper.UI
                 ResultBinding.Name = "ラジアルメニュー起動";
                 
                 ResultBinding.Action.ActionType = ActionType.RadialMenu;
+                ResultBinding.Action.RadialMenuMode = _cmbMode.SelectedIndex; // 0: 離して確定, 1: クリック確定
                 ResultBinding.Action.RadialMenuSlices = _cmbSlices.SelectedIndex == 0 ? 8 : 12;
                 ResultBinding.Action.RadialMenuSize = (int)_numSize.Value;
             }
-            else // ベゼルタッチ
+            else // ベゼル
             {
-                ResultBinding.InputType = 5; // Type 5 = Bezel
+                ResultBinding.InputType = 5;
                 ResultBinding.InputCode = _cmbBezelArea.SelectedIndex;
                 ResultBinding.DeviceIdentifier = "SystemBezel";
                 ResultBinding.BlockOriginalInput = _chkBezelBlock.Checked;

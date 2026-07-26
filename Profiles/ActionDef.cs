@@ -30,7 +30,8 @@ namespace UsbInputMapper.Profiles
         RadialMenu,       
         BackgroundControl,
         CursorVisibility,    
-        SystemMouseSettings  // ★CursorOffsetを削除
+        SystemMouseSettings,
+        LayerShift          // ★追加: レイヤー切り替え(シフト)機能
     }
 
     public enum MacroPlaybackMode { Sequence, Hold, Repeat, StepByStep }
@@ -84,12 +85,12 @@ namespace UsbInputMapper.Profiles
         public int VibrateTimes { get; set; } = 1;
 
         public int CursorVisMode { get; set; } = 1; 
-        
-        // ★初期値は便宜上の値。UI表示時に実際のOS設定を取得して上書きします
         public int SystemMouseSpeed { get; set; } = 10; 
         public int SystemScrollType { get; set; } = 0;  
         public int SystemScrollLines { get; set; } = 3; 
         public int SystemHorizontalScroll { get; set; } = 3;
+        
+        public int LayerIndex { get; set; } = 1; // ★追加: 対象のレイヤー番号
 
         public ActionDef()
         {
@@ -108,8 +109,8 @@ namespace UsbInputMapper.Profiles
                 case ActionType.Keyboard: 
                 case ActionType.ToggleHold:
                     string kState = ActionState == 1 ? " [押す]" : ActionState == 2 ? " [離す]" : "";
-                    if (MultipleKeys != null && MultipleKeys.Count > 0) return "キーボード: " + string.Join("+", MultipleKeys) + kState;
-                    return "キーボード: " + (System.Windows.Forms.Keys)ArgumentNum + kState;
+                    if (MultipleKeys != null && MultipleKeys.Count > 0) return (ActionType == ActionType.ToggleHold ? "トグル: " : "キーボード: ") + string.Join("+", MultipleKeys) + kState;
+                    return (ActionType == ActionType.ToggleHold ? "トグル: " : "キーボード: ") + (System.Windows.Forms.Keys)ArgumentNum + kState;
                 case ActionType.MouseClick: 
                     string mState = ActionState == 1 ? " [押す]" : ActionState == 2 ? " [離す]" : "";
                     return "マウスクリック: " + ArgumentNum + mState;
@@ -135,6 +136,8 @@ namespace UsbInputMapper.Profiles
                 case ActionType.CursorVisibility: 
                     return CursorVisMode == 0 ? "カーソル: 非表示" : CursorVisMode == 1 ? "カーソル: 表示" : "カーソル: トグル";
                 case ActionType.SystemMouseSettings: return $"OSマウス設定";
+                
+                case ActionType.LayerShift: return $"レイヤーシフト: Layer {LayerIndex}"; // ★追加
                 
                 default: return ActionType.ToString();
             }

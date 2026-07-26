@@ -18,6 +18,11 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Button btnDeleteProfile;
         private System.Windows.Forms.Button btnUpProfile;
         private System.Windows.Forms.Button btnDownProfile;
+        
+        // ★ エクスポート/インポート用ボタン
+        private System.Windows.Forms.Button btnExportProfile;
+        private System.Windows.Forms.Button btnImportProfile;
+
         private System.Windows.Forms.Button btnAddBinding;
         private System.Windows.Forms.Button btnEditBinding;
         private System.Windows.Forms.Button btnDuplicateBinding; 
@@ -60,6 +65,9 @@ namespace UsbInputMapper.UI
             this.btnAddProfile = new System.Windows.Forms.Button(); this.btnEditProfile = new System.Windows.Forms.Button();
             this.btnDuplicateProfile = new System.Windows.Forms.Button(); this.btnDeleteProfile = new System.Windows.Forms.Button();
             this.btnUpProfile = new System.Windows.Forms.Button(); this.btnDownProfile = new System.Windows.Forms.Button();
+            
+            this.btnExportProfile = new System.Windows.Forms.Button(); this.btnImportProfile = new System.Windows.Forms.Button();
+
             this.btnAddBinding = new System.Windows.Forms.Button(); this.btnEditBinding = new System.Windows.Forms.Button();
             this.btnDuplicateBinding = new System.Windows.Forms.Button(); this.btnDeleteBinding = new System.Windows.Forms.Button();
             this.btnUpBinding = new System.Windows.Forms.Button(); this.btnDownBinding = new System.Windows.Forms.Button();
@@ -104,6 +112,9 @@ namespace UsbInputMapper.UI
             this.tabProfile.Controls.Add(this.chkOverlayMark); this.tabProfile.Controls.Add(this.chkOverlayName);
             
             this.tabProfile.Controls.Add(this.btnDownBinding); this.tabProfile.Controls.Add(this.btnUpBinding); this.tabProfile.Controls.Add(this.btnDeleteBinding); this.tabProfile.Controls.Add(this.btnEditBinding); this.tabProfile.Controls.Add(this.btnAddBinding);
+            
+            this.tabProfile.Controls.Add(this.btnExportProfile); this.tabProfile.Controls.Add(this.btnImportProfile);
+            
             this.tabProfile.Controls.Add(this.btnDownProfile); this.tabProfile.Controls.Add(this.btnUpProfile); this.tabProfile.Controls.Add(this.btnDeleteProfile); this.tabProfile.Controls.Add(this.btnDuplicateProfile); this.tabProfile.Controls.Add(this.btnEditProfile); this.tabProfile.Controls.Add(this.btnAddProfile);
             this.tabProfile.Controls.Add(this.lblBindings); this.tabProfile.Controls.Add(this.lblProfiles); 
             this.tabProfile.Controls.Add(this.lvwBindings); this.tabProfile.Controls.Add(this.lstProfiles);
@@ -125,9 +136,13 @@ namespace UsbInputMapper.UI
             this.btnEditProfile.Location = new System.Drawing.Point(62, 300); this.btnEditProfile.Size = new System.Drawing.Size(50, 23); this.btnEditProfile.Text = "編集"; this.btnEditProfile.Click += new System.EventHandler(this.btnEditProfile_Click);
             this.btnDuplicateProfile.Location = new System.Drawing.Point(118, 300); this.btnDuplicateProfile.Size = new System.Drawing.Size(50, 23); this.btnDuplicateProfile.Text = "複製"; this.btnDuplicateProfile.Click += new System.EventHandler(this.btnDuplicateProfile_Click);
             this.btnDeleteProfile.Location = new System.Drawing.Point(174, 300); this.btnDeleteProfile.Size = new System.Drawing.Size(52, 23); this.btnDeleteProfile.Text = "削除"; this.btnDeleteProfile.Click += new System.EventHandler(this.btnDeleteProfile_Click);
+            
             this.btnUpProfile.Location = new System.Drawing.Point(6, 329); this.btnUpProfile.Size = new System.Drawing.Size(106, 23); this.btnUpProfile.Text = "▲ 上へ"; this.btnUpProfile.Click += new System.EventHandler(this.btnUpProfile_Click);
             this.btnDownProfile.Location = new System.Drawing.Point(118, 329); this.btnDownProfile.Size = new System.Drawing.Size(108, 23); this.btnDownProfile.Text = "▼ 下へ"; this.btnDownProfile.Click += new System.EventHandler(this.btnDownProfile_Click);
             
+            this.btnExportProfile.Location = new System.Drawing.Point(6, 358); this.btnExportProfile.Size = new System.Drawing.Size(106, 23); this.btnExportProfile.Text = "エクスポート..."; this.btnExportProfile.Click += new System.EventHandler(this.btnExportProfile_Click);
+            this.btnImportProfile.Location = new System.Drawing.Point(118, 358); this.btnImportProfile.Size = new System.Drawing.Size(108, 23); this.btnImportProfile.Text = "インポート..."; this.btnImportProfile.Click += new System.EventHandler(this.btnImportProfile_Click);
+
             this.btnAddBinding.Location = new System.Drawing.Point(239, 300); this.btnAddBinding.Size = new System.Drawing.Size(110, 23); this.btnAddBinding.Text = "入力上書き(追加)"; this.btnAddBinding.Click += new System.EventHandler(this.btnAddBinding_Click);
             this.btnEditBinding.Location = new System.Drawing.Point(355, 300); this.btnEditBinding.Size = new System.Drawing.Size(60, 23); this.btnEditBinding.Text = "編集"; this.btnEditBinding.Click += new System.EventHandler(this.btnEditBinding_Click);
             this.btnDeleteBinding.Location = new System.Drawing.Point(487, 300); this.btnDeleteBinding.Size = new System.Drawing.Size(60, 23); this.btnDeleteBinding.Text = "削除"; this.btnDeleteBinding.Click += new System.EventHandler(this.btnDeleteBinding_Click);

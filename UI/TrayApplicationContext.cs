@@ -55,9 +55,27 @@ namespace UsbInputMapper.UI
             public override int GetHashCode() => (((((DeviceId != null ? DeviceId.GetHashCode() : 0) * 397) ^ Type) * 397) ^ Code) * 397 ^ BindingHash;
         }
 
+        private class KeyClickState {
+            public int Count;
+            public long LastDownTime;
+        }
+        
+        private class PendingExecution {
+            public UsbInputMapper.Profiles.Binding Binding;
+            public string DeviceIdentifier;
+            public int Type;
+            public int Code;
+            public bool IsDown;
+            public int Value;
+            public long ExecuteTime;
+        }
+
         private Dictionary<TriggerKeyHash, bool> _physicalKeysDown = new Dictionary<TriggerKeyHash, bool>(); 
         private ConcurrentDictionary<LoopKey, CancellationTokenSource> _activeLoops = new ConcurrentDictionary<LoopKey, CancellationTokenSource>();
         private Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>> _bindingCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
+        
+        private Dictionary<InputKey, KeyClickState> _clickStates = new Dictionary<InputKey, KeyClickState>();
+        private List<PendingExecution> _pendingExecutions = new List<PendingExecution>();
 
         private System.Threading.Timer _activeTimer;
         private volatile int _stickMouseDx = 0;
@@ -68,6 +86,9 @@ namespace UsbInputMapper.UI
 
         private RadialMenuHudForm _radialMenuHudForm;
         private ActionDef _currentRadialMenuDef;
+        
+        private ProfileOverlayForm _currentOverlay;
+        private readonly object _overlayLock = new object();
 
         public TrayApplicationContext() 
         {
@@ -98,8 +119,8 @@ namespace UsbInputMapper.UI
             var initialProfile = _profileManager.CurrentActiveProfile;
             if (initialProfile != null)
             {
-                _globalHookManager.EnableChatteringCanceler = initialProfile.EnableChatteringCanceler;
-                _globalHookManager.ChatteringThresholdMs = initialProfile.ChatteringThresholdMs;
+                _globalHookManager.EnableChatteringCanceler = initialProfile.OverrideGlobalChattering ? initialProfile.EnableChatteringCanceler : _profileManager.GlobalConfig.EnableChatteringCanceler;
+                _globalHookManager.ChatteringThresholdMs = initialProfile.OverrideGlobalChattering ? initialProfile.ChatteringThresholdMs : _profileManager.GlobalConfig.ChatteringThresholdMs;
             }
             
             _rawInputManager = new RawInputManager(); 
@@ -114,7 +135,7 @@ namespace UsbInputMapper.UI
             };
 
             UpdateBindingCache();
-            _activeTimer = new System.Threading.Timer(ActiveTimer_Tick, null, Timeout.Infinite, Timeout.Infinite);
+            _activeTimer = new System.Threading.Timer(ActiveTimer_Tick, null, 10, 10);
         }
 
         private void InitializeTrayIcon()
@@ -153,6 +174,35 @@ namespace UsbInputMapper.UI
             _trayIcon.DoubleClick += (s, e) => settingsItem.PerformClick();
         }
 
+        private void HandleProfileSwitchSignal()
+        {
+            var p = _profileManager.CurrentActiveProfile;
+            if (p != null)
+            {
+                UpdateHookBlockList();
+                
+                _globalHookManager.EnableChatteringCanceler = p.OverrideGlobalChattering ? p.EnableChatteringCanceler : _profileManager.GlobalConfig.EnableChatteringCanceler;
+                _globalHookManager.ChatteringThresholdMs = p.OverrideGlobalChattering ? p.ChatteringThresholdMs : _profileManager.GlobalConfig.ChatteringThresholdMs;
+
+                if (p.NotifyProfileChangeVibration)
+                    VibrationManager.Vibrate(300, 1);
+
+                if (p.OverlayShowMark || p.OverlayShowName)
+                {
+                    _syncContext.Post(_ => {
+                        lock (_overlayLock)
+                        {
+                            if (_currentOverlay != null && !_currentOverlay.IsDisposed) {
+                                _currentOverlay.Close();
+                            }
+                            _currentOverlay = new ProfileOverlayForm(p);
+                            _currentOverlay.Show();
+                        }
+                    }, null);
+                }
+            }
+        }
+
         private void ProcessInputQueue()
         {
             try
@@ -175,23 +225,80 @@ namespace UsbInputMapper.UI
                     if (evt.IsDown) _physicalKeysDown[tKey] = true; 
                     else _physicalKeysDown.Remove(tKey);
 
-                    if (_bindingCache.TryGetValue(new InputKey(evt.DeviceIdentifier, evt.Type, evt.Code), out var bindings))
-                    {
-                        foreach (var b in bindings)
+                    var iKey = new InputKey(evt.DeviceIdentifier, evt.Type, evt.Code);
+
+                    if (!_clickStates.TryGetValue(iKey, out var cState)) {
+                        cState = new KeyClickState { Count = 0, LastDownTime = 0 };
+                        _clickStates[iKey] = cState;
+                    }
+
+                    long now = evt.Timestamp;
+                    int doubleTime = _profileManager.GlobalConfig.DoubleClickTimeMs;
+                    int tripleTime = _profileManager.GlobalConfig.TripleClickTimeMs;
+
+                    if (evt.IsDown) {
+                        if (cState.Count == 0 || 
+                            (cState.Count == 1 && now - cState.LastDownTime > doubleTime) || 
+                            (cState.Count >= 2 && now - cState.LastDownTime > tripleTime)) 
                         {
-                            if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
-                            {
-                                ProcessBindingExecution(b, evt.DeviceIdentifier, evt.Type, evt.Code, evt.IsDown, evt.Value);
+                            cState.Count = 1;
+                        } else {
+                            cState.Count++;
+                        }
+                        cState.LastDownTime = now;
+
+                        lock (_pendingExecutions) {
+                            if (cState.Count == 2) {
+                                _pendingExecutions.RemoveAll(p => p.Type == evt.Type && p.Code == evt.Code && p.Binding.ClickTriggerCount == 1);
+                            } else if (cState.Count == 3) {
+                                _pendingExecutions.RemoveAll(p => p.Type == evt.Type && p.Code == evt.Code && p.Binding.ClickTriggerCount == 2);
                             }
                         }
                     }
-                    else if (_bindingCache.TryGetValue(new InputKey("Any", evt.Type, evt.Code), out var anyBindings))
+
+                    int currentClick = cState.Count;
+
+                    var bindings = new List<UsbInputMapper.Profiles.Binding>();
+                    if (_bindingCache.TryGetValue(iKey, out var exact)) bindings.AddRange(exact);
+                    if (_bindingCache.TryGetValue(new InputKey("Any", evt.Type, evt.Code), out var anyB)) bindings.AddRange(anyB);
+
+                    if (bindings.Count > 0)
                     {
-                        foreach (var b in anyBindings)
-                        {
-                            if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
-                            {
-                                ProcessBindingExecution(b, evt.DeviceIdentifier, evt.Type, evt.Code, evt.IsDown, evt.Value);
+                        var matchedBindings = bindings.Where(b => b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))).ToList();
+
+                        bool delaySingle = matchedBindings.Any(b => b.ClickTriggerCount == 2 && !b.ExecuteSingleSimultaneously) ||
+                                           matchedBindings.Any(b => b.ClickTriggerCount == 3 && !b.ExecuteSingleSimultaneously);
+                        bool delayDouble = matchedBindings.Any(b => b.ClickTriggerCount == 3 && !b.ExecuteDoubleSimultaneously);
+
+                        foreach (var b in matchedBindings) {
+                            if (evt.IsDown) {
+                                if (b.ClickTriggerCount == currentClick) {
+                                    if (currentClick == 1 && delaySingle) {
+                                        lock (_pendingExecutions) _pendingExecutions.Add(new PendingExecution { Binding = b, DeviceIdentifier = evt.DeviceIdentifier, Type = evt.Type, Code = evt.Code, IsDown = evt.IsDown, Value = evt.Value, ExecuteTime = now + doubleTime });
+                                    } else if (currentClick == 2 && delayDouble) {
+                                        lock (_pendingExecutions) _pendingExecutions.Add(new PendingExecution { Binding = b, DeviceIdentifier = evt.DeviceIdentifier, Type = evt.Type, Code = evt.Code, IsDown = evt.IsDown, Value = evt.Value, ExecuteTime = now + tripleTime });
+                                    } else {
+                                        ProcessBindingExecution(b, evt.DeviceIdentifier, evt.Type, evt.Code, evt.IsDown, evt.Value);
+                                    }
+                                }
+                            } else {
+                                bool isPending = false;
+                                long execTime = now;
+                                lock (_pendingExecutions) {
+                                    var downTask = _pendingExecutions.FirstOrDefault(p => p.Binding == b && p.Type == evt.Type && p.Code == evt.Code && p.IsDown == true);
+                                    if (downTask != null) {
+                                        isPending = true;
+                                        execTime = downTask.ExecuteTime;
+                                    }
+                                }
+                                
+                                if (isPending) {
+                                    lock (_pendingExecutions) _pendingExecutions.Add(new PendingExecution { Binding = b, DeviceIdentifier = evt.DeviceIdentifier, Type = evt.Type, Code = evt.Code, IsDown = evt.IsDown, Value = evt.Value, ExecuteTime = execTime + 10 }); 
+                                } else {
+                                    if (b.ClickTriggerCount == currentClick) {
+                                        ProcessBindingExecution(b, evt.DeviceIdentifier, evt.Type, evt.Code, evt.IsDown, evt.Value);
+                                    }
+                                }
                             }
                         }
                     }
@@ -200,345 +307,274 @@ namespace UsbInputMapper.UI
             catch (OperationCanceledException) { }
         }
 
-        private void ProcessBindingExecution(UsbInputMapper.Profiles.Binding b, string devId, int type, int code, bool isDown, int rawValue = 0)
+        private void ActiveTimer_Tick(object state)
         {
-            if (b.Action == null || b.Action.ActionType == ActionType.None) return;
-
-            // ★追加：プロファイル切り替えアクション
-            if (b.Action.ActionType == ActionType.ProfileSwitch)
-            {
-                if (b.Action.ArgumentNum == 0) // トグル
-                {
-                    if (isDown)
-                    {
-                        var targetName = b.Action.ArgumentStr;
-                        var current = _profileManager.CurrentProfile;
-                        if (current != null && current.Name == targetName) _profileManager.SwitchToDefault();
-                        else _profileManager.SwitchToProfile(targetName);
-                    }
+            long now = (long)GetTickCount64();
+            
+            List<PendingExecution> toExecute = null;
+            lock (_pendingExecutions) {
+                if (_pendingExecutions.Count > 0) {
+                    toExecute = _pendingExecutions.Where(p => now >= p.ExecuteTime).OrderBy(p => p.ExecuteTime).ToList();
+                    foreach (var p in toExecute) _pendingExecutions.Remove(p);
                 }
-                else // ホールド
-                {
-                    _profileManager.SetTemporaryProfile(b.Action.ArgumentStr, isDown);
+            }
+            
+            if (toExecute != null) {
+                foreach (var p in toExecute) {
+                    ProcessBindingExecution(p.Binding, p.DeviceIdentifier, p.Type, p.Code, p.IsDown, p.Value);
                 }
-                return;
             }
 
-            // ★修正：ラジアルメニューのモード分岐とクリック対応
-            if (b.Action.ActionType == ActionType.RadialMenu)
+            if (_hasBezelBindings)
             {
-                if (b.Action.RadialMenuMode == 0) // ホールド
+                if (_currentBezelCode != -1)
                 {
-                    if (isDown)
+                    _bezelHoverTime += 10;
+                    if (_bindingCache.TryGetValue(new InputKey("Any", 5, _currentBezelCode), out var bindings))
                     {
-                        _currentRadialMenuDef = b.Action;
-                        if (_radialMenuHudForm == null || _radialMenuHudForm.IsDisposed)
+                        foreach (var b in bindings)
                         {
-                            _syncContext.Post(_ => {
-                                _radialMenuHudForm = new RadialMenuHudForm(b.Action);
-                                _radialMenuHudForm.Show();
-                            }, null);
-                        }
-                    }
-                    else
-                    {
-                        _syncContext.Post(_ => CloseAndExecuteRadialMenu(), null);
-                    }
-                }
-                else // トグル (クリックで実行)
-                {
-                    if (isDown)
-                    {
-                        if (_radialMenuHudForm == null || _radialMenuHudForm.IsDisposed)
-                        {
-                            _currentRadialMenuDef = b.Action;
-                            _syncContext.Post(_ => {
-                                _radialMenuHudForm = new RadialMenuHudForm(b.Action);
-                                _radialMenuHudForm.Show();
-                                
-                                if (_globalHookManager != null)
+                            if (b.Condition == TriggerCondition.Hold && b.ConditionParam > 0 && _bezelHoverTime >= b.ConditionParam)
+                            {
+                                if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code))))
                                 {
-                                    _globalHookManager.IsRadialMenuClickCapturing = true;
-                                    _globalHookManager.OnRadialMenuClickCaptured = () => {
-                                        _syncContext.Post(__ => CloseAndExecuteRadialMenu(), null);
-                                    };
+                                    ProcessBindingExecution(b, "Any", 5, _currentBezelCode, true, 0);
                                 }
-                            }, null);
-                        }
-                        else
-                        {
-                            // 再度押された場合はキャンセルとして閉じる
-                            _syncContext.Post(_ => {
-                                if (_radialMenuHudForm != null) { _radialMenuHudForm.Close(); _radialMenuHudForm = null; }
-                                if (_globalHookManager != null) { _globalHookManager.IsRadialMenuClickCapturing = false; _globalHookManager.OnRadialMenuClickCaptured = null; }
-                            }, null);
+                            }
                         }
                     }
                 }
-                return;
             }
 
-            if (b.Action.ActionType == ActionType.StickToMouse && type == 11)
+            if (_stickMouseDx != 0 || _stickMouseDy != 0)
             {
-                float norm = (rawValue - 32767) / 32767f;
-                int dz = b.Action.StickDeadZone;
-                if (Math.Abs(norm * 100) < dz) norm = 0;
-                
-                int spd = (int)(norm * b.Action.StickMaxSpeed);
-                if (code == 0 || code == 3) _stickMouseDx = spd;
-                if (code == 1 || code == 4) _stickMouseDy = spd;
-                
-                if (_stickMouseDx != 0 || _stickMouseDy != 0) _activeTimer.Change(0, 10);
-                else if (_currentBezelCode == -1) _activeTimer.Change(Timeout.Infinite, Timeout.Infinite);
-                return;
-            }
-
-            var loopKey = new LoopKey(devId, type, code, b.GetHashCode());
-
-            if (b.Condition == TriggerCondition.Normal)
-            {
-                _dispatcher.Dispatch(b.Action, isDown);
-            }
-            else if (b.Condition == TriggerCondition.Release)
-            {
-                if (!isDown)
-                {
-                    _dispatcher.Dispatch(b.Action, true);
-                    _dispatcher.Dispatch(b.Action, false);
-                }
-            }
-            else if (b.Condition == TriggerCondition.Hold)
-            {
-                if (isDown)
-                {
-                    var cts = new CancellationTokenSource();
-                    _activeLoops[loopKey] = cts;
-                    Task.Run(async () => {
-                        try {
-                            await Task.Delay(b.ConditionParam, cts.Token);
-                            if (!cts.IsCancellationRequested) {
-                                _dispatcher.Dispatch(b.Action, true);
-                                _dispatcher.Dispatch(b.Action, false);
-                            }
-                        } catch (TaskCanceledException) { }
-                    });
-                }
-                else
-                {
-                    if (_activeLoops.TryRemove(loopKey, out var cts)) {
-                        cts.Cancel(); cts.Dispose();
-                    }
-                }
-            }
-            else if (b.Condition == TriggerCondition.RapidFire)
-            {
-                if (isDown)
-                {
-                    var cts = new CancellationTokenSource();
-                    _activeLoops[loopKey] = cts;
-                    Task.Run(async () => {
-                        try {
-                            while (!cts.IsCancellationRequested) {
-                                _dispatcher.Dispatch(b.Action, true);
-                                await Task.Delay(10, cts.Token);
-                                _dispatcher.Dispatch(b.Action, false);
-                                await Task.Delay(b.ConditionParam > 0 ? b.ConditionParam : 50, cts.Token);
-                            }
-                        } catch (TaskCanceledException) { }
-                    });
-                }
-                else
-                {
-                    if (_activeLoops.TryRemove(loopKey, out var cts)) {
-                        cts.Cancel(); cts.Dispose();
-                    }
-                }
-            }
-            else if (b.Condition == TriggerCondition.Sync)
-            {
-                _dispatcher.Dispatch(b.Action, isDown);
-            }
-        }
-
-        private void CloseAndExecuteRadialMenu()
-        {
-            if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed)
-            {
-                int selIdx = _radialMenuHudForm.SelectedDirectionIndex;
-                _radialMenuHudForm.Close();
-                _radialMenuHudForm = null;
-                
-                if (_globalHookManager != null)
-                {
-                    _globalHookManager.IsRadialMenuClickCapturing = false;
-                    _globalHookManager.OnRadialMenuClickCaptured = null;
-                }
-
-                if (selIdx >= 0 && _currentRadialMenuDef != null && selIdx < _currentRadialMenuDef.RadialMenuDirections.Count)
-                {
-                    var dir = _currentRadialMenuDef.RadialMenuDirections[selIdx];
-                    if (dir.Action != null && dir.Action.ActionType != ActionType.None)
-                    {
-                        _dispatcher.Dispatch(dir.Action, true);
-                        _dispatcher.Dispatch(dir.Action, false);
-                    }
-                }
-            }
-        }
-
-        private void HandleProfileSwitchSignal()
-        {
-            _physicalKeysDown.Clear();
-            foreach(var cts in _activeLoops.Values) { cts.Cancel(); cts.Dispose(); }
-            _activeLoops.Clear();
-            
-            UpdateHookBlockList(); UpdateBindingCache();
-            _dispatcher?.ReleaseAllInputs(); 
-            
-            var p = _profileManager.CurrentActiveProfile;
-            if (p != null)
-            {
-                if (p.NotifyProfileChangeVibration) VibrationManager.Vibrate(300, 2); 
-                
-                if (_globalHookManager != null)
-                {
-                    _globalHookManager.EnableChatteringCanceler = p.EnableChatteringCanceler;
-                    _globalHookManager.ChatteringThresholdMs = p.ChatteringThresholdMs;
-                }
-                
-                if (p.OverlayShowMark || p.OverlayShowName)
-                {
-                    _syncContext.Post(_ => { new ProfileOverlayForm(p).Show(); }, null);
-                }
+                _dispatcher?.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false, false);
             }
         }
 
         private void GlobalHookManager_OnBlockedInputFired(object sender, GlobalHookManager.HookInputEvent e)
         {
-            if (!_isSuspended)
-            {
-                _inputQueue.Add(new InputEvent { Type = e.Type, Code = e.Code, IsDown = e.IsDown, X = e.X, Y = e.Y, Timestamp = e.Timestamp, DeviceIdentifier = "Any" });
-            }
+            _inputQueue.Add(new InputEvent { DeviceIdentifier = "Any", Type = e.Type, Code = e.Code, IsDown = e.IsDown, X = e.X, Y = e.Y, Timestamp = e.Timestamp });
         }
 
         private void GlobalHookManager_OnMouseMove(object sender, GlobalHookManager.POINT pt)
         {
-            if (!_hasBezelBindings || _isSuspended) return;
-
-            int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
+            if (!_hasBezelBindings) return;
+            int screenW = Screen.PrimaryScreen.Bounds.Width;
+            int screenH = Screen.PrimaryScreen.Bounds.Height;
             int x = pt.x; int y = pt.y;
-            int code = -1;
 
-            if (x <= 3 && y <= 3) code = 0;
-            else if (x >= sW - 4 && y <= 3) code = 4;
-            else if (x >= sW - 4 && y >= sH - 4) code = 8;
-            else if (x <= 3 && y >= sH - 4) code = 12;
-            else if (y <= 0) { if (x < sW / 3) code = 1; else if (x < sW * 2 / 3) code = 2; else code = 3; }
-            else if (x >= sW - 1) { if (y < sH / 3) code = 5; else if (y < sH * 2 / 3) code = 6; else code = 7; }
-            else if (y >= sH - 1) { if (x >= sW * 2 / 3) code = 9; else if (x >= sW / 3) code = 10; else code = 11; }
-            else if (x <= 0) { if (y >= sH * 2 / 3) code = 13; else if (y >= sH / 3) code = 14; else code = 15; }
+            int newBezel = -1;
+            if (x <= 1 && y <= 1) newBezel = 0; else if (x >= screenW - 2 && y <= 1) newBezel = 4; else if (x >= screenW - 2 && y >= screenH - 2) newBezel = 8; else if (x <= 1 && y >= screenH - 2) newBezel = 12; else if (y <= 1 && x < screenW / 3) newBezel = 1; else if (y <= 1 && x > screenW * 2 / 3) newBezel = 3; else if (y <= 1) newBezel = 2; else if (x >= screenW - 2 && y < screenH / 3) newBezel = 5; else if (x >= screenW - 2 && y > screenH * 2 / 3) newBezel = 7; else if (x >= screenW - 2) newBezel = 6; else if (y >= screenH - 2 && x > screenW * 2 / 3) newBezel = 9; else if (y >= screenH - 2 && x < screenW / 3) newBezel = 11; else if (y >= screenH - 2) newBezel = 10; else if (x <= 1 && y > screenH * 2 / 3) newBezel = 13; else if (x <= 1 && y < screenH / 3) newBezel = 15; else if (x <= 1) newBezel = 14;
 
-            if (code != -1)
+            if (newBezel != _currentBezelCode)
             {
-                if (_currentBezelCode != code)
+                if (_currentBezelCode != -1) _inputQueue.Add(new InputEvent { DeviceIdentifier = "Any", Type = 5, Code = _currentBezelCode, IsDown = false, Timestamp = (long)GetTickCount64() });
+                _currentBezelCode = newBezel;
+                _bezelHoverTime = 0;
+                if (_currentBezelCode != -1) _inputQueue.Add(new InputEvent { DeviceIdentifier = "Any", Type = 5, Code = _currentBezelCode, IsDown = true, Timestamp = (long)GetTickCount64() });
+            }
+        }
+
+        private void ProcessBindingExecution(UsbInputMapper.Profiles.Binding b, string devId, int type, int code, bool isDown, int value)
+        {
+            if (b.Condition == TriggerCondition.Normal)
+            {
+                if (isDown) ExecuteAction(b.Action, true);
+                else ExecuteAction(b.Action, false);
+            }
+            else if (b.Condition == TriggerCondition.Release)
+            {
+                if (!isDown) ExecuteAction(b.Action, true);
+            }
+            else if (b.Condition == TriggerCondition.Sync)
+            {
+                ExecuteAction(b.Action, isDown);
+            }
+            else if (b.Condition == TriggerCondition.Hold || b.Condition == TriggerCondition.RapidFire)
+            {
+                var lKey = new LoopKey(devId, type, code, b.GetHashCode());
+                if (isDown)
                 {
-                    _currentBezelCode = code;
-                    _bezelHoverTime = 0;
-                    _activeTimer.Change(0, 10);
+                    if (b.InputType == 11 && b.AxisRange != 0) 
+                    {
+                        if (b.AxisRange == 1 && value < 10000) return;
+                        if (b.AxisRange == 2 && value > -10000) return;
+                    }
+
+                    if (!_activeLoops.ContainsKey(lKey))
+                    {
+                        var cts = new CancellationTokenSource();
+                        _activeLoops[lKey] = cts;
+                        Task.Run(() => LoopTask(b, cts.Token));
+                    }
+                }
+                else
+                {
+                    if (_activeLoops.TryRemove(lKey, out var cts)) { cts.Cancel(); cts.Dispose(); }
                 }
             }
-            else
+
+            if (b.InputType == 11 && b.Action.ActionType == ActionType.StickToMouse)
             {
-                if (_currentBezelCode != -1)
+                if (isDown)
                 {
-                    _currentBezelCode = -1;
-                    _bezelHoverTime = 0;
-                    if (_stickMouseDx == 0 && _stickMouseDy == 0) _activeTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                    int val = value;
+                    if (b.InvertAxis) val = -val;
+                    if (b.AxisRange == 1 && val < 0) val = 0;
+                    if (b.AxisRange == 2 && val > 0) val = 0;
+                    
+                    float ratio = (float)val / 32767f;
+                    float absRatio = Math.Abs(ratio);
+                    float dz = b.DeadZone / 100f;
+                    if (absRatio < dz) absRatio = 0;
+                    else absRatio = (absRatio - dz) / (1f - dz);
+
+                    if (b.AccelerationCurve == 1) absRatio = (float)Math.Pow(absRatio, 0.5);
+                    else if (b.AccelerationCurve == 2) absRatio = (float)Math.Pow(absRatio, 2.0);
+
+                    int speed = (int)(absRatio * b.Action.StickMaxSpeed * Math.Sign(ratio));
+                    if (b.InputCode == 1 || b.InputCode == 3) _stickMouseDx = speed;
+                    else if (b.InputCode == 2 || b.InputCode == 4) _stickMouseDy = speed;
+                }
+                else
+                {
+                    if (b.InputCode == 1 || b.InputCode == 3) _stickMouseDx = 0;
+                    else if (b.InputCode == 2 || b.InputCode == 4) _stickMouseDy = 0;
                 }
             }
         }
 
-        private void ActiveTimer_Tick(object state)
+        private async Task LoopTask(UsbInputMapper.Profiles.Binding b, CancellationToken token)
         {
-            if (_stickMouseDx != 0 || _stickMouseDy != 0) 
+            if (b.Condition == TriggerCondition.Hold)
             {
-                _dispatcher.SendMouseMove(_stickMouseDx, _stickMouseDy, false, false, false);
+                try { await Task.Delay(b.ConditionParam, token); ExecuteAction(b.Action, true); } catch { }
             }
-
-            if (_currentBezelCode != -1)
+            else if (b.Condition == TriggerCondition.RapidFire)
             {
-                _bezelHoverTime += 10;
-                
-                if (_bindingCache.TryGetValue(new InputKey("Any", 5, _currentBezelCode), out var bindings))
+                while (!token.IsCancellationRequested)
                 {
-                    foreach (var b in bindings) {
-                        if (b.SubTriggers == null || b.SubTriggers.All(st => _physicalKeysDown.ContainsKey(new TriggerKeyHash(st.Type, st.Code)))) {
-                            if (_bezelHoverTime >= b.ConditionParam && _bezelHoverTime - 10 < b.ConditionParam) 
-                            { 
-                                _inputQueue.Add(new InputEvent { Type = 5, Code = _currentBezelCode, IsDown = true, DeviceIdentifier = "Any" });
+                    ExecuteAction(b.Action, true);
+                    try { await Task.Delay(b.ConditionParam, token); } catch { break; }
+                }
+            }
+        }
+
+        private void ExecuteAction(ActionDef action, bool isDown)
+        {
+            if (action.UseVibration) VibrationManager.Vibrate(action.VibrateDuration, action.VibrateTimes);
+
+            if (action.ActionType == ActionType.ProfileSwitch)
+            {
+                if (action.ArgumentNum == 0) 
+                {
+                    if (isDown) _profileManager.SwitchToProfile(action.ArgumentStr);
+                }
+                else if (action.ArgumentNum == 1) 
+                {
+                    _profileManager.SetTemporaryProfile(action.ArgumentStr, isDown);
+                }
+            }
+            else if (action.ActionType == ActionType.RadialMenu)
+            {
+                if (isDown)
+                {
+                    _currentRadialMenuDef = action;
+                    _syncContext.Post(_ => {
+                        if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed) _radialMenuHudForm.Close();
+                        _radialMenuHudForm = new RadialMenuHudForm(action);
+                        _radialMenuHudForm.Show();
+                    }, null);
+                }
+                else
+                {
+                    _syncContext.Post(_ => {
+                        if (_radialMenuHudForm != null && !_radialMenuHudForm.IsDisposed)
+                        {
+                            int dir = _radialMenuHudForm.SelectedDirectionIndex;
+                            _radialMenuHudForm.Close();
+                            _radialMenuHudForm = null;
+
+                            if (dir >= 0 && _currentRadialMenuDef != null && dir < _currentRadialMenuDef.RadialMenuDirections.Count)
+                            {
+                                var dAction = _currentRadialMenuDef.RadialMenuDirections[dir].Action;
+                                if (dAction != null && dAction.ActionType != ActionType.None)
+                                {
+                                    Task.Run(async () => {
+                                        _dispatcher.Dispatch(dAction, true);
+                                        await Task.Delay(50);
+                                        _dispatcher.Dispatch(dAction, false);
+                                    });
+                                }
                             }
+                            _currentRadialMenuDef = null;
                         }
-                    }
+                    }, null);
+                }
+            }
+            else
+            {
+                _dispatcher?.Dispatch(action, isDown);
+            }
+        }
+
+        private void UpdateBindingCache()
+        {
+            var p = _profileManager.CurrentActiveProfile;
+            _bindingCache.Clear();
+            _hasBezelBindings = false;
+
+            if (p != null)
+            {
+                var combined = new List<UsbInputMapper.Profiles.Binding>();
+                if (p.EnableXInput) combined.AddRange(_profileManager.ControllerBaseBindings);
+                combined.AddRange(p.Bindings);
+
+                foreach (var b in combined)
+                {
+                    if (b.InputType == 5) _hasBezelBindings = true;
+
+                    var k = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode);
+                    if (!_bindingCache.ContainsKey(k)) _bindingCache[k] = new List<UsbInputMapper.Profiles.Binding>();
+                    _bindingCache[k].Add(b);
                 }
             }
         }
 
         private void UpdateHookBlockList()
         {
-            var blockList = new HashSet<long>();
-            if (!_isSuspended && _globalHookManager != null)
+            var set = new HashSet<long>();
+            var p = _profileManager.CurrentActiveProfile;
+            if (p != null)
             {
-                var profile = _profileManager.CurrentActiveProfile;
-                if (profile != null) { foreach (var b in profile.Bindings) if (b.BlockOriginalInput) blockList.Add(((long)b.InputType << 32) | (uint)b.InputCode); }
-            }
-            if (_globalHookManager != null) _globalHookManager.SetBlockList(blockList);
-        }
-
-        private void UpdateBindingCache()
-        {
-            var newCache = new Dictionary<InputKey, List<UsbInputMapper.Profiles.Binding>>();
-            var profile = _profileManager.CurrentActiveProfile;
-            
-            if (profile != null) 
-            {
-                foreach (var b in profile.Bindings) { 
-                    var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode); 
-                    if (!newCache.TryGetValue(key, out var list)) { list = new List<UsbInputMapper.Profiles.Binding>(); newCache[key] = list; } 
-                    list.Add(b); 
-                }
-                if (profile.EnableXInput) {
-                    foreach (var b in _profileManager.ControllerBaseBindings) {
-                        var key = new InputKey(b.DeviceIdentifier, b.InputType, b.InputCode);
-                        if (!newCache.TryGetValue(key, out var list)) { list = new List<UsbInputMapper.Profiles.Binding>(); newCache[key] = list; }
-                        if (!profile.Bindings.Any(pb => pb.DeviceIdentifier == b.DeviceIdentifier && pb.InputType == b.InputType && pb.InputCode == b.InputCode)) list.Add(b);
+                foreach (var b in p.Bindings)
+                {
+                    if (b.BlockOriginalInput && (b.InputType == 0 || b.InputType == 1))
+                    {
+                        long key = ((long)b.InputType << 32) | (uint)b.InputCode;
+                        set.Add(key);
                     }
                 }
             }
-            
-            _bindingCache = newCache;
-            _hasBezelBindings = _bindingCache.Keys.Any(k => k.Type == 5);
+            GlobalHookManager.Instance?.SetBlockList(set);
         }
 
-        private void ShutdownCore()
+        protected override void Dispose(bool disposing)
         {
-            _queueCts.Cancel();
-            _activeTimer?.Dispose();
-            _dispatcher?.ReleaseAllInputs(); 
-            SystemMouseManager.RestoreAllSafely(); 
-            
-            _globalHookManager?.Dispose();
-            _rawInputManager?.Dispose();
-            _diManager?.Dispose();
-            _appWatcher?.Dispose();
-            _viGEmOutput?.Dispose();
-        }
-
-        protected override void Dispose(bool disposing) 
-        { 
-            ShutdownCore(); 
-            if (_trayIcon != null) { _trayIcon.Visible = false; _trayIcon.Dispose(); }
-            _mainForm?.Dispose();
-            base.Dispose(disposing); 
+            if (disposing)
+            {
+                _queueCts.Cancel(); _queueCts.Dispose();
+                _activeTimer?.Dispose();
+                _globalHookManager?.Dispose();
+                _rawInputManager?.Dispose();
+                _diManager?.Dispose();
+                _viGEmOutput?.Dispose();
+                _appWatcher?.Dispose();
+                if (_trayIcon != null) { _trayIcon.Visible = false; _trayIcon.Dispose(); }
+                if (_mainForm != null && !_mainForm.IsDisposed) _mainForm.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }

@@ -21,9 +21,11 @@ namespace UsbInputMapper.UI
         private void RefreshList()
         {
             lstBase.Items.Clear();
+            if (_profileManager?.ControllerBaseBindings == null) return;
+
             foreach (var b in _profileManager.ControllerBaseBindings)
             {
-                lstBase.Items.Add(new ListViewItem($"[{b.Name}] {b.GetTriggerString()} => {b.Action.ToString()}") { Tag = b });
+                lstBase.Items.Add($"[{b.Name}] {b.GetTriggerString()} => {b.Action.ToString()}");
             }
         }
 
@@ -31,7 +33,11 @@ namespace UsbInputMapper.UI
         {
             using (var w = new ControllerSetupForm(_profileManager, _diManager))
             {
-                if (w.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshList(); }
+                if (w.ShowDialog(this) == DialogResult.OK) 
+                { 
+                    _profileManager.Save(); 
+                    RefreshList(); 
+                }
             }
         }
 
@@ -39,37 +45,63 @@ namespace UsbInputMapper.UI
         {
             using (var ed = new BindingEditorForm())
             {
-                if (ed.ShowDialog(this) == DialogResult.OK) { _profileManager.ControllerBaseBindings.Add(ed.ResultBinding); _profileManager.Save(); RefreshList(); }
+                if (ed.ShowDialog(this) == DialogResult.OK) 
+                { 
+                    _profileManager.ControllerBaseBindings.Add(ed.ResultBinding); 
+                    _profileManager.Save(); 
+                    RefreshList(); 
+                }
             }
         }
 
         private void btnEdit_Click(object sender, EventArgs e)
         {
-            if (lstBase.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b)
+            int idx = lstBase.SelectedIndex;
+            if (idx >= 0 && idx < _profileManager.ControllerBaseBindings.Count)
             {
+                var b = _profileManager.ControllerBaseBindings[idx];
                 using (var ed = new BindingEditorForm(b))
                 {
-                    if (ed.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshList(); }
+                    if (ed.ShowDialog(this) == DialogResult.OK) 
+                    { 
+                        _profileManager.Save(); 
+                        RefreshList(); 
+                    }
                 }
             }
         }
 
         private void btnDelete_Click(object sender, EventArgs e)
         {
-            if (lstBase.SelectedItem is ListViewItem item && item.Tag is UsbInputMapper.Profiles.Binding b)
+            int idx = lstBase.SelectedIndex;
+            if (idx >= 0 && idx < _profileManager.ControllerBaseBindings.Count)
             {
-                _profileManager.ControllerBaseBindings.Remove(b); _profileManager.Save(); RefreshList();
+                _profileManager.ControllerBaseBindings.RemoveAt(idx); 
+                _profileManager.Save(); 
+                RefreshList();
             }
         }
 
         private void btnUp_Click(object sender, EventArgs e)
         {
-            if (lstBase.SelectedIndex > 0) { _profileManager.MoveBinding(_profileManager.ControllerBaseBindings, lstBase.SelectedIndex, -1); RefreshList(); }
+            if (lstBase.SelectedIndex > 0) 
+            { 
+                int idx = lstBase.SelectedIndex;
+                _profileManager.MoveBinding(_profileManager.ControllerBaseBindings, idx, -1); 
+                RefreshList(); 
+                lstBase.SelectedIndex = idx - 1;
+            }
         }
 
         private void btnDown_Click(object sender, EventArgs e)
         {
-            if (lstBase.SelectedIndex >= 0 && lstBase.SelectedIndex < lstBase.Items.Count - 1) { _profileManager.MoveBinding(_profileManager.ControllerBaseBindings, lstBase.SelectedIndex, 1); RefreshList(); }
+            if (lstBase.SelectedIndex >= 0 && lstBase.SelectedIndex < lstBase.Items.Count - 1) 
+            { 
+                int idx = lstBase.SelectedIndex;
+                _profileManager.MoveBinding(_profileManager.ControllerBaseBindings, idx, 1); 
+                RefreshList(); 
+                lstBase.SelectedIndex = idx + 1;
+            }
         }
     }
 }

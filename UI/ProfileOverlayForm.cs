@@ -12,6 +12,12 @@ namespace UsbInputMapper.UI
         private bool _isFadingOut = false;
         private Profile _profile;
 
+        // リソースのキャッシュ化（GCスパイク防止用）
+        private Brush _bgBrush;
+        private Pen _borderPen;
+        private Font _markFont;
+        private Font _nameFont;
+
         public ProfileOverlayForm(Profile profile)
         {
             _profile = profile;
@@ -39,6 +45,12 @@ namespace UsbInputMapper.UI
             
             this.Location = new Point(x, y);
             this.DoubleBuffered = true;
+
+            // 描画リソースの事前初期化
+            _bgBrush = new SolidBrush(Color.FromArgb(160, 0, 0, 0));
+            _borderPen = new Pen(Color.DodgerBlue, 2);
+            _markFont = new Font("MS UI Gothic", 16, FontStyle.Bold);
+            _nameFont = new Font("Meiryo", 12, FontStyle.Bold);
 
             _fadeTimer = new Timer { Interval = 16 };
             _fadeTimer.Tick += FadeTimer_Tick;
@@ -96,33 +108,20 @@ namespace UsbInputMapper.UI
                 e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
                 Rectangle rect = new Rectangle(0, 0, this.Width, this.Height);
-                using (Brush bgBrush = new SolidBrush(Color.FromArgb(160, 0, 0, 0)))
-                {
-                    e.Graphics.FillRectangle(bgBrush, rect);
-                }
-                
-                using (Pen borderPen = new Pen(Color.DodgerBlue, 2))
-                {
-                    e.Graphics.DrawRectangle(borderPen, 1, 1, this.Width - 2, this.Height - 2);
-                }
+                e.Graphics.FillRectangle(_bgBrush, rect);
+                e.Graphics.DrawRectangle(_borderPen, 1, 1, this.Width - 2, this.Height - 2);
 
                 int textX = 10;
                 
                 if (_profile.OverlayShowMark)
                 {
-                    using (Font markFont = new Font("MS UI Gothic", 16, FontStyle.Bold))
-                    {
-                        e.Graphics.DrawString("🎮", markFont, Brushes.White, textX, 15);
-                    }
+                    e.Graphics.DrawString("🎮", _markFont, Brushes.White, textX, 15);
                     textX += 40;
                 }
 
                 if (_profile.OverlayShowName)
                 {
-                    using (Font nameFont = new Font("Meiryo", 12, FontStyle.Bold))
-                    {
-                        e.Graphics.DrawString($"Profile: {_profile.Name}", nameFont, Brushes.White, textX, 15);
-                    }
+                    e.Graphics.DrawString($"Profile: {_profile.Name}", _nameFont, Brushes.White, textX, 15);
                 }
             }
             catch { }
@@ -137,6 +136,10 @@ namespace UsbInputMapper.UI
                     _fadeTimer.Stop();
                     _fadeTimer.Dispose();
                 }
+                _bgBrush?.Dispose();
+                _borderPen?.Dispose();
+                _markFont?.Dispose();
+                _nameFont?.Dispose();
             }
             base.Dispose(disposing);
         }

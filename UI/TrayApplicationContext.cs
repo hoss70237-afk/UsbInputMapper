@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Linq;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UsbInputMapper.Core;
 using UsbInputMapper.Profiles;
 
@@ -17,6 +18,7 @@ namespace UsbInputMapper.UI
         private DirectInputManager _diManager;
         private RawInputManager _rawManager;
         private GlobalHookManager _hookManager;
+        private ForegroundAppWatcher _appWatcher; // ★ アクティブアプリ監視
         private ViGEmOutput _vigem;
         private OutputDispatcher _dispatcher;
         private MainForm _mainForm;
@@ -44,20 +46,26 @@ namespace UsbInputMapper.UI
 
                 _mainForm = new MainForm(_profileManager, _diManager);
 
-                // 2. イベントルーティングの設定
+                // 2. アクティブウィンドウ監視の開始（自動プロファイル切替）
+                _appWatcher = new ForegroundAppWatcher();
+                _appWatcher.OnForegroundAppChanged += (s, appPath) => {
+                    _profileManager.SwitchToAppProfile(appPath);
+                };
+                _appWatcher.Start();
+
+                // 3. イベントルーティングの設定
                 _rawManager.OnInputEvent += (s, e) => RouteToCaptureOrProcess(e);
                 _diManager.OnInputEvent += (s, e) => RouteToCaptureOrProcess(new InputEvent { 
                     Type = e.Type, Code = e.Code, Value = e.Value, IsDown = e.IsDown, DeviceIdentifier = e.DeviceIdentifier 
                 });
                 
-                // フックのブロックイベントもルーティングへ接続
                 _hookManager.OnBlockedInputFired += (s, e) => RouteToCaptureOrProcess(new InputEvent { 
                     Type = e.Type, Code = e.Code, IsDown = e.IsDown, X = e.X, Y = e.Y, Timestamp = e.Timestamp 
                 });
 
                 _profileManager.OnProfileChanged += ProfileManager_OnProfileChanged;
 
-                // 3. タスクトレイアイコンの設定
+                // 4. タスクトレイアイコンの設定
                 var menu = new ContextMenuStrip();
                 var mnuOpen = new ToolStripMenuItem("設定を開く");
                 mnuOpen.Click += (s, e) => ShowMainForm();
@@ -96,7 +104,6 @@ namespace UsbInputMapper.UI
 
         private void RouteToCaptureOrProcess(InputEvent e)
         {
-            // 入力待機画面（CaptureForm）が開いている場合はそちらへ優先転送
             if (CaptureForm.IsCapturing && CaptureForm.CurrentInstance != null)
             {
                 CaptureForm.CurrentInstance.ProcessInput(e);
@@ -123,17 +130,32 @@ namespace UsbInputMapper.UI
                 _hookManager.ChatteringThresholdMs = _profileManager.GlobalConfig.ChatteringThresholdMs;
             }
 
-            // フックのブロックリストを更新 (オリジナル入力のブロック)
+            // フックのブロックリストを更新
             var blockList = new HashSet<long>();
             foreach (var b in profile.Bindings.Where(x => x.BlockOriginalInput))
             {
-                if (b.InputType == 0 || b.InputType == 1 || b.InputType == 5) // マウス, キーボード, ベゼル
+                if (b.InputType == 0 || b.InputType == 1 || b.InputType == 5)
                 {
                     long key = ((long)b.InputType << 32) | (uint)b.InputCode;
                     blockList.Add(key);
                 }
             }
             _hookManager.SetBlockList(blockList);
+
+            // ★ OSDオーバーレイ表示の実行
+            if (profile.OverlayShowMark || profile.OverlayShowName)
+            {
+                Task.Run(() => {
+                    try
+                    {
+                        using (var overlay = new ProfileOverlayForm(profile))
+                        {
+                            Application.Run(overlay);
+                        }
+                    }
+                    catch { }
+                });
+            }
         }
 
         private void ProcessInput(InputEvent e)
@@ -143,7 +165,7 @@ namespace UsbInputMapper.UI
             var profile = _profileManager.CurrentActiveProfile;
             if (profile == null) return;
 
-            // コントローラーベース設定の評価 (XInput有効時)
+            // コントローラーベース設定 (XInput有効時)
             if (profile.EnableXInput && (e.Type == 10 || e.Type == 11 || e.Type == 12))
             {
                 foreach (var b in _profileManager.ControllerBaseBindings)
@@ -168,15 +190,13 @@ namespace UsbInputMapper.UI
                 }
             }
 
-            // プロファイル固有バインディングの評価
+            // プロファイル固有バインディング
             foreach (var b in profile.Bindings)
             {
-                // レイヤー判定
                 if (b.RequiredLayer != 0 && b.RequiredLayer != LayerManager.CurrentLayer) continue;
 
                 if (b.InputType == e.Type && b.InputCode == e.Code)
                 {
-                    // ★ ラジアルメニュー起動の特殊処理
                     if (b.Action.ActionType == ActionType.RadialMenu)
                     {
                         if (e.IsDown)
@@ -210,7 +230,6 @@ namespace UsbInputMapper.UI
                         continue;
                     }
 
-                    // 通常トリガー処理
                     if (b.Condition == TriggerCondition.Normal)
                     {
                         OutputDispatcher.Instance?.Dispatch(b.Action, e.IsDown);
@@ -247,6 +266,7 @@ namespace UsbInputMapper.UI
             OutputDispatcher.Instance?.ReleaseAllInputs(); 
             HidHideManager.EnableHiding(false); 
             
+            _appWatcher?.Dispose();
             _hookManager?.Dispose();
             _diManager?.Dispose();
             _rawManager?.Dispose();

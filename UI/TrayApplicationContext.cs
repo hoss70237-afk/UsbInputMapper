@@ -18,13 +18,14 @@ namespace UsbInputMapper.UI
         private DirectInputManager _diManager;
         private RawInputManager _rawManager;
         private GlobalHookManager _hookManager;
-        private ForegroundAppWatcher _appWatcher; // ★ アクティブアプリ監視
+        private ForegroundAppWatcher _appWatcher;
         private ViGEmOutput _vigem;
         private OutputDispatcher _dispatcher;
         private MainForm _mainForm;
 
         // ラジアルメニューHUD管理
         private RadialMenuHudForm _activeRadialHud = null;
+        private ActionDef _activeRadialAction = null;
 
         public TrayApplicationContext()
         {
@@ -118,7 +119,6 @@ namespace UsbInputMapper.UI
             var profile = _profileManager.CurrentActiveProfile;
             if (profile == null) return;
 
-            // フックのチャタリングキャンセラー設定の同期
             if (profile.OverrideGlobalChattering)
             {
                 _hookManager.EnableChatteringCanceler = profile.EnableChatteringCanceler;
@@ -130,7 +130,6 @@ namespace UsbInputMapper.UI
                 _hookManager.ChatteringThresholdMs = _profileManager.GlobalConfig.ChatteringThresholdMs;
             }
 
-            // フックのブロックリストを更新
             var blockList = new HashSet<long>();
             foreach (var b in profile.Bindings.Where(x => x.BlockOriginalInput))
             {
@@ -142,7 +141,6 @@ namespace UsbInputMapper.UI
             }
             _hookManager.SetBlockList(blockList);
 
-            // ★ OSDオーバーレイ表示の実行
             if (profile.OverlayShowMark || profile.OverlayShowName)
             {
                 Task.Run(() => {
@@ -160,12 +158,12 @@ namespace UsbInputMapper.UI
 
         private void ProcessInput(InputEvent e)
         {
-            if (_hookManager.IsRecording || _hookManager.IsCoordinateCapturing || _hookManager.IsRadialMenuClickCapturing) return;
+            if (_hookManager.IsRecording || _hookManager.IsCoordinateCapturing) return;
 
             var profile = _profileManager.CurrentActiveProfile;
             if (profile == null) return;
 
-            // コントローラーベース設定 (XInput有効時)
+            // コントローラーベース設定
             if (profile.EnableXInput && (e.Type == 10 || e.Type == 11 || e.Type == 12))
             {
                 foreach (var b in _profileManager.ControllerBaseBindings)
@@ -197,33 +195,37 @@ namespace UsbInputMapper.UI
 
                 if (b.InputType == e.Type && b.InputCode == e.Code)
                 {
+                    // ★ ラジアルメニュー発火処理（UIスレッド安全化 ＆ モード分岐）
                     if (b.Action.ActionType == ActionType.RadialMenu)
                     {
-                        if (e.IsDown)
+                        int mode = b.Action.RadialMenuMode; // 0: 離して確定, 1: クリック確定
+
+                        if (mode == 0) // 離して確定モード
                         {
-                            if (_activeRadialHud == null)
+                            if (e.IsDown)
                             {
-                                _activeRadialHud = new RadialMenuHudForm(b.Action);
-                                _activeRadialHud.Show();
+                                ShowRadialHudUI(b.Action);
+                            }
+                            else
+                            {
+                                ExecuteAndCloseRadialHudUI();
                             }
                         }
-                        else
+                        else // クリック確定モード
                         {
-                            if (_activeRadialHud != null)
+                            if (e.IsDown)
                             {
-                                int selectedIdx = _activeRadialHud.SelectedDirectionIndex;
-                                _activeRadialHud.Close();
-                                _activeRadialHud.Dispose();
-                                _activeRadialHud = null;
-
-                                if (selectedIdx >= 0 && selectedIdx < b.Action.RadialMenuDirections.Count)
+                                if (_activeRadialHud == null)
                                 {
-                                    var dirAction = b.Action.RadialMenuDirections[selectedIdx].Action;
-                                    if (dirAction != null && dirAction.ActionType != ActionType.None)
-                                    {
-                                        OutputDispatcher.Instance?.Dispatch(dirAction, true);
-                                        OutputDispatcher.Instance?.Dispatch(dirAction, false);
-                                    }
+                                    ShowRadialHudUI(b.Action);
+                                    _hookManager.IsRadialMenuClickCapturing = true;
+                                    _hookManager.OnRadialMenuClickCaptured = () => {
+                                        ExecuteAndCloseRadialHudUI();
+                                    };
+                                }
+                                else
+                                {
+                                    CloseRadialHudUI();
                                 }
                             }
                         }
@@ -240,6 +242,65 @@ namespace UsbInputMapper.UI
                     }
                 }
             }
+        }
+
+        private void ShowRadialHudUI(ActionDef action)
+        {
+            if (_mainForm == null || _mainForm.IsDisposed) return;
+
+            _mainForm.BeginInvoke(new Action(() => {
+                if (_activeRadialHud != null)
+                {
+                    _activeRadialHud.Close();
+                    _activeRadialHud.Dispose();
+                }
+                _activeRadialAction = action;
+                _activeRadialHud = new RadialMenuHudForm(action);
+                _activeRadialHud.Show();
+            }));
+        }
+
+        private void ExecuteAndCloseRadialHudUI()
+        {
+            if (_mainForm == null || _mainForm.IsDisposed) return;
+
+            _mainForm.BeginInvoke(new Action(() => {
+                if (_activeRadialHud != null && _activeRadialAction != null)
+                {
+                    int selectedIdx = _activeRadialHud.SelectedDirectionIndex;
+                    _activeRadialHud.Close();
+                    _activeRadialHud.Dispose();
+                    _activeRadialHud = null;
+
+                    if (selectedIdx >= 0 && selectedIdx < _activeRadialAction.RadialMenuDirections.Count)
+                    {
+                        var dirAction = _activeRadialAction.RadialMenuDirections[selectedIdx].Action;
+                        if (dirAction != null && dirAction.ActionType != ActionType.None)
+                        {
+                            OutputDispatcher.Instance?.Dispatch(dirAction, true);
+                            OutputDispatcher.Instance?.Dispatch(dirAction, false);
+                        }
+                    }
+                    _activeRadialAction = null;
+                }
+                _hookManager.IsRadialMenuClickCapturing = false;
+            }));
+        }
+
+        private void CloseRadialHudUI()
+        {
+            if (_mainForm == null || _mainForm.IsDisposed) return;
+
+            _mainForm.BeginInvoke(new Action(() => {
+                if (_activeRadialHud != null)
+                {
+                    _activeRadialHud.Close();
+                    _activeRadialHud.Dispose();
+                    _activeRadialHud = null;
+                }
+                _activeRadialAction = null;
+                _hookManager.IsRadialMenuClickCapturing = false;
+            }));
         }
 
         public void ShowMainForm()

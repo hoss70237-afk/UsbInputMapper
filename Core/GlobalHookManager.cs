@@ -1,3 +1,4 @@
+// FILE: Core/GlobalHookManager.cs
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -157,7 +158,7 @@ namespace UsbInputMapper.Core
                     int vkCode = (int)kb.vkCode;
                     long now = (long)GetTickCount64();
                     
-                    if (IsRecording) OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now });
+                    if (IsRecording && !isInjected) OnRecordedInput?.Invoke(this, new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now });
                     
                     if (!isInjected)
                     {
@@ -169,6 +170,9 @@ namespace UsbInputMapper.Core
                             return (IntPtr)1; 
                         }
                     }
+                    
+                    // ★追加: Windowsに到達する(ブロックされなかった)入力をロギング
+                    InputLogger.LogDiagnostic(new DiagnosticEvent { IsPhysical = false, Timestamp = now, Type = 1, Code = vkCode, IsDown = isDown });
                 }
             }
             catch { }
@@ -236,6 +240,12 @@ namespace UsbInputMapper.Core
                                 return (IntPtr)1; 
                             }
                         }
+                    }
+                    
+                    if (code != -1)
+                    {
+                        // ★追加: Windowsに到達する(ブロックされなかった)入力をロギング
+                        InputLogger.LogDiagnostic(new DiagnosticEvent { IsPhysical = false, Timestamp = now, Type = 0, Code = code, IsDown = isDown });
                     }
                 }
             }

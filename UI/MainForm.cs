@@ -1,3 +1,4 @@
+// FILE: UI/MainForm.cs
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -27,6 +28,7 @@ namespace UsbInputMapper.UI
 
             lstBindings.SelectionMode = SelectionMode.MultiExtended;
             SetupContextMenu();
+            LoadGlobalSettings();
             LoadProfiles();
 
             using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey, false))
@@ -38,6 +40,14 @@ namespace UsbInputMapper.UI
             
             _monitorTimer = new Timer { Interval = 100 };
             _monitorTimer.Tick += MonitorTimer_Tick;
+        }
+
+        private void LoadGlobalSettings()
+        {
+            chkGlobalChattering.Checked = _profileManager.GlobalConfig.EnableChatteringCanceler;
+            numGlobalChatterMs.Value = _profileManager.GlobalConfig.ChatteringThresholdMs;
+            numDoubleClick.Value = _profileManager.GlobalConfig.DoubleClickTimeMs;
+            numTripleClick.Value = _profileManager.GlobalConfig.TripleClickTimeMs;
         }
 
         private void LogMessage(string msg)
@@ -103,9 +113,6 @@ namespace UsbInputMapper.UI
             if (lstProfiles.SelectedItem is Profile p) 
             {
                 chkEnableXInput.Checked = p.EnableXInput;
-                chkChattering.Checked = p.EnableChatteringCanceler;
-                numChatterMs.Value = p.ChatteringThresholdMs;
-                
                 chkOverlayMark.Checked = p.OverlayShowMark;
                 chkOverlayName.Checked = p.OverlayShowName;
             }
@@ -113,11 +120,14 @@ namespace UsbInputMapper.UI
         }
 
         private void chkEnableXInput_CheckedChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.EnableXInput = chkEnableXInput.Checked; _profileManager.Save(); } }
-        private void chkChattering_CheckedChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.EnableChatteringCanceler = chkChattering.Checked; p.ChatteringThresholdMs = (int)numChatterMs.Value; _profileManager.Save(); } }
-        private void numChatterMs_ValueChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.ChatteringThresholdMs = (int)numChatterMs.Value; _profileManager.Save(); } }
         private void chkOverlayMark_CheckedChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.OverlayShowMark = chkOverlayMark.Checked; _profileManager.Save(); } }
         private void chkOverlayName_CheckedChanged(object sender, EventArgs e) { if (lstProfiles.SelectedItem is Profile p) { p.OverlayShowName = chkOverlayName.Checked; _profileManager.Save(); } }
 
+        // 基本設定のイベントハンドラ
+        private void chkGlobalChattering_CheckedChanged(object sender, EventArgs e) { _profileManager.GlobalConfig.EnableChatteringCanceler = chkGlobalChattering.Checked; _profileManager.Save(); }
+        private void numGlobalChatterMs_ValueChanged(object sender, EventArgs e) { _profileManager.GlobalConfig.ChatteringThresholdMs = (int)numGlobalChatterMs.Value; _profileManager.Save(); }
+        private void numDoubleClick_ValueChanged(object sender, EventArgs e) { _profileManager.GlobalConfig.DoubleClickTimeMs = (int)numDoubleClick.Value; _profileManager.Save(); }
+        private void numTripleClick_ValueChanged(object sender, EventArgs e) { _profileManager.GlobalConfig.TripleClickTimeMs = (int)numTripleClick.Value; _profileManager.Save(); }
         private void chkStartup_CheckedChanged(object sender, EventArgs e) { using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey, true)) { if (chkStartup.Checked) key.SetValue("UsbInputMapper", Application.ExecutablePath); else key.DeleteValue("UsbInputMapper", false); } }
         private void btnControllerBase_Click(object sender, EventArgs e) { using (var f = new ControllerBaseForm(_profileManager, _diManager)) { f.ShowDialog(this); } }
 
@@ -149,7 +159,6 @@ namespace UsbInputMapper.UI
                     newBinding.InputType = evt.Type;
                     newBinding.InputCode = (evt.Type == 1) ? evt.VKey : (int)evt.MouseButtonFlags;
                     
-                    // ★追加: 取得したキーの名前をデフォルトアイテム名にセット
                     newBinding.Name = UsbInputMapper.Profiles.Binding.GetCodeName(newBinding.InputType, newBinding.InputCode);
 
                     using (var ed = new BindingEditorForm(newBinding, _profileManager.Profiles.Select(x => x.Name).ToList()))

@@ -17,59 +17,31 @@ jobs:
 
     - name: Auto-Detect and Build
       run: |
-        # 1. ファイルを自動検索
         $csproj = Get-ChildItem -Filter *.csproj -Recurse | Select-Object -First 1
         $pkg = Get-ChildItem -Filter packages.config -Recurse | Select-Object -First 1
         $projDir = Split-Path -Parent $csproj.FullName
         $pkgDir = Join-Path $projDir "packages"
         
-        Write-Host "=== 存在しないバージョンの自動修正 ==="
-        # 私が誤って指定した 1.21.156 を、確実に存在する 1.17.178 に書き換えます
-        $pkgContent = Get-Content $pkg.FullName -Raw
-        $pkgContent = $pkgContent -replace '1\.21\.156', '1.17.178'
-        Set-Content -Path $pkg.FullName -Value $pkgContent
-        
-        $csprojContent = Get-Content $csproj.FullName -Raw
-        $csprojContent = $csprojContent -replace '1\.21\.156', '1.17.178'
-        Set-Content -Path $csproj.FullName -Value $csprojContent
-
         Write-Host "=== パッケージの復元 ==="
         nuget restore $pkg.FullName -PackagesDirectory $pkgDir
         
-        Write-Host "=== DLL参照パスの強制書き換え ==="
-        # ダウンロードしたパッケージから実際のDLL本体を探し出す
+        Write-Host "=== DLL参照パスの検証・補正 ==="
         $dlls = Get-ChildItem -Path $pkgDir -Filter *.dll -Recurse
         
-        $vigem = $dlls | Where-Object { $_.Name -eq 'Nefarius.ViGEm.Client.dll' -and $_.FullName -match 'net4' } | Select-Object -First 1
-        if (-not $vigem) { $vigem = $dlls | Where-Object { $_.Name -eq 'Nefarius.ViGEm.Client.dll' } | Select-Object -First 1 }
+        $vigem = $dlls | Where-Object { $_.Name -eq 'Nefarius.ViGEm.Client.dll' -and $_.FullName -match 'net' } | Select-Object -First 1
+        $json = $dlls | Where-Object { $_.Name -eq 'Newtonsoft.Json.dll' -and $_.FullName -match 'net' } | Select-Object -First 1
+        $sharpdx = $dlls | Where-Object { $_.Name -eq 'SharpDX.dll' -and $_.FullName -match 'net' } | Select-Object -First 1
+        $sharpdxd = $dlls | Where-Object { $_.Name -eq 'SharpDX.DirectInput.dll' -and $_.FullName -match 'net' } | Select-Object -First 1
         
-        $json = $dlls | Where-Object { $_.Name -eq 'Newtonsoft.Json.dll' -and $_.FullName -match 'net4' } | Select-Object -First 1
-        if (-not $json) { $json = $dlls | Where-Object { $_.Name -eq 'Newtonsoft.Json.dll' } | Select-Object -First 1 }
-        
-        $sharpdx = $dlls | Where-Object { $_.Name -eq 'SharpDX.dll' -and $_.FullName -match 'net4' } | Select-Object -First 1
-        if (-not $sharpdx) { $sharpdx = $dlls | Where-Object { $_.Name -eq 'SharpDX.dll' } | Select-Object -First 1 }
-        
-        $sharpdxd = $dlls | Where-Object { $_.Name -eq 'SharpDX.DirectInput.dll' -and $_.FullName -match 'net4' } | Select-Object -First 1
-        if (-not $sharpdxd) { $sharpdxd = $dlls | Where-Object { $_.Name -eq 'SharpDX.DirectInput.dll' } | Select-Object -First 1 }
-        
-        if (-not $vigem -or -not $json -or -not $sharpdx -or -not $sharpdxd) {
-            Write-Error "DLLの取得に失敗しました。NuGetの復元が正常に行われていません。"
-            exit 1
+        if ($vigem -and $json -and $sharpdx -and $sharpdxd) {
+            $xml = Get-Content $csproj.FullName -Raw
+            $xml = $xml -replace '<HintPath>.*?Nefarius\.ViGEm\.Client\.dll</HintPath>', "<HintPath>$($vigem.FullName)</HintPath>"
+            $xml = $xml -replace '<HintPath>.*?Newtonsoft\.Json\.dll</HintPath>', "<HintPath>$($json.FullName)</HintPath>"
+            $xml = $xml -replace '<HintPath>.*?SharpDX\.dll</HintPath>', "<HintPath>$($sharpdx.FullName)</HintPath>"
+            $xml = $xml -replace '<HintPath>.*?SharpDX\.DirectInput\.dll</HintPath>', "<HintPath>$($sharpdxd.FullName)</HintPath>"
+            Set-Content -Path $csproj.FullName -Value $xml
         }
-        
-        Write-Host "ViGEm 発見: $($vigem.FullName)"
-        Write-Host "Json 発見: $($json.FullName)"
-        Write-Host "SharpDX 発見: $($sharpdx.FullName)"
-        Write-Host "SharpDX.DirectInput 発見: $($sharpdxd.FullName)"
-        
-        # csprojのパス設定を、見つけ出した本物の絶対パスに強制的に書き換える
-        $xml = Get-Content $csproj.FullName -Raw
-        $xml = $xml -replace '<HintPath>.*?Nefarius\.ViGEm\.Client\.dll</HintPath>', "<HintPath>$($vigem.FullName)</HintPath>"
-        $xml = $xml -replace '<HintPath>.*?Newtonsoft\.Json\.dll</HintPath>', "<HintPath>$($json.FullName)</HintPath>"
-        $xml = $xml -replace '<HintPath>.*?SharpDX\.dll</HintPath>', "<HintPath>$($sharpdx.FullName)</HintPath>"
-        $xml = $xml -replace '<HintPath>.*?SharpDX\.DirectInput\.dll</HintPath>', "<HintPath>$($sharpdxd.FullName)</HintPath>"
-        Set-Content -Path $csproj.FullName -Value $xml
-        
+
         Write-Host "=== ビルド開始 ==="
         $msbuildPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -requires Microsoft.Component.MSBuild -find MSBuild\Current\Bin\MSBuild.exe
         

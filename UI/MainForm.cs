@@ -12,7 +12,7 @@ namespace UsbInputMapper.UI
 {
     public partial class MainForm : Form
     {
-        public static MainForm Instance { get; private set; } // ★追加: 確実なフォーム参照用
+        public static MainForm Instance { get; private set; }
 
         private readonly ProfileManager _profileManager;
         private readonly DirectInputManager _diManager;
@@ -27,7 +27,7 @@ namespace UsbInputMapper.UI
 
         public MainForm(ProfileManager profileManager, DirectInputManager diManager)
         {
-            Instance = this; // ★自身の参照を保存
+            Instance = this;
             
             InitializeComponent();
             _profileManager = profileManager;
@@ -372,7 +372,13 @@ namespace UsbInputMapper.UI
                 }
                 else if (res == DialogResult.Retry) 
                 {
-                    using (var geForm = new RadialMenuSetupForm(null, _profileManager.Profiles.Select(x => x.Name).ToList())) { if (geForm.ShowDialog(this) == DialogResult.OK) { p.Bindings.Add(geForm.ResultBinding); _profileManager.Save(); RefreshBindings(); } }
+                    using (var geForm = new RadialMenuSetupForm(null, _profileManager.Profiles.Select(x => x.Name).ToList())) { 
+                        if (geForm.ShowDialog(this) == DialogResult.OK) { 
+                            p.Bindings.Add(geForm.ResultBinding); 
+                            _profileManager.Save(); 
+                            RefreshBindings(); 
+                        } 
+                    }
                 }
             }
         }
@@ -381,8 +387,24 @@ namespace UsbInputMapper.UI
         { 
             if (lvwBindings.SelectedItems.Count > 0 && lvwBindings.SelectedItems[0].Tag is UsbInputMapper.Profiles.Binding b) 
             { 
-                if (b.InputType == 4 || b.InputType == 5 || b.Action.ActionType == ActionType.RadialMenu) { using (var geForm = new RadialMenuSetupForm(b, _profileManager.Profiles.Select(x => x.Name).ToList())) { if (geForm.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshBindings(); } } }
-                else { using (var ed = new BindingEditorForm(b, _profileManager.Profiles.Select(x => x.Name).ToList())) { if (ed.ShowDialog(this) == DialogResult.OK) { _profileManager.Save(); RefreshBindings(); } } }
+                if (b.InputType == 5 || b.Action.ActionType == ActionType.RadialMenu) 
+                { 
+                    using (var geForm = new RadialMenuSetupForm(b, _profileManager.Profiles.Select(x => x.Name).ToList())) { 
+                        if (geForm.ShowDialog(this) == DialogResult.OK) { 
+                            _profileManager.Save(); 
+                            RefreshBindings(); 
+                        } 
+                    } 
+                }
+                else 
+                { 
+                    using (var ed = new BindingEditorForm(b, _profileManager.Profiles.Select(x => x.Name).ToList())) { 
+                        if (ed.ShowDialog(this) == DialogResult.OK) { 
+                            _profileManager.Save(); 
+                            RefreshBindings(); 
+                        } 
+                    } 
+                }
             } 
         }
 

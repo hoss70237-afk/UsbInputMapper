@@ -19,7 +19,6 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Button btnUpProfile;
         private System.Windows.Forms.Button btnDownProfile;
         
-        // ★ エクスポート/インポート用ボタン
         private System.Windows.Forms.Button btnExportProfile;
         private System.Windows.Forms.Button btnImportProfile;
 
@@ -50,7 +49,11 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Label lblChatterCount; 
         private System.Windows.Forms.Button btnResetChatter; 
 
-        protected override void Dispose(bool disposing) { if (disposing && (components != null)) components.Dispose(); base.Dispose(disposing); }
+        protected override void Dispose(bool disposing) 
+        { 
+            if (disposing && (components != null)) components.Dispose(); 
+            base.Dispose(disposing); 
+        }
 
         private void InitializeComponent()
         {

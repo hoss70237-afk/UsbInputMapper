@@ -8,7 +8,7 @@ namespace UsbInputMapper.UI
 {
     public class RadialMenuSetupForm : Form
     {
-        public UsbInputMapper.Profiles
+        public UsbInputMapper.Profiles.Binding ResultBinding { get; private set; }
         private List<string> _profileNames;
 
         private TabControl _tabs;

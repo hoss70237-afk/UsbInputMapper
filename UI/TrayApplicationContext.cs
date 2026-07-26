@@ -42,15 +42,15 @@ namespace UsbInputMapper.UI
 
         public void ShowMainForm()
         {
-            // 静的インスタンスを利用して確実にアクセス
-            if (MainForm.Instance != null)
+            // 基底クラスのプロパティ(Form MainForm)との名前衝突を避けるため、フルパスでクラスを指定
+            if (UsbInputMapper.UI.MainForm.Instance != null)
             {
-                MainForm.Instance.Show();
-                if (MainForm.Instance.WindowState == FormWindowState.Minimized)
+                UsbInputMapper.UI.MainForm.Instance.Show();
+                if (UsbInputMapper.UI.MainForm.Instance.WindowState == FormWindowState.Minimized)
                 {
-                    MainForm.Instance.WindowState = FormWindowState.Normal;
+                    UsbInputMapper.UI.MainForm.Instance.WindowState = FormWindowState.Normal;
                 }
-                MainForm.Instance.Activate();
+                UsbInputMapper.UI.MainForm.Instance.Activate();
             }
         }
 

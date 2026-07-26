@@ -33,7 +33,6 @@ namespace UsbInputMapper.UI
         {
             _actionDef = actionDef;
 
-            // ★ 描画のチラつき・点滅防止スタイル
             this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
             this.UpdateStyles();
 
@@ -68,10 +67,9 @@ namespace UsbInputMapper.UI
             _drawTimer.Start();
         }
 
-        // ★ 背景消去時のマゼンタ色チラつきを完全に無効化
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            // 何もしない（チラつき・点滅防止）
+            // チラつき防止のためデフォルト処理は行わない
         }
 
         private void UpdateSelection(object sender, EventArgs e)
@@ -120,6 +118,9 @@ namespace UsbInputMapper.UI
             
             try
             {
+                // ★ 透過キー色(Magenta)で背景バッファをクリアし、黒枠・黒四角化を確実に防止
+                e.Graphics.Clear(this.TransparencyKey);
+
                 e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
                 int slices = _actionDef.RadialMenuSlices;

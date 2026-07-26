@@ -44,7 +44,6 @@ namespace UsbInputMapper.Core
         private const uint SPI_SETWHEELSCROLLCHARS = 0x006D;
         private const uint SPI_SETCURSORS = 0x0057;
 
-        private const uint SPIF_UPDATEINIFILE = 0x01;
         private const uint SPIF_SENDCHANGE = 0x02;
         
         private const uint WHEEL_PAGESCROLL = unchecked((uint)-1);
@@ -171,22 +170,26 @@ namespace UsbInputMapper.Core
         {
             lock (_lockObj)
             {
-                if (_isSpeedModified)
+                try
                 {
-                    SystemParametersInfo(SPI_SETMOUSESPEED, 0, (IntPtr)_originalSpeed, SPIF_SENDCHANGE);
-                    _isSpeedModified = false;
+                    if (_isSpeedModified)
+                    {
+                        SystemParametersInfo(SPI_SETMOUSESPEED, 0, (IntPtr)_originalSpeed, SPIF_SENDCHANGE);
+                        _isSpeedModified = false;
+                    }
+                    if (_isScrollLinesModified)
+                    {
+                        SystemParametersInfo(SPI_SETWHEELSCROLLLINES, _originalScrollLines, IntPtr.Zero, SPIF_SENDCHANGE);
+                        _isScrollLinesModified = false;
+                    }
+                    if (_isScrollCharsModified)
+                    {
+                        SystemParametersInfo(SPI_SETWHEELSCROLLCHARS, _originalScrollChars, IntPtr.Zero, SPIF_SENDCHANGE);
+                        _isScrollCharsModified = false;
+                    }
+                    if (IsCursorHidden) ShowCursor();
                 }
-                if (_isScrollLinesModified)
-                {
-                    SystemParametersInfo(SPI_SETWHEELSCROLLLINES, _originalScrollLines, IntPtr.Zero, SPIF_SENDCHANGE);
-                    _isScrollLinesModified = false;
-                }
-                if (_isScrollCharsModified)
-                {
-                    SystemParametersInfo(SPI_SETWHEELSCROLLCHARS, _originalScrollChars, IntPtr.Zero, SPIF_SENDCHANGE);
-                    _isScrollCharsModified = false;
-                }
-                if (IsCursorHidden) ShowCursor();
+                catch { }
             }
         }
     }

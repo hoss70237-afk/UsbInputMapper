@@ -201,7 +201,6 @@ namespace UsbInputMapper.Profiles
         {
             SystemMouseManager.RestoreAllSafely();
             
-            // HidHide連携 (二重入力防止)
             if (profile.EnableXInput)
             {
                 HidHideManager.WhitelistCurrentProcess();
@@ -212,7 +211,6 @@ namespace UsbInputMapper.Profiles
                 HidHideManager.EnableHiding(false);
             }
 
-            // 音声・サウンド通知
             if (profile.NotifyProfileChangeBeep)
             {
                 Task.Run(() => System.Media.SystemSounds.Beep.Play());
@@ -228,12 +226,13 @@ namespace UsbInputMapper.Profiles
             Task.Run(() => {
                 try
                 {
-                    // 参照欠落時に落ちないようリフレクションを使用
+                    // リフレクションを用いてdynamicキーワードを使用せずにメソッドを呼び出し、コンパイルエラーを回避する
                     Type synthType = Type.GetType("System.Speech.Synthesis.SpeechSynthesizer, System.Speech, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35");
                     if (synthType != null)
                     {
-                        dynamic synth = Activator.CreateInstance(synthType);
-                        synth.Speak(text);
+                        object synth = Activator.CreateInstance(synthType);
+                        var speakMethod = synthType.GetMethod("Speak", new[] { typeof(string) });
+                        speakMethod?.Invoke(synth, new object[] { text });
                     }
                 }
                 catch (Exception ex)

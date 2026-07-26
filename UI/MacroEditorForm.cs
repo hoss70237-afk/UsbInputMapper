@@ -28,7 +28,6 @@ namespace UsbInputMapper.UI
         private int _dragStartDelay = 0;
         private int _scrollX = 0; 
 
-        // 追加: 移動平滑化ボタン
         private Button btnSimplify;
 
         public MacroEditorForm(ActionDef action, List<string> profileNames = null)
@@ -54,7 +53,7 @@ namespace UsbInputMapper.UI
 
             cmbPressState.SelectedIndex = 0;
             cmbRecordMode.SelectedIndex = 0;
-            numTimeout.Value = _action.StepTimeoutMs;
+            numTimeout.Value = Math.Max(100, _action.StepTimeoutMs);
 
             cmbPlaybackMode.SelectedIndex = (int)_action.PlaybackMode;
 
@@ -68,7 +67,6 @@ namespace UsbInputMapper.UI
             
             hScrollBarTimeline.Scroll += (s, e) => { _scrollX = hScrollBarTimeline.Value; pnlTimeline.Invalidate(); };
 
-            // マウス移動の平滑化ボタンの追加
             btnSimplify = new Button { Text = "マウス移動の平滑化", Location = new Point(490, 190), Size = new Size(80, 40) };
             btnSimplify.Click += BtnSimplify_Click;
             this.Controls.Add(btnSimplify);
@@ -97,10 +95,9 @@ namespace UsbInputMapper.UI
                     }
                     else
                     {
-                        // 前の移動との距離が短すぎる場合はスキップ（間引き）
                         int dx = step.MouseX - lastMove.MouseX;
                         int dy = step.MouseY - lastMove.MouseY;
-                        if (Math.Sqrt(dx * dx + dy * dy) < 15) // 15px以下の移動は統合
+                        if (Math.Sqrt(dx * dx + dy * dy) < 15)
                         {
                             lastMove.DelayMs += step.DelayMs;
                             lastMove.MouseX = step.MouseX;
@@ -115,7 +112,7 @@ namespace UsbInputMapper.UI
                 }
                 else
                 {
-                    lastMove = null; // 移動以外の操作が挟まったらリセット
+                    lastMove = null;
                     newSteps.Add(step);
                 }
             }
@@ -123,7 +120,7 @@ namespace UsbInputMapper.UI
             int removed = _action.MacroSteps.Count - newSteps.Count;
             _action.MacroSteps = newSteps;
             RefreshMacroList();
-            MessageBox.Show($"不要なマウス移動パスを {removed} 件削除しました。", "最適化完了");
+            MessageBox.Show($"不要なマウス移動パスを {removed} 件統合・削除しました。", "最適化完了");
         }
 
         private void AttachPropertyEvents()
@@ -308,7 +305,18 @@ namespace UsbInputMapper.UI
         {
             if (GlobalHookManager.Instance == null) return;
             if (chkRecord.Checked) { chkRecord.Text = "レコーディング停止"; _lastRecordTime = Environment.TickCount; GlobalHookManager.Instance.OnRecordedInput += Hook_OnRecordedInput; GlobalHookManager.Instance.IsRecording = true; }
-            else { chkRecord.Text = "レコーディング開始"; GlobalHookManager.Instance.IsRecording = false; GlobalHookManager.Instance.OnRecordedInput -= Hook_OnRecordedInput; RefreshMacroList(_action.MacroSteps.Count - 1); }
+            else { StopRecording(); }
+        }
+
+        private void StopRecording()
+        {
+            chkRecord.Text = "レコーディング開始";
+            if (GlobalHookManager.Instance != null)
+            {
+                GlobalHookManager.Instance.IsRecording = false;
+                GlobalHookManager.Instance.OnRecordedInput -= Hook_OnRecordedInput;
+            }
+            RefreshMacroList(_action.MacroSteps.Count - 1);
         }
 
         private void Hook_OnRecordedInput(object sender, GlobalHookManager.HookInputEvent e)
@@ -326,9 +334,9 @@ namespace UsbInputMapper.UI
             }
             else
             {
-                if (e.IsDown || (e.Type == 0 && e.Code == -1)) // Click or MouseMove
+                if (e.IsDown || (e.Type == 0 && e.Code == -1))
                 {
-                    if (e.Code == -1 && e.IsDown == false) // 便宜上 Code=-1をMouseMoveとして扱う
+                    if (e.Code == -1 && e.IsDown == false)
                     {
                         var moveStep = new MacroStep { UseDelay = true, DelayMs = delay, PressState = StepPressState.Tap, ActionType = ActionType.MouseMoveAbsoluteHoverWin, MouseX = e.X, MouseY = e.Y };
                         _action.MacroSteps.Add(moveStep);
@@ -513,7 +521,17 @@ namespace UsbInputMapper.UI
             }
         }
 
-        private void MacroEditorForm_FormClosed(object sender, FormClosedEventArgs e) { if (GlobalHookManager.Instance != null) { GlobalHookManager.Instance.IsRecording = false; GlobalHookManager.Instance.OnRecordedInput -= Hook_OnRecordedInput; } }
-        private void btnOK_Click(object sender, EventArgs e) { _action.PlaybackMode = (MacroPlaybackMode)cmbPlaybackMode.SelectedIndex; _action.StepTimeoutMs = (int)numTimeout.Value; this.DialogResult = DialogResult.OK; this.Close(); }
+        private void MacroEditorForm_FormClosed(object sender, FormClosedEventArgs e) 
+        { 
+            StopRecording();
+        }
+
+        private void btnOK_Click(object sender, EventArgs e) 
+        { 
+            _action.PlaybackMode = (MacroPlaybackMode)cmbPlaybackMode.SelectedIndex; 
+            _action.StepTimeoutMs = (int)numTimeout.Value; 
+            this.DialogResult = DialogResult.OK; 
+            this.Close(); 
+        }
     }
 }

@@ -14,7 +14,14 @@ namespace UsbInputMapper.UI
         private System.Windows.Forms.Label lblStatus;
         private System.Windows.Forms.Label lblTargetPicker;
         private System.Windows.Forms.Label lblTargetDesc;
-        private System.Windows.Forms.CheckBox chkNotifyVibration; // ★追加
+        private System.Windows.Forms.CheckBox chkNotifyVibration;
+        
+        // 個別チャタリング設定用
+        private System.Windows.Forms.GroupBox grpChatter;
+        private System.Windows.Forms.CheckBox chkOverrideGlobalChattering;
+        private System.Windows.Forms.CheckBox chkEnableChatteringCanceler;
+        private System.Windows.Forms.NumericUpDown numChatteringThresholdMs;
+        private System.Windows.Forms.Label lblChatterMs;
 
         protected override void Dispose(bool disposing) { if (disposing && (components != null)) components.Dispose(); base.Dispose(disposing); }
 
@@ -32,6 +39,15 @@ namespace UsbInputMapper.UI
             this.lblTargetPicker = new System.Windows.Forms.Label();
             this.lblTargetDesc = new System.Windows.Forms.Label();
             this.chkNotifyVibration = new System.Windows.Forms.CheckBox();
+            
+            this.grpChatter = new System.Windows.Forms.GroupBox();
+            this.chkOverrideGlobalChattering = new System.Windows.Forms.CheckBox();
+            this.chkEnableChatteringCanceler = new System.Windows.Forms.CheckBox();
+            this.numChatteringThresholdMs = new System.Windows.Forms.NumericUpDown();
+            this.lblChatterMs = new System.Windows.Forms.Label();
+            
+            this.grpChatter.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numChatteringThresholdMs)).BeginInit();
             this.SuspendLayout();
             
             this.label1.AutoSize = true; this.label1.Location = new System.Drawing.Point(12, 15); this.label1.Text = "プロファイル名:";
@@ -44,16 +60,48 @@ namespace UsbInputMapper.UI
             this.lblTargetPicker.AutoSize = true; this.lblTargetPicker.Font = new System.Drawing.Font("MS UI Gothic", 24F); this.lblTargetPicker.ForeColor = System.Drawing.Color.DodgerBlue; this.lblTargetPicker.Location = new System.Drawing.Point(293, 122); this.lblTargetPicker.Text = "◎"; this.lblTargetPicker.Cursor = System.Windows.Forms.Cursors.Hand;
             this.lblTargetDesc.AutoSize = true; this.lblTargetDesc.Font = new System.Drawing.Font("MS UI Gothic", 8.25F); this.lblTargetDesc.ForeColor = System.Drawing.SystemColors.ControlDarkDark; this.lblTargetDesc.Location = new System.Drawing.Point(12, 154); this.lblTargetDesc.Text = "※◎アイコンを起動中のゲーム画面にドラッグすると自動登録";
             
-            this.chkNotifyVibration.AutoSize = true; this.chkNotifyVibration.Location = new System.Drawing.Point(14, 168); this.chkNotifyVibration.Text = "このプロファイルに切り替わった時、コントローラーを振動させる";
+            this.chkNotifyVibration.AutoSize = true; this.chkNotifyVibration.Location = new System.Drawing.Point(14, 175); this.chkNotifyVibration.Text = "このプロファイルに切り替わった時、コントローラーを振動させる";
 
-            this.btnOK.Location = new System.Drawing.Point(196, 188); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "OK"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
-            this.btnCancel.Location = new System.Drawing.Point(277, 188); this.btnCancel.Size = new System.Drawing.Size(75, 23); this.btnCancel.Text = "キャンセル"; this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
-            this.lblStatus.AutoSize = true; this.lblStatus.Location = new System.Drawing.Point(12, 193);
+            // チャタリング設定グループ
+            this.grpChatter.Location = new System.Drawing.Point(14, 200);
+            this.grpChatter.Size = new System.Drawing.Size(338, 70);
+            this.grpChatter.Text = "チャタリング設定";
             
-            this.ClientSize = new System.Drawing.Size(364, 221);
+            this.chkOverrideGlobalChattering.AutoSize = true;
+            this.chkOverrideGlobalChattering.Location = new System.Drawing.Point(15, 20);
+            this.chkOverrideGlobalChattering.Text = "基本設定を上書きして個別設定する";
+            this.chkOverrideGlobalChattering.CheckedChanged += new System.EventHandler(this.chkOverrideGlobalChattering_CheckedChanged);
+            
+            this.chkEnableChatteringCanceler.AutoSize = true;
+            this.chkEnableChatteringCanceler.Location = new System.Drawing.Point(15, 43);
+            this.chkEnableChatteringCanceler.Text = "防止有効化";
+            
+            this.lblChatterMs.AutoSize = true;
+            this.lblChatterMs.Location = new System.Drawing.Point(100, 44);
+            this.lblChatterMs.Text = "閾値(ms):";
+            
+            this.numChatteringThresholdMs.Location = new System.Drawing.Point(155, 42);
+            this.numChatteringThresholdMs.Maximum = 1000;
+            this.numChatteringThresholdMs.Size = new System.Drawing.Size(60, 19);
+            
+            this.grpChatter.Controls.Add(this.chkOverrideGlobalChattering);
+            this.grpChatter.Controls.Add(this.chkEnableChatteringCanceler);
+            this.grpChatter.Controls.Add(this.lblChatterMs);
+            this.grpChatter.Controls.Add(this.numChatteringThresholdMs);
+
+            this.btnOK.Location = new System.Drawing.Point(196, 280); this.btnOK.Size = new System.Drawing.Size(75, 23); this.btnOK.Text = "OK"; this.btnOK.Click += new System.EventHandler(this.btnOK_Click);
+            this.btnCancel.Location = new System.Drawing.Point(277, 280); this.btnCancel.Size = new System.Drawing.Size(75, 23); this.btnCancel.Text = "キャンセル"; this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
+            this.lblStatus.AutoSize = true; this.lblStatus.Location = new System.Drawing.Point(12, 285);
+            
+            this.ClientSize = new System.Drawing.Size(364, 311);
+            this.Controls.Add(this.grpChatter);
             this.Controls.Add(this.chkNotifyVibration);
             this.Controls.Add(this.lblTargetDesc); this.Controls.Add(this.lblTargetPicker); this.Controls.Add(this.lblStatus); this.Controls.Add(this.btnCancel); this.Controls.Add(this.btnOK); this.Controls.Add(this.btnRemoveApp); this.Controls.Add(this.btnAddApp); this.Controls.Add(this.lstApps); this.Controls.Add(this.label2); this.Controls.Add(this.txtName); this.Controls.Add(this.label1);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog; this.MaximizeBox = false; this.MinimizeBox = false; this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent; this.Text = "プロファイル編集";
+            
+            this.grpChatter.ResumeLayout(false);
+            this.grpChatter.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.numChatteringThresholdMs)).EndInit();
             this.ResumeLayout(false); this.PerformLayout();
         }
     }

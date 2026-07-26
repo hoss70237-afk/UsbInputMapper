@@ -22,7 +22,6 @@ namespace UsbInputMapper.UI
             this.StartPosition = FormStartPosition.Manual;
             this.BackColor = Color.Black;
             
-            // クリックを透過する拡張スタイル
             int initialStyle = GetWindowLong(this.Handle, GWL_EXSTYLE);
             SetWindowLong(this.Handle, GWL_EXSTYLE, initialStyle | WS_EX_TRANSPARENT | WS_EX_LAYERED);
             SetLayeredWindowAttributes(this.Handle, 0, 0, LWA_ALPHA);
@@ -35,12 +34,10 @@ namespace UsbInputMapper.UI
             int x = profile.OverlayPosX >= 0 ? profile.OverlayPosX : screenWidth - this.Width - 20;
             int y = profile.OverlayPosY >= 0 ? profile.OverlayPosY : 20;
             
-            // 画面外にはみ出ないように補正
             if (x + this.Width > screenWidth) x = screenWidth - this.Width;
             if (y + this.Height > screenHeight) y = screenHeight - this.Height;
             
             this.Location = new Point(x, y);
-
             this.DoubleBuffered = true;
 
             _fadeTimer = new Timer { Interval = 16 };
@@ -50,65 +47,98 @@ namespace UsbInputMapper.UI
 
         private void FadeTimer_Tick(object sender, EventArgs e)
         {
-            if (!_isFadingOut)
+            if (this.IsDisposed)
             {
-                _alpha += 25;
-                if (_alpha >= 200) // 最大不透明度
-                {
-                    _alpha = 200;
-                    _isFadingOut = true;
-                    _fadeTimer.Interval = _profile.OverlayDurationMs; // 指定時間待機
-                }
+                _fadeTimer.Stop();
+                return;
             }
-            else
+
+            try
             {
-                _fadeTimer.Interval = 16;
-                _alpha -= 15;
-                if (_alpha <= 0)
+                if (!_isFadingOut)
                 {
-                    _fadeTimer.Stop();
-                    this.Close();
-                    return;
+                    _alpha += 25;
+                    if (_alpha >= 200) 
+                    {
+                        _alpha = 200;
+                        _isFadingOut = true;
+                        _fadeTimer.Interval = _profile.OverlayDurationMs; 
+                    }
                 }
+                else
+                {
+                    _fadeTimer.Interval = 16;
+                    _alpha -= 15;
+                    if (_alpha <= 0)
+                    {
+                        _fadeTimer.Stop();
+                        this.Close();
+                        return;
+                    }
+                }
+                
+                SetLayeredWindowAttributes(this.Handle, 0, (byte)_alpha, LWA_ALPHA);
+                this.Invalidate();
             }
-            SetLayeredWindowAttributes(this.Handle, 0, (byte)_alpha, LWA_ALPHA);
-            this.Invalidate();
+            catch
+            {
+                _fadeTimer.Stop();
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (this.IsDisposed) return;
             base.OnPaint(e);
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-            Rectangle rect = new Rectangle(0, 0, this.Width, this.Height);
-            using (Brush bgBrush = new SolidBrush(Color.FromArgb(160, 0, 0, 0)))
-            {
-                e.Graphics.FillRectangle(bgBrush, rect);
-            }
             
-            using (Pen borderPen = new Pen(Color.DodgerBlue, 2))
+            try
             {
-                e.Graphics.DrawRectangle(borderPen, 1, 1, this.Width - 2, this.Height - 2);
-            }
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            int textX = 10;
-            
-            if (_profile.OverlayShowMark)
-            {
-                using (Font markFont = new Font("MS UI Gothic", 16, FontStyle.Bold))
+                Rectangle rect = new Rectangle(0, 0, this.Width, this.Height);
+                using (Brush bgBrush = new SolidBrush(Color.FromArgb(160, 0, 0, 0)))
                 {
-                    e.Graphics.DrawString("🎮", markFont, Brushes.White, textX, 15);
+                    e.Graphics.FillRectangle(bgBrush, rect);
                 }
-                textX += 40;
-            }
+                
+                using (Pen borderPen = new Pen(Color.DodgerBlue, 2))
+                {
+                    e.Graphics.DrawRectangle(borderPen, 1, 1, this.Width - 2, this.Height - 2);
+                }
 
-            if (_profile.OverlayShowName)
-            {
-                using (Font nameFont = new Font("Meiryo", 12, FontStyle.Bold))
+                int textX = 10;
+                
+                if (_profile.OverlayShowMark)
                 {
-                    e.Graphics.DrawString($"Profile: {_profile.Name}", nameFont, Brushes.White, textX, 15);
+                    using (Font markFont = new Font("MS UI Gothic", 16, FontStyle.Bold))
+                    {
+                        e.Graphics.DrawString("🎮", markFont, Brushes.White, textX, 15);
+                    }
+                    textX += 40;
+                }
+
+                if (_profile.OverlayShowName)
+                {
+                    using (Font nameFont = new Font("Meiryo", 12, FontStyle.Bold))
+                    {
+                        e.Graphics.DrawString($"Profile: {_profile.Name}", nameFont, Brushes.White, textX, 15);
+                    }
                 }
             }
+            catch { }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (_fadeTimer != null)
+                {
+                    _fadeTimer.Stop();
+                    _fadeTimer.Dispose();
+                }
+            }
+            base.Dispose(disposing);
         }
 
         [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]

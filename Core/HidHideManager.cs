@@ -17,7 +17,6 @@ namespace UsbInputMapper.Core
 
         public static void WhitelistCurrentProcess()
         {
-            // UIスレッドをブロックしないよう非同期化
             Task.Run(() => {
                 try 
                 {

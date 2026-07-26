@@ -2,7 +2,6 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using UsbInputMapper.Profiles;
-using UsbInputMapper.Core;
 using System.Drawing.Drawing2D;
 
 namespace UsbInputMapper.UI
@@ -127,15 +126,12 @@ namespace UsbInputMapper.UI
                 g.DrawEllipse(dzPen, cx - dzRadius, cy - dzRadius, dzRadius * 2, dzRadius * 2);
             }
 
-            // シミュレーションポイントの描画
             if (_isSimulating)
             {
-                // 入力ポイント（青）
                 float inX = cx + _simInputX * radius;
                 float inY = cy + _simInputY * radius;
                 g.FillEllipse(Brushes.DodgerBlue, inX - 4, inY - 4, 8, 8);
 
-                // 出力計算
                 float inputDist = (float)Math.Sqrt(_simInputX * _simInputX + _simInputY * _simInputY);
                 if (inputDist > 1f) inputDist = 1f;
 
@@ -146,21 +142,11 @@ namespace UsbInputMapper.UI
                     float normalized = (inputDist - dzPercent) / range;
                     
                     int curveType = cmbCurve.SelectedIndex;
-                    if (curveType == 1) // 早め
-                    {
-                        outputRatio = (float)Math.Sin(normalized * Math.PI / 2);
-                    }
-                    else if (curveType == 2) // 遅め
-                    {
-                        outputRatio = normalized * normalized;
-                    }
-                    else // リニア
-                    {
-                        outputRatio = normalized;
-                    }
+                    if (curveType == 1) outputRatio = (float)Math.Sin(normalized * Math.PI / 2);
+                    else if (curveType == 2) outputRatio = normalized * normalized;
+                    else outputRatio = normalized;
                 }
 
-                // 出力ポイント（緑）と速度ベクトルの描画
                 if (outputRatio > 0)
                 {
                     float maxSpd = (float)numMaxSpeed.Value;

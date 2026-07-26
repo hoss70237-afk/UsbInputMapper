@@ -170,7 +170,7 @@ namespace UsbInputMapper.Core
                         }
                     }
                     
-                    // ★追加: Windowsに到達する(ブロックされなかった)入力をロギング
+                    // Windowsに到達する(ブロックされなかった)入力をロギング
                     InputLogger.LogDiagnostic(new DiagnosticEvent { IsPhysical = false, Timestamp = now, Type = 1, Code = vkCode, IsDown = isDown });
                 }
             }
@@ -243,7 +243,7 @@ namespace UsbInputMapper.Core
                     
                     if (code != -1)
                     {
-                        // ★追加: Windowsに到達する(ブロックされなかった)入力をロギング
+                        // Windowsに到達する(ブロックされなかった)入力をロギング
                         InputLogger.LogDiagnostic(new DiagnosticEvent { IsPhysical = false, Timestamp = now, Type = 0, Code = code, IsDown = isDown });
                     }
                 }

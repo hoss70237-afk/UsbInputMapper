@@ -12,6 +12,8 @@ namespace UsbInputMapper.UI
 {
     public partial class MainForm : Form
     {
+        public static MainForm Instance { get; private set; } // ★追加: 確実なフォーム参照用
+
         private readonly ProfileManager _profileManager;
         private readonly DirectInputManager _diManager;
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -25,6 +27,8 @@ namespace UsbInputMapper.UI
 
         public MainForm(ProfileManager profileManager, DirectInputManager diManager)
         {
+            Instance = this; // ★自身の参照を保存
+            
             InitializeComponent();
             _profileManager = profileManager;
             _diManager = diManager;
@@ -262,7 +266,8 @@ namespace UsbInputMapper.UI
             parts.Add(mainName);
             
             string prefix = b.ClickTriggerCount == 2 ? "ダブル " : (b.ClickTriggerCount == 3 ? "トリプル " : "シングル ");
-            return prefix + string.Join(" + ", parts);
+            string layerStr = b.RequiredLayer > 0 ? $"[Layer {b.RequiredLayer}] " : "";
+            return layerStr + prefix + string.Join(" + ", parts);
         }
 
         private string GetConditionString(UsbInputMapper.Profiles.Binding b)

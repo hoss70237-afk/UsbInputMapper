@@ -17,7 +17,6 @@ namespace UsbInputMapper.UI
         private Panel pnlGraph;
         private Timer _renderTimer;
 
-        // シミュレーション用変数（現在位置）
         private float _simInputX = 0f;
         private float _simInputY = 0f;
         private bool _isSimulating = false;
@@ -34,21 +33,20 @@ namespace UsbInputMapper.UI
 
             Label lblDz = new Label { Text = "デッドゾーン (%):", Location = new Point(15, 20), AutoSize = true };
             numDeadZone = new NumericUpDown { Location = new Point(120, 18), Size = new Size(60, 20), Maximum = 99 };
-            numDeadZone.Value = _action.StickDeadZone;
+            numDeadZone.Value = Math.Min(99, Math.Max(0, _action.StickDeadZone));
 
             Label lblSpd = new Label { Text = "最高速度 (px):", Location = new Point(15, 50), AutoSize = true };
             numMaxSpeed = new NumericUpDown { Location = new Point(120, 48), Size = new Size(60, 20), Maximum = 100, Minimum = 1 };
-            numMaxSpeed.Value = _action.StickMaxSpeed;
+            numMaxSpeed.Value = Math.Min(100, Math.Max(1, _action.StickMaxSpeed));
 
             Label lblCrv = new Label { Text = "加速度カーブ:", Location = new Point(15, 80), AutoSize = true };
             cmbCurve = new ComboBox { Location = new Point(120, 78), Size = new Size(100, 20), DropDownStyle = ComboBoxStyle.DropDownList };
             cmbCurve.Items.AddRange(new[] { "リニア (一定)", "早め (Log)", "遅め (Exp)" });
-            cmbCurve.SelectedIndex = _action.StickCurve;
+            cmbCurve.SelectedIndex = Math.Min(2, Math.Max(0, _action.StickCurve));
 
             pnlGraph = new Panel { Location = new Point(15, 120), Size = new Size(330, 200), BorderStyle = BorderStyle.FixedSingle };
             pnlGraph.BackColor = Color.White;
             
-            // ダブルバッファリング有効化
             typeof(Panel).InvokeMember("DoubleBuffered", 
                 System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, 
                 null, pnlGraph, new object[] { true });
@@ -74,7 +72,7 @@ namespace UsbInputMapper.UI
             this.Controls.Add(btnOk); this.Controls.Add(btnCancel);
 
             _renderTimer = new Timer { Interval = 16 };
-            _renderTimer.Tick += (s, e) => pnlGraph.Invalidate();
+            _renderTimer.Tick += (s, e) => { if (!this.IsDisposed) pnlGraph.Invalidate(); };
             _renderTimer.Start();
         }
 
@@ -108,7 +106,6 @@ namespace UsbInputMapper.UI
             float cy = h / 2f;
             float radius = Math.Min(cx, cy) - 10;
 
-            // 軸の描画
             using (Pen gridPen = new Pen(Color.LightGray))
             {
                 g.DrawLine(gridPen, 0, cy, w, cy);
@@ -116,7 +113,6 @@ namespace UsbInputMapper.UI
                 g.DrawEllipse(gridPen, cx - radius, cy - radius, radius * 2, radius * 2);
             }
 
-            // デッドゾーンの円を描画
             float dzPercent = (float)numDeadZone.Value / 100f;
             float dzRadius = radius * dzPercent;
             using (Pen dzPen = new Pen(Color.FromArgb(100, 255, 0, 0), 2))

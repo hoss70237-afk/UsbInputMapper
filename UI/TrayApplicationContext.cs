@@ -8,14 +8,12 @@ namespace UsbInputMapper.UI
     public class TrayApplicationContext : ApplicationContext
     {
         private NotifyIcon _trayIcon;
-        private MainForm _mainForm;
-        private OutputDispatcher _dispatcher;
+        public static TrayApplicationContext Instance { get; private set; }
 
-        public TrayApplicationContext(MainForm mainForm, OutputDispatcher dispatcher)
+        // 引数なしコンストラクタに戻し、Program.cs のエラーを解消
+        public TrayApplicationContext()
         {
-            _mainForm = mainForm;
-            _dispatcher = dispatcher;
-            
+            Instance = this;
             var menu = new ContextMenuStrip();
             
             var mnuOpen = new ToolStripMenuItem("設定を開く");
@@ -41,36 +39,33 @@ namespace UsbInputMapper.UI
             };
 
             _trayIcon.DoubleClick += (s, e) => ShowMainForm();
-            
-            // Xボタンで閉じられた際はタスクトレイに格納
-            _mainForm.FormClosing += (s, e) => {
-                if (e.CloseReason == CloseReason.UserClosing) 
-                {
-                    e.Cancel = true;
-                    _mainForm.Hide();
-                }
-            };
         }
 
         public void ShowMainForm()
         {
-            _mainForm.Show();
-            if (_mainForm.WindowState == FormWindowState.Minimized)
+            // 開かれているMainFormを探して表示する
+            foreach (Form form in Application.OpenForms)
             {
-                _mainForm.WindowState = FormWindowState.Normal;
+                if (form is MainForm mainForm)
+                {
+                    mainForm.Show();
+                    if (mainForm.WindowState == FormWindowState.Minimized)
+                    {
+                        mainForm.WindowState = FormWindowState.Normal;
+                    }
+                    mainForm.Activate();
+                    return;
+                }
             }
-            _mainForm.Activate();
         }
 
         private void TriggerPanic()
         {
-            // すべての仮想キーボード・マウス・XInputの状態を即座に強制リセット
-            _dispatcher?.ReleaseAllInputs();
+            OutputDispatcher.Instance?.ReleaseAllInputs();
             _trayIcon.ShowBalloonTip(2000, "緊急停止", "すべての仮想入力をリセットし、キーを解放しました。", ToolTipIcon.Warning);
             InputLogger.Log("Panic Button Triggered by User.");
         }
 
-        // OutputDispatcher等から呼び出されるトグル状態可視化用
         public void ShowToggleNotification(string actionName, bool isOn)
         {
             string state = isOn ? "ON" : "OFF";
@@ -81,13 +76,8 @@ namespace UsbInputMapper.UI
         {
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
-            
-            // アプリ終了時に押しっぱなしを防ぐクリーンアップ
-            _dispatcher?.ReleaseAllInputs(); 
-            
-            // 物理コントローラーの隠蔽を解除
+            OutputDispatcher.Instance?.ReleaseAllInputs(); 
             HidHideManager.EnableHiding(false); 
-            
             Application.Exit();
         }
     }

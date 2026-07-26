@@ -13,7 +13,6 @@ namespace UsbInputMapper.UI
         private Point _centerPoint;
         private Timer _drawTimer;
         
-        // 描画最適化用（前回状態のキャッシュ）
         private int _lastIndex = -2;
 
         public RadialMenuHudForm(ActionDef actionDef)
@@ -81,7 +80,6 @@ namespace UsbInputMapper.UI
                 newIndex = (int)(angle / sliceAngle);
             }
 
-            // 選択している項目が変わった時のみ画面を再描画する（CPU負荷の大幅な削減）
             if (newIndex != _lastIndex)
             {
                 SelectedDirectionIndex = newIndex;
@@ -110,7 +108,7 @@ namespace UsbInputMapper.UI
                 }
 
                 float sweep = 360f / slices;
-                using (Font f = new Font("MS UI Gothic", 9))
+                using (Font f = new Font("MS UI Gothic", 9, FontStyle.Bold))
                 using (StringFormat sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                 {
                     for (int i = 0; i < slices; i++)
@@ -134,8 +132,15 @@ namespace UsbInputMapper.UI
                         float tx = radius + (float)(Math.Cos(midAngle) * radius * 0.65);
                         float ty = radius + (float)(Math.Sin(midAngle) * radius * 0.65);
                         
+                        // ★ ラベル未設定時はアクション名を自動表示
                         string label = "";
-                        if (i < _actionDef.RadialMenuDirections.Count) label = _actionDef.RadialMenuDirections[i].Label;
+                        if (i < _actionDef.RadialMenuDirections.Count)
+                        {
+                            var dir = _actionDef.RadialMenuDirections[i];
+                            if (!string.IsNullOrEmpty(dir.Label)) label = dir.Label;
+                            else if (dir.Action != null && dir.Action.ActionType != ActionType.None) label = dir.Action.ToString();
+                        }
+
                         if (!string.IsNullOrEmpty(label))
                         {
                             e.Graphics.DrawString(label, f, Brushes.White, tx, ty, sf);

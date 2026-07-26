@@ -76,7 +76,12 @@ namespace UsbInputMapper.Core
         private bool _waitingForRightUp = false;
         private POINT _capturePoint;
 
-        public bool IsRadialMenuClickCapturing { get; set; }
+        private volatile bool _isRadialMenuClickCapturing = false;
+        public bool IsRadialMenuClickCapturing 
+        { 
+            get => _isRadialMenuClickCapturing; 
+            set => _isRadialMenuClickCapturing = value; 
+        }
         public Action OnRadialMenuClickCaptured;
 
         public event EventHandler<HookInputEvent> OnRecordedInput;
@@ -170,7 +175,6 @@ namespace UsbInputMapper.Core
                         }
                     }
                     
-                    // Windowsに到達する(ブロックされなかった)入力をロギング
                     InputLogger.LogDiagnostic(new DiagnosticEvent { IsPhysical = false, Timestamp = now, Type = 1, Code = vkCode, IsDown = isDown });
                 }
             }
@@ -213,10 +217,14 @@ namespace UsbInputMapper.Core
                             _lastMouseClickTime[code] = now;
                         }
 
-                        if (IsRadialMenuClickCapturing && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN))
+                        if (_isRadialMenuClickCapturing && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN))
                         {
-                            IsRadialMenuClickCapturing = false;
-                            OnRadialMenuClickCaptured?.Invoke();
+                            _isRadialMenuClickCapturing = false;
+                            Action callback = OnRadialMenuClickCaptured;
+                            if (callback != null)
+                            {
+                                System.Threading.Tasks.Task.Run(() => { try { callback.Invoke(); } catch { } });
+                            }
                             return (IntPtr)1; 
                         }
 
@@ -243,7 +251,6 @@ namespace UsbInputMapper.Core
                     
                     if (code != -1)
                     {
-                        // Windowsに到達する(ブロックされなかった)入力をロギング
                         InputLogger.LogDiagnostic(new DiagnosticEvent { IsPhysical = false, Timestamp = now, Type = 0, Code = code, IsDown = isDown });
                     }
                 }

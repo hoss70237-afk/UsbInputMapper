@@ -35,6 +35,12 @@ namespace UsbInputMapper.UI
             txtName.Text = profile.Name;
             chkNotifyVibration.Checked = profile.NotifyProfileChangeVibration;
             
+            chkOverrideGlobalChattering.Checked = profile.OverrideGlobalChattering;
+            chkEnableChatteringCanceler.Checked = profile.EnableChatteringCanceler;
+            numChatteringThresholdMs.Value = profile.ChatteringThresholdMs;
+            
+            UpdateChatteringUI();
+            
             if (profile.IsDefault)
             {
                 txtName.Enabled = false; lstApps.Enabled = false; btnAddApp.Enabled = false; btnRemoveApp.Enabled = false; lblTargetPicker.Enabled = false;
@@ -47,18 +53,30 @@ namespace UsbInputMapper.UI
 
             if (_existingProfiles != null && _existingProfiles.Count > 0)
             {
-                _lblCopyFrom = new Label { Text = "コピー元:", Location = new Point(12, 192), AutoSize = true };
-                _cmbCopyFrom = new ComboBox { Location = new Point(87, 189), Size = new Size(265, 20), DropDownStyle = ComboBoxStyle.DropDownList };
+                _lblCopyFrom = new Label { Text = "コピー元:", Location = new Point(12, 282), AutoSize = true };
+                _cmbCopyFrom = new ComboBox { Location = new Point(87, 279), Size = new Size(265, 20), DropDownStyle = ComboBoxStyle.DropDownList };
                 _cmbCopyFrom.Items.Add("(空の状態で作成)");
                 foreach (var p in _existingProfiles) _cmbCopyFrom.Items.Add(p.Name);
                 _cmbCopyFrom.SelectedIndex = 0;
 
                 this.Controls.Add(_lblCopyFrom); this.Controls.Add(_cmbCopyFrom);
-                this.ClientSize = new Size(this.ClientSize.Width, 250);
-                btnOK.Top = 215; btnCancel.Top = 215; lblStatus.Top = 220;
+                this.ClientSize = new Size(this.ClientSize.Width, 340);
+                btnOK.Top = 305; btnCancel.Top = 305; lblStatus.Top = 310;
             }
 
             SetupTargetPicker();
+        }
+
+        private void chkOverrideGlobalChattering_CheckedChanged(object sender, EventArgs e)
+        {
+            UpdateChatteringUI();
+        }
+        
+        private void UpdateChatteringUI()
+        {
+            bool over = chkOverrideGlobalChattering.Checked;
+            chkEnableChatteringCanceler.Enabled = over;
+            numChatteringThresholdMs.Enabled = over;
         }
 
         private void SetupTargetPicker()
@@ -92,6 +110,10 @@ namespace UsbInputMapper.UI
         private void btnOK_Click(object sender, EventArgs e)
         {
             TargetProfile.NotifyProfileChangeVibration = chkNotifyVibration.Checked;
+            TargetProfile.OverrideGlobalChattering = chkOverrideGlobalChattering.Checked;
+            TargetProfile.EnableChatteringCanceler = chkEnableChatteringCanceler.Checked;
+            TargetProfile.ChatteringThresholdMs = (int)numChatteringThresholdMs.Value;
+            
             if (!TargetProfile.IsDefault)
             {
                 if (string.IsNullOrWhiteSpace(txtName.Text)) { MessageBox.Show("プロファイル名を入力してください。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }

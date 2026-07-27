@@ -23,7 +23,6 @@ namespace UsbInputMapper.UI
         private OutputDispatcher _dispatcher;
         private MainForm _mainForm;
 
-        // ラジアルメニューHUD管理
         private RadialMenuHudForm _activeRadialHud = null;
         private ActionDef _activeRadialAction = null;
 
@@ -33,7 +32,6 @@ namespace UsbInputMapper.UI
 
             try
             {
-                // 1. コアコンポーネントの初期化
                 _profileManager = new ProfileManager();
                 _profileManager.Load();
 
@@ -47,17 +45,14 @@ namespace UsbInputMapper.UI
 
                 _mainForm = new MainForm(_profileManager, _diManager);
                 
-                // ★ 起動直後にウィンドウハンドルを強制生成し、設定画面を開かなくてもBeginInvokeが機能するようにする
                 IntPtr forceHandleCreation = _mainForm.Handle;
 
-                // 2. アクティブウィンドウ監視の開始（自動プロファイル切替）
                 _appWatcher = new ForegroundAppWatcher();
                 _appWatcher.OnForegroundAppChanged += (s, appPath) => {
                     _profileManager.SwitchToAppProfile(appPath);
                 };
                 _appWatcher.Start();
 
-                // 3. イベントルーティングの設定
                 _rawManager.OnInputEvent += (s, e) => RouteToCaptureOrProcess(e);
                 _diManager.OnInputEvent += (s, e) => RouteToCaptureOrProcess(new InputEvent { 
                     Type = e.Type, Code = e.Code, Value = e.Value, IsDown = e.IsDown, DeviceIdentifier = e.DeviceIdentifier 
@@ -69,7 +64,6 @@ namespace UsbInputMapper.UI
 
                 _profileManager.OnProfileChanged += ProfileManager_OnProfileChanged;
 
-                // 4. タスクトレイアイコンの設定
                 var menu = new ContextMenuStrip();
                 var mnuOpen = new ToolStripMenuItem("設定を開く");
                 mnuOpen.Click += (s, e) => ShowMainForm();
@@ -95,7 +89,6 @@ namespace UsbInputMapper.UI
 
                 _trayIcon.DoubleClick += (s, e) => ShowMainForm();
 
-                // 初期プロファイル適用
                 _profileManager.NotifyProfileSwitchedManually();
             }
             catch (Exception ex)
@@ -106,14 +99,13 @@ namespace UsbInputMapper.UI
             }
         }
 
-        // ★ 安全なUIスレッド呼び出しヘルパー
         private void InvokeOnUI(Action action)
         {
             if (_mainForm == null || _mainForm.IsDisposed) return;
 
             if (!_mainForm.IsHandleCreated)
             {
-                IntPtr h = _mainForm.Handle; // ハンドルの強制生成
+                IntPtr h = _mainForm.Handle;
             }
 
             if (_mainForm.InvokeRequired)
@@ -132,6 +124,12 @@ namespace UsbInputMapper.UI
             {
                 CaptureForm.CurrentInstance.ProcessInput(e);
                 return;
+            }
+
+            // 【追加】設定画面を開いている時、リアルタイムに設定行をハイライトさせる
+            if (_mainForm != null && !_mainForm.IsDisposed && _mainForm.Visible)
+            {
+                _mainForm.HighlightBinding(e.Type, e.Code, e.IsDown);
             }
 
             ProcessInput(e);
@@ -186,14 +184,13 @@ namespace UsbInputMapper.UI
             var profile = _profileManager.CurrentActiveProfile;
             if (profile == null) return;
 
-            // コントローラーベース設定
             if (profile.EnableXInput && (e.Type == 10 || e.Type == 11 || e.Type == 12))
             {
                 foreach (var b in _profileManager.ControllerBaseBindings)
                 {
                     if (b.InputType == e.Type && b.InputCode == e.Code)
                     {
-                        if (e.Type == 11) // Axis
+                        if (e.Type == 11) 
                         {
                             bool isPositive = e.Value > 32767;
                             if (b.AxisRange == 1 && !isPositive) continue;
@@ -211,7 +208,6 @@ namespace UsbInputMapper.UI
                 }
             }
 
-            // プロファイル固有バインディング
             foreach (var b in profile.Bindings)
             {
                 if (b.RequiredLayer != 0 && b.RequiredLayer != LayerManager.CurrentLayer) continue;
@@ -220,9 +216,9 @@ namespace UsbInputMapper.UI
                 {
                     if (b.Action.ActionType == ActionType.RadialMenu)
                     {
-                        int mode = b.Action.RadialMenuMode; // 0: 離して確定, 1: クリック確定
+                        int mode = b.Action.RadialMenuMode; 
 
-                        if (mode == 0) // 離して確定モード
+                        if (mode == 0) 
                         {
                             if (e.IsDown)
                             {
@@ -236,7 +232,7 @@ namespace UsbInputMapper.UI
                                 ExecuteAndCloseRadialHudUI();
                             }
                         }
-                        else // クリック確定モード
+                        else 
                         {
                             if (e.IsDown)
                             {

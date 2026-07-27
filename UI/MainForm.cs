@@ -3,6 +3,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Windows.Forms;
 using System.IO;
+using System.Drawing;
 using Microsoft.Win32;
 using Newtonsoft.Json;
 using UsbInputMapper.Profiles;
@@ -45,6 +46,43 @@ namespace UsbInputMapper.UI
 
             _monitorTimer = new Timer { Interval = 100 };
             _monitorTimer.Tick += MonitorTimer_Tick;
+        }
+
+        // 【追加】外部から入力イベントを受け取り、該当するバインディング行をハイライトさせるメソッド
+        public void HighlightBinding(int type, int code, bool isDown)
+        {
+            if (this.IsDisposed || !this.Visible) return;
+            
+            if (this.InvokeRequired)
+            {
+                this.BeginInvoke(new Action(() => HighlightBinding(type, code, isDown)));
+                return;
+            }
+
+            bool isUpdated = false;
+            foreach (ListViewItem item in lvwBindings.Items)
+            {
+                if (item.Tag is UsbInputMapper.Profiles.Binding b)
+                {
+                    if (b.InputType == type && b.InputCode == code)
+                    {
+                        if (isDown)
+                        {
+                            item.BackColor = Color.LightSkyBlue;
+                        }
+                        else
+                        {
+                            item.BackColor = SystemColors.Window;
+                        }
+                        isUpdated = true;
+                    }
+                }
+            }
+
+            if (isUpdated)
+            {
+                lvwBindings.Invalidate();
+            }
         }
 
         private void LoadGlobalSettings()

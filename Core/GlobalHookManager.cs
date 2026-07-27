@@ -86,7 +86,6 @@ namespace UsbInputMapper.Core
 
         public event EventHandler<HookInputEvent> OnRecordedInput;
         public event EventHandler<HookInputEvent> OnBlockedInputFired;
-        public event EventHandler<POINT> OnMouseMove;
 
         public class HookInputEvent
         {
@@ -221,22 +220,19 @@ namespace UsbInputMapper.Core
         {
             if (nCode >= 0)
             {
+                int msg = wParam.ToInt32();
+                
+                // 【最重要改善】マウス移動は一切処理せず、構造体のパース(マーシャリング)も行わずに最速でOSへ返す（CPU負荷を完全排除）
+                if (msg == WM_MOUSEMOVE)
+                {
+                    return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);
+                }
+
                 try
                 {
                     var ms = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
                     bool isInjected = (ms.flags & LLMHF_INJECTED) != 0;
-                    int msg = wParam.ToInt32();
                     long now = (long)GetTickCount64();
-                    
-                    // 【改善策】購読者がいる場合のみTask.Runを実行し、負荷を劇的に低減
-                    if (msg == WM_MOUSEMOVE && !isInjected)
-                    {
-                        if (OnMouseMove != null)
-                        {
-                            var pt = ms.pt;
-                            Task.Run(() => { try { OnMouseMove.Invoke(this, pt); } catch(Exception ex) { InputLogger.LogError("OnMouseMove Error", ex); } });
-                        }
-                    }
                     
                     int code = -1;
                     bool isDown = false;
@@ -252,15 +248,18 @@ namespace UsbInputMapper.Core
 
                     if (!isInjected)
                     {
+                        // 【改善策】常時追跡をやめ、イベントが発生した瞬間のみ GetCursorPos(Win32 API) で実際の座標を取得する
+                        SendInputNative.GetCursorPos(out var cursorPos);
+
                         if (code == 1 || code == 2)
                         {
-                            int bezelCode = CalculateBezelCode(ms.pt.x, ms.pt.y);
+                            int bezelCode = CalculateBezelCode(cursorPos.X, cursorPos.Y);
                             if (bezelCode != -1)
                             {
                                 long bezelKey = GetHookKey(5, bezelCode);
                                 if (_blockList.ContainsKey(bezelKey))
                                 {
-                                    var bezelEvt = new HookInputEvent { Type = 5, Code = bezelCode, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now };
+                                    var bezelEvt = new HookInputEvent { Type = 5, Code = bezelCode, IsDown = isDown, X = cursorPos.X, Y = cursorPos.Y, Timestamp = now };
                                     Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, bezelEvt); } catch { } });
                                     return (IntPtr)1;
                                 }
@@ -290,17 +289,18 @@ namespace UsbInputMapper.Core
 
                         if (IsCoordinateCapturing)
                         {
-                            if (msg == WM_LBUTTONDOWN) { _capturePoint = ms.pt; _waitingForUp = true; return (IntPtr)1; }
+                            var hookPt = new POINT { x = cursorPos.X, y = cursorPos.Y };
+                            if (msg == WM_LBUTTONDOWN) { _capturePoint = hookPt; _waitingForUp = true; return (IntPtr)1; }
                             else if (msg == WM_LBUTTONUP && _waitingForUp) { _waitingForUp = false; IsCoordinateCapturing = false; Task.Run(() => _coordinateCaptureCallback?.Invoke(_capturePoint, false)); return (IntPtr)1; }
                             else if (msg == WM_RBUTTONDOWN) { _waitingForRightUp = true; return (IntPtr)1; }
-                            else if (msg == WM_RBUTTONUP && _waitingForRightUp) { _waitingForRightUp = false; IsCoordinateCapturing = false; Task.Run(() => _coordinateCaptureCallback?.Invoke(ms.pt, true)); return (IntPtr)1; }
+                            else if (msg == WM_RBUTTONUP && _waitingForRightUp) { _waitingForRightUp = false; IsCoordinateCapturing = false; Task.Run(() => _coordinateCaptureCallback?.Invoke(hookPt, true)); return (IntPtr)1; }
                         }
 
                         if (code != -1)
                         {
                             if (IsRecording)
                             {
-                                var evt = new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now };
+                                var evt = new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = cursorPos.X, Y = cursorPos.Y, Timestamp = now };
                                 Task.Run(() => { try { OnRecordedInput?.Invoke(this, evt); } catch(Exception ex) { InputLogger.LogError("OnRecordedInput(Mouse) Error", ex); } });
                             }
                             
@@ -308,7 +308,7 @@ namespace UsbInputMapper.Core
                             if (_blockList.ContainsKey(key)) 
                             { 
                                 _recentBlocked[key] = now; 
-                                var evt = new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now };
+                                var evt = new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = cursorPos.X, Y = cursorPos.Y, Timestamp = now };
                                 Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, evt); } catch (Exception ex) { InputLogger.LogError("OnBlockedInputFired (Mouse) Error", ex); } });
                                 return (IntPtr)1; 
                             }

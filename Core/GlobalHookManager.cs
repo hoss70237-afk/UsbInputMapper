@@ -146,54 +146,28 @@ namespace UsbInputMapper.Core
             _coordinateCaptureCallback = null; 
         }
 
-        // ★ ベゼルタッチ（16領域）の判定アルゴリズム (25pxマージン)
         private int CalculateBezelCode(int x, int y)
         {
             int sW = Screen.PrimaryScreen.Bounds.Width;
             int sH = Screen.PrimaryScreen.Bounds.Height;
-            int m = 25; // ベゼル幅
+            int m = 25;
 
             bool isLeft = x < m;
             bool isRight = x > sW - m;
             bool isTop = y < m;
             bool isBottom = y > sH - m;
 
-            if (!isLeft && !isRight && !isTop && !isBottom) return -1; // ベゼル外
+            if (!isLeft && !isRight && !isTop && !isBottom) return -1;
 
-            // 四隅
-            if (isLeft && isTop) return 0;       // 左上隅
-            if (isRight && isTop) return 4;      // 右上隅
-            if (isRight && isBottom) return 8;   // 右下隅
-            if (isLeft && isBottom) return 12;   // 左下隅
+            if (isLeft && isTop) return 0;
+            if (isRight && isTop) return 4;
+            if (isRight && isBottom) return 8;
+            if (isLeft && isBottom) return 12;
 
-            // 上辺 (1:左, 2:中, 3:右)
-            if (isTop)
-            {
-                if (x < sW / 3) return 1;
-                if (x < (sW * 2) / 3) return 2;
-                return 3;
-            }
-            // 右辺 (5:上, 6:中, 7:下)
-            if (isRight)
-            {
-                if (y < sH / 3) return 5;
-                if (y < (sH * 2) / 3) return 6;
-                return 7;
-            }
-            // 下辺 (9:右, 10:中, 11:左)
-            if (isBottom)
-            {
-                if (x > (sW * 2) / 3) return 9;
-                if (x > sW / 3) return 10;
-                return 11;
-            }
-            // 左辺 (13:下, 14:中, 15:上)
-            if (isLeft)
-            {
-                if (y > (sH * 2) / 3) return 13;
-                if (y > sH / 3) return 14;
-                return 15;
-            }
+            if (isTop) { if (x < sW / 3) return 1; if (x < (sW * 2) / 3) return 2; return 3; }
+            if (isRight) { if (y < sH / 3) return 5; if (y < (sH * 2) / 3) return 6; return 7; }
+            if (isBottom) { if (x > (sW * 2) / 3) return 9; if (x > sW / 3) return 10; return 11; }
+            if (isLeft) { if (y > (sH * 2) / 3) return 13; if (y > sH / 3) return 14; return 15; }
 
             return -1;
         }
@@ -254,9 +228,14 @@ namespace UsbInputMapper.Core
                     int msg = wParam.ToInt32();
                     long now = (long)GetTickCount64();
                     
+                    // 【改善策】購読者がいる場合のみTask.Runを実行し、負荷を劇的に低減
                     if (msg == WM_MOUSEMOVE && !isInjected)
                     {
-                        Task.Run(() => { try { OnMouseMove?.Invoke(this, ms.pt); } catch(Exception ex) { InputLogger.LogError("OnMouseMove Error", ex); } });
+                        if (OnMouseMove != null)
+                        {
+                            var pt = ms.pt;
+                            Task.Run(() => { try { OnMouseMove.Invoke(this, pt); } catch(Exception ex) { InputLogger.LogError("OnMouseMove Error", ex); } });
+                        }
                     }
                     
                     int code = -1;
@@ -273,13 +252,12 @@ namespace UsbInputMapper.Core
 
                     if (!isInjected)
                     {
-                        // ★ ベゼルタッチ判定の実行
-                        if (code == 1 || code == 2) // 左/右クリック時
+                        if (code == 1 || code == 2)
                         {
                             int bezelCode = CalculateBezelCode(ms.pt.x, ms.pt.y);
                             if (bezelCode != -1)
                             {
-                                long bezelKey = GetHookKey(5, bezelCode); // Type 5 = Bezel
+                                long bezelKey = GetHookKey(5, bezelCode);
                                 if (_blockList.ContainsKey(bezelKey))
                                 {
                                     var bezelEvt = new HookInputEvent { Type = 5, Code = bezelCode, IsDown = isDown, X = ms.pt.x, Y = ms.pt.y, Timestamp = now };

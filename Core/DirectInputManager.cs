@@ -33,6 +33,7 @@ namespace UsbInputMapper.Core
         }
         
         private List<DeviceState> _devices = new List<DeviceState>();
+        private DeviceState[] _activeDevicesCache = new DeviceState[0];
 
         public bool HasAxisBindings { get; set; } = true;
         public bool ForceEnableAxisEvents { get; set; } = false;
@@ -44,7 +45,8 @@ namespace UsbInputMapper.Core
                 _directInput = new DirectInput();
                 _refreshRequested = true;
                 _isRunning = true;
-                _pollingThread = new Thread(EventWaitLoop) { IsBackground = true, Priority = ThreadPriority.Highest, Name = "DirectInputPollingThread" };
+                // 【改善策】スレッド優先度をNormalに下げコンテキストスイッチを抑制
+                _pollingThread = new Thread(EventWaitLoop) { IsBackground = true, Priority = ThreadPriority.Normal, Name = "DirectInputPollingThread" };
                 _pollingThread.Start();
             }
             catch (Exception ex)
@@ -95,6 +97,9 @@ namespace UsbInputMapper.Core
             {
                 InputLogger.LogError("Error enumerating DirectInput devices", ex);
             }
+
+            // 【改善策】更新時のみ配列キャッシュを作成
+            _activeDevicesCache = _devices.ToArray();
         }
 
         private void EventWaitLoop()
@@ -109,16 +114,11 @@ namespace UsbInputMapper.Core
                         _refreshRequested = false;
                     }
 
-                    // 修正: 状態変更を安全に取り扱う
-                    DeviceState[] activeDevices;
-                    lock (_devices)
-                    {
-                        activeDevices = _devices.ToArray();
-                    }
+                    // 【改善策】毎ループの lock と ToArray()（ヒープ割り当て）を排除
+                    DeviceState[] activeDevices = _activeDevicesCache;
 
                     if (activeDevices.Length == 0)
                     {
-                        // デバイスがない場合は少し待機してCPU負荷を下げる
                         if (WaitHandle.WaitAny(new WaitHandle[] { _stopEvent }, 1000) == 0) break;
                         continue;
                     }
@@ -198,7 +198,7 @@ namespace UsbInputMapper.Core
                 catch (Exception ex)
                 {
                     InputLogger.LogError("DirectInput EventWaitLoop unexpected error", ex);
-                    Thread.Sleep(1000); // 連続クラッシュ防止
+                    Thread.Sleep(1000);
                 }
             }
         }
@@ -216,6 +216,7 @@ namespace UsbInputMapper.Core
                 try { d.NotificationEvent?.Dispose(); } catch { }
             } 
             _devices.Clear();
+            _activeDevicesCache = new DeviceState[0];
             _stopEvent.Dispose();
             _directInput?.Dispose();
         }

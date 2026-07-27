@@ -45,6 +45,7 @@ namespace UsbInputMapper.UI
 
                 _mainForm = new MainForm(_profileManager, _diManager);
                 
+                // ★ 起動直後にウィンドウハンドルを強制生成し、BeginInvokeが安全に動作するようにする
                 IntPtr forceHandleCreation = _mainForm.Handle;
 
                 _appWatcher = new ForegroundAppWatcher();

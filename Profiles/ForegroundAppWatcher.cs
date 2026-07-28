@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -49,9 +50,11 @@ namespace UsbInputMapper.Profiles
         private string _lastAppPath = string.Empty;
         private readonly object _lockObj = new object();
 
+        // 【最適化6】アクティブウィンドウ判定時のAPI負荷(CPUスパイク)を防ぐためのメモリキャッシュ
+        private readonly ConcurrentDictionary<IntPtr, string> _hwndToPathCache = new ConcurrentDictionary<IntPtr, string>();
+
         public ForegroundAppWatcher()
         {
-            // GCによるデリゲート回収を防ぐため参照を保持
             _winEventProc = new WinEventDelegate(WinEventCallback);
         }
 
@@ -89,10 +92,25 @@ namespace UsbInputMapper.Profiles
             IntPtr hwnd = GetForegroundWindow();
             if (hwnd == IntPtr.Zero) return;
 
+            // キャッシュが肥大化したらクリア（HWND再利用による誤爆防止）
+            if (_hwndToPathCache.Count > 1000) _hwndToPathCache.Clear();
+
+            // キャッシュヒットすれば重いWin32APIを全スキップして即座に終了
+            if (_hwndToPathCache.TryGetValue(hwnd, out string cachedPath))
+            {
+                if (!string.Equals(cachedPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _lastAppPath = cachedPath;
+                    OnForegroundAppChanged?.Invoke(this, cachedPath);
+                }
+                return;
+            }
+
+            IntPtr originalHwnd = hwnd;
+
             StringBuilder className = new StringBuilder(256);
             GetClassName(hwnd, className, className.Capacity);
 
-            // UWPアプリ等のラッパーウィンドウ対策
             if (className.ToString() == "ApplicationFrameWindow")
             {
                 IntPtr realHwnd = IntPtr.Zero;
@@ -115,10 +133,16 @@ namespace UsbInputMapper.Profiles
             if (pid == 0) return;
 
             string currentAppPath = GetExecutablePathProcessId(pid);
-            if (!string.IsNullOrEmpty(currentAppPath) && !string.Equals(currentAppPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(currentAppPath))
             {
-                _lastAppPath = currentAppPath;
-                OnForegroundAppChanged?.Invoke(this, currentAppPath);
+                // 次回以降高速化するためキャッシュに保存
+                _hwndToPathCache[originalHwnd] = currentAppPath;
+
+                if (!string.Equals(currentAppPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _lastAppPath = currentAppPath;
+                    OnForegroundAppChanged?.Invoke(this, currentAppPath);
+                }
             }
         }
 

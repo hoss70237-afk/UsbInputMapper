@@ -61,7 +61,6 @@ namespace UsbInputMapper.Core
             [FieldOffset(0)] public HARDWAREINPUT hi;
         }
 
-        // 修正: 32bit/64bit(AnyCPU)環境でサイズとオフセットの差異を無くし安全に動作させる
         [StructLayout(LayoutKind.Sequential)]
         public struct INPUT
         {
@@ -71,6 +70,10 @@ namespace UsbInputMapper.Core
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+        // 【最適化4】stackallocを利用し、ゼロアロケーションで実行するためのポインタオーバーロード
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern unsafe uint SendInput(uint nInputs, INPUT* pInputs, int cbSize);
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint MapVirtualKey(uint uCode, uint uMapType);

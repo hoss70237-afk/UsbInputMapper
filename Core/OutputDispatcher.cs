@@ -16,7 +16,8 @@ namespace UsbInputMapper.Core
         public static volatile int CurrentLayer = 0;
     }
 
-    public unsafe class OutputDispatcher
+    // クラス全体の unsafe 指定を解除（await エラー防止のため）
+    public class OutputDispatcher
     {
         public static OutputDispatcher Instance { get; private set; }
 
@@ -204,41 +205,54 @@ namespace UsbInputMapper.Core
             if (vKeys == null || vKeys.Count == 0) return;
             
             int count = vKeys.Count;
-            // 安全のため、極端にキーが多い場合のみヒープを使用し、通常はスタックを使用
             bool useHeap = count > 32;
-            SendInputNative.INPUT* inputs = useHeap 
-                ? (SendInputNative.INPUT*)Marshal.AllocHGlobal(count * sizeof(SendInputNative.INPUT)) 
-                : stackalloc SendInputNative.INPUT[count];
 
-            try
+            unsafe
             {
-                var keysToProcess = new List<int>(vKeys);
-                if (!isDown) keysToProcess.Reverse();
-
-                for (int i = 0; i < keysToProcess.Count; i++)
+                if (useHeap)
                 {
-                    ushort vKey = (ushort)keysToProcess[i];
-                    if (isDown) _pressedKeys.TryAdd(vKey, 1); else _pressedKeys.TryRemove(vKey, out _);
-                    
-                    inputs[i].type = SendInputNative.INPUT_KEYBOARD;
-                    inputs[i].u.ki.wVk = vKey;
-                    inputs[i].u.ki.wScan = 0;
-                    inputs[i].u.ki.time = 0;
-                    inputs[i].u.ki.dwExtraInfo = IntPtr.Zero;
-
-                    uint flags = 0;
-                    if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) 
-                        flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
-                    if (!isDown) 
-                        flags |= SendInputNative.KEYEVENTF_KEYUP;
-                    inputs[i].u.ki.dwFlags = flags;
+                    SendInputNative.INPUT* inputs = (SendInputNative.INPUT*)Marshal.AllocHGlobal(count * sizeof(SendInputNative.INPUT));
+                    try
+                    {
+                        FillAndSendKeyboardInputs(inputs, vKeys, isDown);
+                    }
+                    finally
+                    {
+                        Marshal.FreeHGlobal((IntPtr)inputs);
+                    }
                 }
-                SendInputNative.SendInput((uint)count, inputs, sizeof(SendInputNative.INPUT));
+                else
+                {
+                    SendInputNative.INPUT* inputs = stackalloc SendInputNative.INPUT[count];
+                    FillAndSendKeyboardInputs(inputs, vKeys, isDown);
+                }
             }
-            finally
+        }
+
+        private unsafe void FillAndSendKeyboardInputs(SendInputNative.INPUT* inputs, List<int> vKeys, bool isDown)
+        {
+            var keysToProcess = new List<int>(vKeys);
+            if (!isDown) keysToProcess.Reverse();
+
+            for (int i = 0; i < keysToProcess.Count; i++)
             {
-                if (useHeap) Marshal.FreeHGlobal((IntPtr)inputs);
+                ushort vKey = (ushort)keysToProcess[i];
+                if (isDown) _pressedKeys.TryAdd(vKey, 1); else _pressedKeys.TryRemove(vKey, out _);
+                
+                inputs[i].type = SendInputNative.INPUT_KEYBOARD;
+                inputs[i].u.ki.wVk = vKey;
+                inputs[i].u.ki.wScan = 0;
+                inputs[i].u.ki.time = 0;
+                inputs[i].u.ki.dwExtraInfo = IntPtr.Zero;
+
+                uint flags = 0;
+                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) 
+                    flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
+                if (!isDown) 
+                    flags |= SendInputNative.KEYEVENTF_KEYUP;
+                inputs[i].u.ki.dwFlags = flags;
             }
+            SendInputNative.SendInput((uint)keysToProcess.Count, inputs, sizeof(SendInputNative.INPUT));
         }
 
         // 【最適化4】ゼロアロケーション（stackalloc）でのマウス入力送信
@@ -246,58 +260,64 @@ namespace UsbInputMapper.Core
         {
             if (buttonId >= 1 && buttonId <= 3) { if (isDown) _pressedMouseButtons.TryAdd(buttonId, 1); else _pressedMouseButtons.TryRemove(buttonId, out _); }
             
-            SendInputNative.INPUT* inputs = stackalloc SendInputNative.INPUT[1];
-            inputs[0].type = SendInputNative.INPUT_MOUSE;
-            inputs[0].u.mi.dx = 0;
-            inputs[0].u.mi.dy = 0;
-            inputs[0].u.mi.mouseData = 0;
-            inputs[0].u.mi.time = 0;
-            inputs[0].u.mi.dwExtraInfo = IntPtr.Zero;
+            unsafe
+            {
+                SendInputNative.INPUT* inputs = stackalloc SendInputNative.INPUT[1];
+                inputs[0].type = SendInputNative.INPUT_MOUSE;
+                inputs[0].u.mi.dx = 0;
+                inputs[0].u.mi.dy = 0;
+                inputs[0].u.mi.mouseData = 0;
+                inputs[0].u.mi.time = 0;
+                inputs[0].u.mi.dwExtraInfo = IntPtr.Zero;
 
-            if (buttonId == 1) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_LEFTDOWN : SendInputNative.MOUSEEVENTF_LEFTUP;
-            else if (buttonId == 2) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_RIGHTDOWN : SendInputNative.MOUSEEVENTF_RIGHTUP;
-            else if (buttonId == 3) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_MIDDLEDOWN : SendInputNative.MOUSEEVENTF_MIDDLEUP;
-            else if (buttonId == 4 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = 120; }
-            else if (buttonId == 5 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = unchecked((uint)-120); }
-            else if (buttonId == 6) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0001; }
-            else if (buttonId == 7) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0002; }
-            
-            if ((buttonId == 4 || buttonId == 5) && !isDown) return;
-            SendInputNative.SendInput(1, inputs, sizeof(SendInputNative.INPUT));
+                if (buttonId == 1) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_LEFTDOWN : SendInputNative.MOUSEEVENTF_LEFTUP;
+                else if (buttonId == 2) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_RIGHTDOWN : SendInputNative.MOUSEEVENTF_RIGHTUP;
+                else if (buttonId == 3) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_MIDDLEDOWN : SendInputNative.MOUSEEVENTF_MIDDLEUP;
+                else if (buttonId == 4 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = 120; }
+                else if (buttonId == 5 && isDown) { inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_WHEEL; inputs[0].u.mi.mouseData = unchecked((uint)-120); }
+                else if (buttonId == 6) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0001; }
+                else if (buttonId == 7) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0002; }
+                
+                if ((buttonId == 4 || buttonId == 5) && !isDown) return;
+                SendInputNative.SendInput(1, inputs, sizeof(SendInputNative.INPUT));
+            }
         }
 
         // 【最適化4】ゼロアロケーション（stackalloc）でのマウス移動送信
         public void SendMouseMove(int x, int y, bool isAbsolute, bool isWindowRelative, bool jiggle)
         {
-            SendInputNative.INPUT* inputs = stackalloc SendInputNative.INPUT[1];
-            inputs[0].type = SendInputNative.INPUT_MOUSE;
-            inputs[0].u.mi.mouseData = 0;
-            inputs[0].u.mi.time = 0;
-            inputs[0].u.mi.dwExtraInfo = IntPtr.Zero;
+            unsafe
+            {
+                SendInputNative.INPUT* inputs = stackalloc SendInputNative.INPUT[1];
+                inputs[0].type = SendInputNative.INPUT_MOUSE;
+                inputs[0].u.mi.mouseData = 0;
+                inputs[0].u.mi.time = 0;
+                inputs[0].u.mi.dwExtraInfo = IntPtr.Zero;
 
-            if (isAbsolute)
-            {
-                int targetX = x; int targetY = y;
-                if (isWindowRelative)
+                if (isAbsolute)
                 {
-                    IntPtr hwnd = GetForegroundWindow();
-                    if (hwnd != IntPtr.Zero)
+                    int targetX = x; int targetY = y;
+                    if (isWindowRelative)
                     {
-                        SendInputNative.POINT pt = new SendInputNative.POINT { X = 0, Y = 0 };
-                        ClientToScreen(hwnd, ref pt);
-                        targetX = pt.X + x; targetY = pt.Y + y;
+                        IntPtr hwnd = GetForegroundWindow();
+                        if (hwnd != IntPtr.Zero)
+                        {
+                            SendInputNative.POINT pt = new SendInputNative.POINT { X = 0, Y = 0 };
+                            ClientToScreen(hwnd, ref pt);
+                            targetX = pt.X + x; targetY = pt.Y + y;
+                        }
                     }
+                    int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
+                    inputs[0].u.mi.dx = (targetX * 65535) / sW; inputs[0].u.mi.dy = (targetY * 65535) / sH;
+                    inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE | SendInputNative.MOUSEEVENTF_ABSOLUTE | SendInputNative.MOUSEEVENTF_VIRTUALDESK;
                 }
-                int sW = Screen.PrimaryScreen.Bounds.Width; int sH = Screen.PrimaryScreen.Bounds.Height;
-                inputs[0].u.mi.dx = (targetX * 65535) / sW; inputs[0].u.mi.dy = (targetY * 65535) / sH;
-                inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE | SendInputNative.MOUSEEVENTF_ABSOLUTE | SendInputNative.MOUSEEVENTF_VIRTUALDESK;
+                else
+                {
+                    inputs[0].u.mi.dx = x; inputs[0].u.mi.dy = y;
+                    inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE;
+                }
+                SendInputNative.SendInput(1, inputs, sizeof(SendInputNative.INPUT));
             }
-            else
-            {
-                inputs[0].u.mi.dx = x; inputs[0].u.mi.dy = y;
-                inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE;
-            }
-            SendInputNative.SendInput(1, inputs, sizeof(SendInputNative.INPUT));
             
             if (jiggle)
             {

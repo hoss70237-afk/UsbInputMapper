@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Windows.Forms;
 using UsbInputMapper.Core;
@@ -12,10 +13,20 @@ namespace UsbInputMapper
         [STAThread]
         static void Main()
         {
+            // 【最適化7】プロセスの優先度をHighに設定し、システム高負荷時でも入力変換が遅れないようにする
+            // (RealTimeはOS全体の不全を起こす危険があるためHighに留めます)
+            try
+            {
+                Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+            }
+            catch (Exception ex)
+            {
+                InputLogger.LogError("Failed to set process priority.", ex);
+            }
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-            // ★ 未処理例外のグローバルキャッチとログ記録
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (s, e) => {
                 InputLogger.LogError("Application UI Thread Exception", e.Exception);
@@ -27,14 +38,12 @@ namespace UsbInputMapper
                 }
             };
 
-            // 多重起動防止
             if (!SingleInstance.Initialize("UsbInputMapper_Unique_Mutex_7A8B9C"))
             {
                 MessageBox.Show("UsbInputMapper は既に起動しています。", "UsbInputMapper", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            // 必須環境チェック(ViGEmBus等)
             if (!PrerequisiteChecker.CheckAll())
             {
                 SingleInstance.Release();
@@ -43,7 +52,6 @@ namespace UsbInputMapper
 
             try
             {
-                // タスクトレイ常駐型アプリケーションコンテキストで起動
                 using (var trayContext = new TrayApplicationContext())
                 {
                     Application.Run(trayContext);

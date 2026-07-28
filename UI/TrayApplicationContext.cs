@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Linq;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using UsbInputMapper.Core;
 using UsbInputMapper.Profiles;
@@ -30,6 +31,13 @@ namespace UsbInputMapper.UI
         {
             Instance = this;
 
+            // 【最適化7】入力処理およびHookを受信するメインスレッド(Windowsメッセージループ)の優先度を最高に引き上げる
+            try
+            {
+                Thread.CurrentThread.Priority = ThreadPriority.Highest;
+            }
+            catch { }
+
             try
             {
                 _profileManager = new ProfileManager();
@@ -45,7 +53,6 @@ namespace UsbInputMapper.UI
 
                 _mainForm = new MainForm(_profileManager, _diManager);
                 
-                // ★ 起動直後にウィンドウハンドルを強制生成し、BeginInvokeが安全に動作するようにする
                 IntPtr forceHandleCreation = _mainForm.Handle;
 
                 _appWatcher = new ForegroundAppWatcher();
@@ -127,7 +134,6 @@ namespace UsbInputMapper.UI
                 return;
             }
 
-            // 【追加】設定画面を開いている時、リアルタイムに設定行をハイライトさせる
             if (_mainForm != null && !_mainForm.IsDisposed && _mainForm.Visible)
             {
                 _mainForm.HighlightBinding(e.Type, e.Code, e.IsDown);

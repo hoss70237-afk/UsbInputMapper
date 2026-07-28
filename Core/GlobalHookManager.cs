@@ -24,6 +24,7 @@ namespace UsbInputMapper.Core
         private const int WM_SYSKEYUP = 0x0105;
 
         private const int WM_MOUSEMOVE = 0x0200;
+        private const int WM_NCMOUSEMOVE = 0x00A0; // 非クライアント領域の移動も除外
         private const int WM_LBUTTONDOWN = 0x0201;
         private const int WM_LBUTTONUP = 0x0202;
         private const int WM_RBUTTONDOWN = 0x0204;
@@ -179,7 +180,7 @@ namespace UsbInputMapper.Core
                 {
                     var kb = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
                     bool isInjected = (kb.flags & LLKHF_INJECTED) != 0;
-                    int msg = wParam.ToInt32();
+                    int msg = (int)wParam;
                     bool isDown = (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN);
                     int vkCode = (int)kb.vkCode;
                     long now = (long)GetTickCount64();
@@ -187,7 +188,7 @@ namespace UsbInputMapper.Core
                     if (IsRecording && !isInjected)
                     {
                         var evt = new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now };
-                        Task.Run(() => { try { OnRecordedInput?.Invoke(this, evt); } catch(Exception ex) { InputLogger.LogError("OnRecordedInput Error", ex); } });
+                        Task.Run(() => { try { OnRecordedInput?.Invoke(this, evt); } catch { } });
                     }
                     
                     if (!isInjected)
@@ -197,7 +198,7 @@ namespace UsbInputMapper.Core
                         { 
                             _recentBlocked[key] = now;
                             var evt = new HookInputEvent { Type = 1, Code = vkCode, IsDown = isDown, Timestamp = now };
-                            Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, evt); } catch (Exception ex) { InputLogger.LogError("OnBlockedInputFired (KB) Error", ex); } });
+                            Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, evt); } catch { } });
                             return (IntPtr)1; 
                         }
                     }
@@ -220,10 +221,9 @@ namespace UsbInputMapper.Core
         {
             if (nCode >= 0)
             {
-                int msg = wParam.ToInt32();
-                
-                // 【最重要改善】マウス移動は一切処理せず、構造体のパース(マーシャリング)も行わずに最速でOSへ返す（CPU負荷を完全排除）
-                if (msg == WM_MOUSEMOVE)
+                // 【最適化】一切のメソッド呼び出しを行わず、最速キャストで移動イベントを弾く
+                int msg = (int)wParam;
+                if (msg == WM_MOUSEMOVE || msg == WM_NCMOUSEMOVE)
                 {
                     return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);
                 }
@@ -248,7 +248,6 @@ namespace UsbInputMapper.Core
 
                     if (!isInjected)
                     {
-                        // 【改善策】常時追跡をやめ、イベントが発生した瞬間のみ GetCursorPos(Win32 API) で実際の座標を取得する
                         SendInputNative.GetCursorPos(out var cursorPos);
 
                         if (code == 1 || code == 2)
@@ -301,7 +300,7 @@ namespace UsbInputMapper.Core
                             if (IsRecording)
                             {
                                 var evt = new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = cursorPos.X, Y = cursorPos.Y, Timestamp = now };
-                                Task.Run(() => { try { OnRecordedInput?.Invoke(this, evt); } catch(Exception ex) { InputLogger.LogError("OnRecordedInput(Mouse) Error", ex); } });
+                                Task.Run(() => { try { OnRecordedInput?.Invoke(this, evt); } catch { } });
                             }
                             
                             long key = GetHookKey(0, code);
@@ -309,7 +308,7 @@ namespace UsbInputMapper.Core
                             { 
                                 _recentBlocked[key] = now; 
                                 var evt = new HookInputEvent { Type = 0, Code = code, IsDown = isDown, X = cursorPos.X, Y = cursorPos.Y, Timestamp = now };
-                                Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, evt); } catch (Exception ex) { InputLogger.LogError("OnBlockedInputFired (Mouse) Error", ex); } });
+                                Task.Run(() => { try { OnBlockedInputFired?.Invoke(this, evt); } catch { } });
                                 return (IntPtr)1; 
                             }
                         }

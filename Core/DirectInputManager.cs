@@ -34,18 +34,22 @@ namespace UsbInputMapper.Core
         
         private List<DeviceState> _devices = new List<DeviceState>();
         private DeviceState[] _activeDevicesCache = new DeviceState[0];
+        
+        // 【最適化】毎ループ発生していた配列のアロケーションを排除するためのキャッシュ
+        private WaitHandle[] _waitHandlesCache;
 
         public bool HasAxisBindings { get; set; } = true;
         public bool ForceEnableAxisEvents { get; set; } = false;
 
         public DirectInputManager()
         {
+            _waitHandlesCache = new WaitHandle[] { _stopEvent };
+
             try
             {
                 _directInput = new DirectInput();
                 _refreshRequested = true;
                 _isRunning = true;
-                // 【改善策】スレッド優先度をNormalに下げコンテキストスイッチを抑制
                 _pollingThread = new Thread(EventWaitLoop) { IsBackground = true, Priority = ThreadPriority.Normal, Name = "DirectInputPollingThread" };
                 _pollingThread.Start();
             }
@@ -98,8 +102,16 @@ namespace UsbInputMapper.Core
                 InputLogger.LogError("Error enumerating DirectInput devices", ex);
             }
 
-            // 【改善策】更新時のみ配列キャッシュを作成
+            // 【最適化】デバイス更新時のみ配列キャッシュを再作成し、ループ内は無確保とする
             _activeDevicesCache = _devices.ToArray();
+            
+            var newWaitHandles = new WaitHandle[_devices.Count + 1];
+            newWaitHandles[0] = _stopEvent;
+            for (int i = 0; i < _devices.Count; i++)
+            {
+                newWaitHandles[i + 1] = _devices[i].NotificationEvent;
+            }
+            _waitHandlesCache = newWaitHandles;
         }
 
         private void EventWaitLoop()
@@ -114,21 +126,13 @@ namespace UsbInputMapper.Core
                         _refreshRequested = false;
                     }
 
-                    // 【改善策】毎ループの lock と ToArray()（ヒープ割り当て）を排除
                     DeviceState[] activeDevices = _activeDevicesCache;
+                    WaitHandle[] waitHandles = _waitHandlesCache;
 
                     if (activeDevices.Length == 0)
                     {
                         if (WaitHandle.WaitAny(new WaitHandle[] { _stopEvent }, 1000) == 0) break;
                         continue;
-                    }
-
-                    WaitHandle[] waitHandles = new WaitHandle[activeDevices.Length + 1];
-                    waitHandles[0] = _stopEvent;
-                    
-                    for (int i = 0; i < activeDevices.Length; i++)
-                    {
-                        waitHandles[i + 1] = activeDevices[i].NotificationEvent;
                     }
 
                     int waitResult = WaitHandle.WaitAny(waitHandles, 2000); 
@@ -217,6 +221,7 @@ namespace UsbInputMapper.Core
             } 
             _devices.Clear();
             _activeDevicesCache = new DeviceState[0];
+            _waitHandlesCache = new WaitHandle[0];
             _stopEvent.Dispose();
             _directInput?.Dispose();
         }

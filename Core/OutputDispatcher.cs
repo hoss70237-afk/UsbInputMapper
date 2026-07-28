@@ -16,7 +16,7 @@ namespace UsbInputMapper.Core
         public static volatile int CurrentLayer = 0;
     }
 
-    public class OutputDispatcher
+    public unsafe class OutputDispatcher
     {
         public static OutputDispatcher Instance { get; private set; }
 
@@ -198,31 +198,62 @@ namespace UsbInputMapper.Core
             }
         }
 
+        // 【最適化4】ゼロアロケーション（stackalloc）でのキー入力送信
         public void SendKeyboardInputs(List<int> vKeys, bool isDown)
         {
             if (vKeys == null || vKeys.Count == 0) return;
-            var inputs = new SendInputNative.INPUT[vKeys.Count];
-            var keysToProcess = new List<int>(vKeys);
-            if (!isDown) keysToProcess.Reverse();
-            for (int i = 0; i < keysToProcess.Count; i++)
+            
+            int count = vKeys.Count;
+            // 安全のため、極端にキーが多い場合のみヒープを使用し、通常はスタックを使用
+            bool useHeap = count > 32;
+            SendInputNative.INPUT* inputs = useHeap 
+                ? (SendInputNative.INPUT*)Marshal.AllocHGlobal(count * sizeof(SendInputNative.INPUT)) 
+                : stackalloc SendInputNative.INPUT[count];
+
+            try
             {
-                ushort vKey = (ushort)keysToProcess[i];
-                if (isDown) _pressedKeys.TryAdd(vKey, 1); else _pressedKeys.TryRemove(vKey, out _);
-                inputs[i].type = SendInputNative.INPUT_KEYBOARD;
-                inputs[i].u.ki.wVk = vKey;
-                uint flags = 0;
-                if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
-                if (!isDown) flags |= SendInputNative.KEYEVENTF_KEYUP;
-                inputs[i].u.ki.dwFlags = flags;
+                var keysToProcess = new List<int>(vKeys);
+                if (!isDown) keysToProcess.Reverse();
+
+                for (int i = 0; i < keysToProcess.Count; i++)
+                {
+                    ushort vKey = (ushort)keysToProcess[i];
+                    if (isDown) _pressedKeys.TryAdd(vKey, 1); else _pressedKeys.TryRemove(vKey, out _);
+                    
+                    inputs[i].type = SendInputNative.INPUT_KEYBOARD;
+                    inputs[i].u.ki.wVk = vKey;
+                    inputs[i].u.ki.wScan = 0;
+                    inputs[i].u.ki.time = 0;
+                    inputs[i].u.ki.dwExtraInfo = IntPtr.Zero;
+
+                    uint flags = 0;
+                    if (vKey == 37 || vKey == 38 || vKey == 39 || vKey == 40 || vKey == 33 || vKey == 34 || vKey == 35 || vKey == 36 || vKey == 45 || vKey == 46) 
+                        flags |= SendInputNative.KEYEVENTF_EXTENDEDKEY;
+                    if (!isDown) 
+                        flags |= SendInputNative.KEYEVENTF_KEYUP;
+                    inputs[i].u.ki.dwFlags = flags;
+                }
+                SendInputNative.SendInput((uint)count, inputs, sizeof(SendInputNative.INPUT));
             }
-            SendInputNative.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
+            finally
+            {
+                if (useHeap) Marshal.FreeHGlobal((IntPtr)inputs);
+            }
         }
 
+        // 【最適化4】ゼロアロケーション（stackalloc）でのマウス入力送信
         public void SendMouseClick(int buttonId, bool isDown)
         {
             if (buttonId >= 1 && buttonId <= 3) { if (isDown) _pressedMouseButtons.TryAdd(buttonId, 1); else _pressedMouseButtons.TryRemove(buttonId, out _); }
-            var inputs = new SendInputNative.INPUT[1];
+            
+            SendInputNative.INPUT* inputs = stackalloc SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
+            inputs[0].u.mi.dx = 0;
+            inputs[0].u.mi.dy = 0;
+            inputs[0].u.mi.mouseData = 0;
+            inputs[0].u.mi.time = 0;
+            inputs[0].u.mi.dwExtraInfo = IntPtr.Zero;
+
             if (buttonId == 1) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_LEFTDOWN : SendInputNative.MOUSEEVENTF_LEFTUP;
             else if (buttonId == 2) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_RIGHTDOWN : SendInputNative.MOUSEEVENTF_RIGHTUP;
             else if (buttonId == 3) inputs[0].u.mi.dwFlags = isDown ? SendInputNative.MOUSEEVENTF_MIDDLEDOWN : SendInputNative.MOUSEEVENTF_MIDDLEUP;
@@ -232,13 +263,18 @@ namespace UsbInputMapper.Core
             else if (buttonId == 7) { inputs[0].u.mi.dwFlags = isDown ? 0x0080U : 0x0100U; inputs[0].u.mi.mouseData = 0x0002; }
             
             if ((buttonId == 4 || buttonId == 5) && !isDown) return;
-            SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
+            SendInputNative.SendInput(1, inputs, sizeof(SendInputNative.INPUT));
         }
 
+        // 【最適化4】ゼロアロケーション（stackalloc）でのマウス移動送信
         public void SendMouseMove(int x, int y, bool isAbsolute, bool isWindowRelative, bool jiggle)
         {
-            var inputs = new SendInputNative.INPUT[1];
+            SendInputNative.INPUT* inputs = stackalloc SendInputNative.INPUT[1];
             inputs[0].type = SendInputNative.INPUT_MOUSE;
+            inputs[0].u.mi.mouseData = 0;
+            inputs[0].u.mi.time = 0;
+            inputs[0].u.mi.dwExtraInfo = IntPtr.Zero;
+
             if (isAbsolute)
             {
                 int targetX = x; int targetY = y;
@@ -261,7 +297,7 @@ namespace UsbInputMapper.Core
                 inputs[0].u.mi.dx = x; inputs[0].u.mi.dy = y;
                 inputs[0].u.mi.dwFlags = SendInputNative.MOUSEEVENTF_MOVE;
             }
-            SendInputNative.SendInput(1, inputs, Marshal.SizeOf(typeof(SendInputNative.INPUT)));
+            SendInputNative.SendInput(1, inputs, sizeof(SendInputNative.INPUT));
             
             if (jiggle)
             {

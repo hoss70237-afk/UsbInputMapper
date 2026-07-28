@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 namespace UsbInputMapper.Core
 {
-    public class RawInputManager : NativeWindow, IDisposable
+    public unsafe class RawInputManager : NativeWindow, IDisposable
     {
         [DllImport("kernel32.dll")]
         private static extern ulong GetTickCount64();
@@ -19,7 +19,6 @@ namespace UsbInputMapper.Core
         private IntPtr _sharedBuffer;
         private const uint SharedBufferSize = 2048;
         
-        // 【最適化2】リフレクションを伴う重いサイズ計算を起動時に1回だけ行う
         private static readonly uint _headerSize = (uint)Marshal.SizeOf(typeof(RawInputNative.RAWINPUTHEADER));
 
         public RawInputManager()
@@ -61,7 +60,6 @@ namespace UsbInputMapper.Core
             {
                 uint pcbSize = SharedBufferSize;
                 
-                // 【最適化1】サイズ問い合わせのP/Invokeを排除し、一発で取得する（API呼び出し回数を半減）
                 uint res = RawInputNative.GetRawInputData(m.LParam, RawInputNative.RID_INPUT, _sharedBuffer, ref pcbSize, _headerSize);
                 
                 if (res != unchecked((uint)-1) && res > 0)
@@ -69,16 +67,14 @@ namespace UsbInputMapper.Core
                     int dwType = Marshal.ReadInt32(_sharedBuffer, 0);
                     if (dwType == RawInputNative.RIM_TYPEMOUSE)
                     {
-                        // オフセット計算: ヘッダサイズ + usButtonFlagsの位置(4バイト目)
                         short usButtonFlags = Marshal.ReadInt16(_sharedBuffer, (int)_headerSize + 4);
                         if (usButtonFlags == 0)
                         {
                             base.WndProc(ref m);
-                            return; // マウス移動はここで最速破棄（CPU負荷ゼロ）
+                            return; 
                         }
                     }
                     
-                    // クリックやキー入力などの実データ処理へ
                     ProcessRawInputData(dwType);
                 }
             }
@@ -90,11 +86,14 @@ namespace UsbInputMapper.Core
             base.WndProc(ref m);
         }
 
+        // 【最適化3】Marshal.PtrToStructure を排除し、unsafeポインタアクセスでCPU負荷を0に
         private void ProcessRawInputData(int dwType)
         {
+            byte* pBuffer = (byte*)_sharedBuffer.ToPointer();
+            
             IntPtr hDevice = IntPtr.Size == 4 
-                ? new IntPtr(Marshal.ReadInt32(_sharedBuffer, 8)) 
-                : new IntPtr(Marshal.ReadInt64(_sharedBuffer, 8));
+                ? new IntPtr(*(int*)(pBuffer + 8)) 
+                : new IntPtr(*(long*)(pBuffer + 8));
 
             var devInfo = GetOrAddDeviceInfo(hDevice);
 
@@ -105,36 +104,36 @@ namespace UsbInputMapper.Core
                 Timestamp = (long)GetTickCount64()
             };
             
-            IntPtr pRawData = new IntPtr(_sharedBuffer.ToInt64() + _headerSize);
+            byte* pRawData = pBuffer + _headerSize;
 
             if (dwType == RawInputNative.RIM_TYPEKEYBOARD)
             {
-                var kb = (RawInputNative.RAWKEYBOARD)Marshal.PtrToStructure(pRawData, typeof(RawInputNative.RAWKEYBOARD));
-                evt.Code = kb.VKey;
-                evt.IsDown = (kb.Message == 0x0100 || kb.Message == 0x0104);
+                var kb = (RawInputNative.RAWKEYBOARD*)pRawData;
+                evt.Code = kb->VKey;
+                evt.IsDown = (kb->Message == 0x0100 || kb->Message == 0x0104);
                 if (evt.Code == 255) return;
                 OnInputEvent?.Invoke(this, evt);
             }
             else if (dwType == RawInputNative.RIM_TYPEMOUSE)
             {
-                var ms = (RawInputNative.RAWMOUSE)Marshal.PtrToStructure(pRawData, typeof(RawInputNative.RAWMOUSE));
+                var ms = (RawInputNative.RAWMOUSE*)pRawData;
                 
-                EmitMouseEvent(evt, ms.usButtonFlags, 0x0001, 0x0002, 1); 
-                EmitMouseEvent(evt, ms.usButtonFlags, 0x0004, 0x0008, 2); 
-                EmitMouseEvent(evt, ms.usButtonFlags, 0x0010, 0x0020, 3); 
-                EmitMouseEvent(evt, ms.usButtonFlags, 0x0040, 0x0080, 6); 
-                EmitMouseEvent(evt, ms.usButtonFlags, 0x0100, 0x0200, 7); 
+                EmitMouseEvent(evt, ms->usButtonFlags, 0x0001, 0x0002, 1); 
+                EmitMouseEvent(evt, ms->usButtonFlags, 0x0004, 0x0008, 2); 
+                EmitMouseEvent(evt, ms->usButtonFlags, 0x0010, 0x0020, 3); 
+                EmitMouseEvent(evt, ms->usButtonFlags, 0x0040, 0x0080, 6); 
+                EmitMouseEvent(evt, ms->usButtonFlags, 0x0100, 0x0200, 7); 
 
-                if ((ms.usButtonFlags & 0x0400) != 0) 
+                if ((ms->usButtonFlags & 0x0400) != 0) 
                 {
-                    short delta = ms.usButtonData;
+                    short delta = ms->usButtonData;
                     evt.Code = delta > 0 ? 4 : 5;
                     evt.IsDown = true;
                     OnInputEvent?.Invoke(this, evt);
                 }
-                else if ((ms.usButtonFlags & 0x0800) != 0)
+                else if ((ms->usButtonFlags & 0x0800) != 0)
                 {
-                    short delta = ms.usButtonData;
+                    short delta = ms->usButtonData;
                     evt.Code = delta > 0 ? 8 : 9;
                     evt.IsDown = true;
                     OnInputEvent?.Invoke(this, evt);
@@ -142,13 +141,13 @@ namespace UsbInputMapper.Core
             }
             else if (dwType == RawInputNative.RIM_TYPEHID)
             {
-                var hid = (RawInputNative.RAWHID)Marshal.PtrToStructure(pRawData, typeof(RawInputNative.RAWHID));
-                int size = (int)(hid.dwSizeHid * hid.dwCount);
+                var hid = (RawInputNative.RAWHID*)pRawData;
+                int size = (int)(hid->dwSizeHid * hid->dwCount);
                 
                 if (size > 0)
                 {
                     byte[] rawData = new byte[size];
-                    IntPtr pHidData = new IntPtr(pRawData.ToInt64() + Marshal.SizeOf(typeof(RawInputNative.RAWHID)));
+                    IntPtr pHidData = new IntPtr((long)pRawData + Marshal.SizeOf(typeof(RawInputNative.RAWHID)));
                     Marshal.Copy(pHidData, rawData, 0, size);
 
                     if (!_lastHidData.TryGetValue(hDevice, out byte[] lastData) || lastData.Length != size)

@@ -31,7 +31,6 @@ namespace UsbInputMapper.UI
         {
             Instance = this;
 
-            // 【最適化7】入力処理およびHookを受信するメインスレッド(Windowsメッセージループ)の優先度を最高に引き上げる
             try
             {
                 Thread.CurrentThread.Priority = ThreadPriority.Highest;
@@ -199,13 +198,7 @@ namespace UsbInputMapper.UI
                     {
                         if (e.Type == 11) 
                         {
-                            bool isPositive = e.Value > 32767;
-                            if (b.AxisRange == 1 && !isPositive) continue;
-                            if (b.AxisRange == 2 && isPositive) continue;
-
-                            int val = e.Value - 32767;
-                            if (Math.Abs(val) > (32767 * b.DeadZone / 100)) OutputDispatcher.Instance?.Dispatch(b.Action, true);
-                            else OutputDispatcher.Instance?.Dispatch(b.Action, false);
+                            OutputDispatcher.Instance?.DispatchAnalog(b.Action, e.Value, b);
                         }
                         else
                         {

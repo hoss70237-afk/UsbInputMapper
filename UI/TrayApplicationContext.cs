@@ -31,11 +31,7 @@ namespace UsbInputMapper.UI
         {
             Instance = this;
 
-            try
-            {
-                Thread.CurrentThread.Priority = ThreadPriority.Highest;
-            }
-            catch { }
+            try { Thread.CurrentThread.Priority = ThreadPriority.Highest; } catch { }
 
             try
             {
@@ -51,13 +47,10 @@ namespace UsbInputMapper.UI
                 _dispatcher = new OutputDispatcher(_vigem);
 
                 _mainForm = new MainForm(_profileManager, _diManager);
-                
                 IntPtr forceHandleCreation = _mainForm.Handle;
 
                 _appWatcher = new ForegroundAppWatcher();
-                _appWatcher.OnForegroundAppChanged += (s, appPath) => {
-                    _profileManager.SwitchToAppProfile(appPath);
-                };
+                _appWatcher.OnForegroundAppChanged += (s, appPath) => { _profileManager.SwitchToAppProfile(appPath); };
                 _appWatcher.Start();
 
                 _rawManager.OnInputEvent += (s, e) => RouteToCaptureOrProcess(e);
@@ -109,20 +102,9 @@ namespace UsbInputMapper.UI
         private void InvokeOnUI(Action action)
         {
             if (_mainForm == null || _mainForm.IsDisposed) return;
-
-            if (!_mainForm.IsHandleCreated)
-            {
-                IntPtr h = _mainForm.Handle;
-            }
-
-            if (_mainForm.InvokeRequired)
-            {
-                _mainForm.BeginInvoke(action);
-            }
-            else
-            {
-                action();
-            }
+            if (!_mainForm.IsHandleCreated) { IntPtr h = _mainForm.Handle; }
+            if (_mainForm.InvokeRequired) _mainForm.BeginInvoke(action);
+            else action();
         }
 
         private void RouteToCaptureOrProcess(InputEvent e)
@@ -171,13 +153,7 @@ namespace UsbInputMapper.UI
             if (profile.OverlayShowMark || profile.OverlayShowName)
             {
                 Task.Run(() => {
-                    try
-                    {
-                        using (var overlay = new ProfileOverlayForm(profile))
-                        {
-                            Application.Run(overlay);
-                        }
-                    }
+                    try { using (var overlay = new ProfileOverlayForm(profile)) { Application.Run(overlay); } }
                     catch { }
                 });
             }
@@ -196,14 +172,21 @@ namespace UsbInputMapper.UI
                 {
                     if (b.InputType == e.Type && b.InputCode == e.Code)
                     {
-                        if (e.Type == 11) 
-                        {
-                            OutputDispatcher.Instance?.DispatchAnalog(b.Action, e.Value, b);
-                        }
-                        else
-                        {
-                            OutputDispatcher.Instance?.Dispatch(b.Action, e.IsDown);
-                        }
+                        if (e.Type == 11) OutputDispatcher.Instance?.DispatchAnalog(b.Action, e.Value, b);
+                        else OutputDispatcher.Instance?.Dispatch(b.Action, e.IsDown);
+                    }
+                }
+            }
+
+            // ★ ラジアルメニューがアクティブな場合、確定判定を行う
+            if (_activeRadialHud != null && _activeRadialAction != null)
+            {
+                if (_activeRadialAction.RadialMenuMode == 1) // 任意ボタンで確定
+                {
+                    if (e.IsDown && e.Type == _activeRadialAction.RadialMenuConfirmType && e.Code == _activeRadialAction.RadialMenuConfirmCode)
+                    {
+                        ExecuteAndCloseRadialHudUI();
+                        return; // 入力を消費して終了
                     }
                 }
             }
@@ -216,38 +199,17 @@ namespace UsbInputMapper.UI
                 {
                     if (b.Action.ActionType == ActionType.RadialMenu)
                     {
-                        int mode = b.Action.RadialMenuMode; 
-
-                        if (mode == 0) 
+                        if (b.Action.RadialMenuMode == 0) // ホールド（離して確定）
                         {
-                            if (e.IsDown)
-                            {
-                                if (_activeRadialHud == null)
-                                {
-                                    ShowRadialHudUI(b.Action);
-                                }
-                            }
-                            else
-                            {
-                                ExecuteAndCloseRadialHudUI();
-                            }
+                            if (e.IsDown) { if (_activeRadialHud == null) ShowRadialHudUI(b.Action); }
+                            else ExecuteAndCloseRadialHudUI();
                         }
-                        else 
+                        else // モード1 (任意ボタン確定) の場合はトグル起動・解除
                         {
                             if (e.IsDown)
                             {
-                                if (_activeRadialHud == null)
-                                {
-                                    ShowRadialHudUI(b.Action);
-                                    _hookManager.IsRadialMenuClickCapturing = true;
-                                    _hookManager.OnRadialMenuClickCaptured = () => {
-                                        ExecuteAndCloseRadialHudUI();
-                                    };
-                                }
-                                else
-                                {
-                                    CloseRadialHudUI();
-                                }
+                                if (_activeRadialHud == null) ShowRadialHudUI(b.Action);
+                                else CloseRadialHudUI(); // 表示中に同じボタンを押したらキャンセル
                             }
                         }
                         continue;
@@ -269,7 +231,6 @@ namespace UsbInputMapper.UI
         {
             InvokeOnUI(() => {
                 if (_activeRadialHud != null) return;
-
                 _activeRadialAction = action;
                 _activeRadialHud = new RadialMenuHudForm(action);
                 _activeRadialHud.Show();
@@ -297,7 +258,6 @@ namespace UsbInputMapper.UI
                     }
                     _activeRadialAction = null;
                 }
-                _hookManager.IsRadialMenuClickCapturing = false;
             });
         }
 
@@ -311,7 +271,6 @@ namespace UsbInputMapper.UI
                     _activeRadialHud = null;
                 }
                 _activeRadialAction = null;
-                _hookManager.IsRadialMenuClickCapturing = false;
             });
         }
 

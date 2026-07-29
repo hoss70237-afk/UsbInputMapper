@@ -21,10 +21,10 @@ namespace UsbInputMapper.UI
         private ComboBox _cmbMode; 
         
         // 任意確定ボタン用UI
-        private Button _btnCaptureConfirm;
+        private Button _btnAddConfirm;
+        private Button _btnClearConfirm;
         private Label _lblConfirm;
-        private int _confirmType = -1;
-        private int _confirmCode = -1;
+        private List<RadialMenuConfirmKey> _confirmKeys;
 
         private NumericUpDown _numSize;
         private ListBox _lstDirections;
@@ -54,14 +54,14 @@ namespace UsbInputMapper.UI
         {
             _profileNames = profileNames ?? new List<string>();
             this.Text = "ラジアルメニュー / ベゼル設定";
-            this.Size = new Size(460, 480);
+            this.Size = new Size(480, 480);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
 
             ResultBinding = existingBinding ?? new UsbInputMapper.Profiles.Binding();
 
-            _tabs = new TabControl { Location = new Point(10, 10), Size = new Size(424, 380) };
+            _tabs = new TabControl { Location = new Point(10, 10), Size = new Size(444, 380) };
             _tabRadialMenu = new TabPage("ラジアルメニュー");
             _tabBezel = new TabPage("ベゼルタッチ");
             _tabs.TabPages.Add(_tabRadialMenu); _tabs.TabPages.Add(_tabBezel);
@@ -69,9 +69,9 @@ namespace UsbInputMapper.UI
             SetupRadialMenuUI();
             SetupBezelUI();
 
-            Button btnOk = new Button { Text = "OK", Location = new Point(270, 400), Size = new Size(75, 25) };
+            Button btnOk = new Button { Text = "OK", Location = new Point(290, 400), Size = new Size(75, 25) };
             btnOk.Click += BtnOk_Click;
-            Button btnCancel = new Button { Text = "キャンセル", Location = new Point(355, 400), Size = new Size(75, 25) };
+            Button btnCancel = new Button { Text = "キャンセル", Location = new Point(375, 400), Size = new Size(75, 25) };
             btnCancel.Click += (s, e) => { this.DialogResult = DialogResult.Cancel; this.Close(); };
 
             this.Controls.Add(_tabs); this.Controls.Add(btnOk); this.Controls.Add(btnCancel);
@@ -100,20 +100,30 @@ namespace UsbInputMapper.UI
             Label lblMode = new Label { Text = "起動モード:", Location = new Point(10, 75), AutoSize = true };
             _cmbMode = new ComboBox { Location = new Point(80, 72), Size = new Size(200, 20), DropDownStyle = ComboBoxStyle.DropDownList };
             _cmbMode.Items.Add("ホールド (開始ボタンを離して確定)");
-            _cmbMode.Items.Add("ボタン確定 (任意のボタンを押して確定)");
+            _cmbMode.Items.Add("ボタン確定 (いずれかのボタンを押して確定)");
             _cmbMode.SelectedIndex = 0;
 
-            _btnCaptureConfirm = new Button { Text = "確定ボタン登録", Location = new Point(10, 100), Size = new Size(110, 25), Visible = false };
-            _lblConfirm = new Label { Text = "確定ボタン: 未設定", Location = new Point(130, 105), AutoSize = true, Visible = false };
-            _btnCaptureConfirm.Click += (s, e) => {
+            _btnAddConfirm = new Button { Text = "追加", Location = new Point(10, 100), Size = new Size(50, 25), Visible = false };
+            _btnClearConfirm = new Button { Text = "一括削除", Location = new Point(65, 100), Size = new Size(70, 25), Visible = false };
+            _lblConfirm = new Label { Text = "確定ボタン: 未設定", Location = new Point(140, 105), AutoSize = true, Visible = false };
+
+            _btnAddConfirm.Click += (s, e) => {
                 using(var cap = new CaptureForm(CaptureMode.SingleAny)) {
                     if (cap.ShowDialog(this) == DialogResult.OK && cap.CapturedEvent != null) {
                         var ev = cap.CapturedEvent; 
-                        _confirmType = ev.Type; 
-                        _confirmCode = (ev.Type == 1) ? ev.VKey : (int)ev.MouseButtonFlags;
-                        _lblConfirm.Text = $"確定ボタン: {UsbInputMapper.Profiles.Binding.GetCodeName(_confirmType, _confirmCode)}";
+                        int type = ev.Type; 
+                        int code = (ev.Type == 1) ? ev.VKey : (int)ev.MouseButtonFlags;
+                        if (!_confirmKeys.Exists(k => k.Type == type && k.Code == code)) {
+                            _confirmKeys.Add(new RadialMenuConfirmKey { Type = type, Code = code });
+                            UpdateConfirmLabel();
+                        }
                     }
                 }
+            };
+
+            _btnClearConfirm.Click += (s, e) => {
+                _confirmKeys.Clear();
+                UpdateConfirmLabel();
             };
 
             lblSlices = new Label { Text = "分割数:", Location = new Point(10, 105), AutoSize = true };
@@ -126,14 +136,15 @@ namespace UsbInputMapper.UI
             _numSize = new NumericUpDown { Location = new Point(200, 102), Size = new Size(60, 20), Minimum = 100, Maximum = 1000, Value = 200 };
 
             lblDirs = new Label { Text = "各方向のアクション設定:", Location = new Point(10, 135), AutoSize = true };
-            _lstDirections = new ListBox { Location = new Point(10, 155), Size = new Size(280, 150) };
+            _lstDirections = new ListBox { Location = new Point(10, 155), Size = new Size(300, 150) };
             
-            _btnEditDirectionAction = new Button { Text = "アクション編集...", Location = new Point(300, 155), Size = new Size(100, 30) };
+            _btnEditDirectionAction = new Button { Text = "アクション編集...", Location = new Point(320, 155), Size = new Size(100, 30) };
             _btnEditDirectionAction.Click += BtnEditDirectionAction_Click;
 
             _cmbMode.SelectedIndexChanged += (s, e) => {
                 bool isButtonMode = _cmbMode.SelectedIndex == 1;
-                _btnCaptureConfirm.Visible = isButtonMode;
+                _btnAddConfirm.Visible = isButtonMode;
+                _btnClearConfirm.Visible = isButtonMode;
                 _lblConfirm.Visible = isButtonMode;
                 
                 int offset = isButtonMode ? 35 : 0;
@@ -151,7 +162,8 @@ namespace UsbInputMapper.UI
             _tabRadialMenu.Controls.Add(_chkBlockOriginalInput);
             _tabRadialMenu.Controls.Add(lblMode);
             _tabRadialMenu.Controls.Add(_cmbMode);
-            _tabRadialMenu.Controls.Add(_btnCaptureConfirm);
+            _tabRadialMenu.Controls.Add(_btnAddConfirm);
+            _tabRadialMenu.Controls.Add(_btnClearConfirm);
             _tabRadialMenu.Controls.Add(_lblConfirm);
             _tabRadialMenu.Controls.Add(lblSlices);
             _tabRadialMenu.Controls.Add(_cmbSlices);
@@ -183,6 +195,19 @@ namespace UsbInputMapper.UI
             _tabBezel.Controls.Add(_lblBezelStatus);
         }
 
+        private void UpdateConfirmLabel()
+        {
+            if (_confirmKeys.Count == 0) {
+                _lblConfirm.Text = "確定ボタン: 未設定";
+            } else {
+                var names = new List<string>();
+                foreach(var k in _confirmKeys) {
+                    names.Add(UsbInputMapper.Profiles.Binding.GetCodeName(k.Type, k.Code));
+                }
+                _lblConfirm.Text = $"確定ボタン: {string.Join(", ", names)}";
+            }
+        }
+
         private void LoadBindingData()
         {
             if (ResultBinding.InputType == 5)
@@ -204,10 +229,13 @@ namespace UsbInputMapper.UI
 
                 _chkBlockOriginalInput.Checked = ResultBinding.BlockOriginalInput;
                 
-                _confirmType = ResultBinding.Action.RadialMenuConfirmType;
-                _confirmCode = ResultBinding.Action.RadialMenuConfirmCode;
-                if (_confirmType != -1)
-                    _lblConfirm.Text = $"確定ボタン: {UsbInputMapper.Profiles.Binding.GetCodeName(_confirmType, _confirmCode)}";
+                _confirmKeys = new List<RadialMenuConfirmKey>();
+                if (ResultBinding.Action.RadialMenuConfirmKeys != null) {
+                    foreach(var k in ResultBinding.Action.RadialMenuConfirmKeys) {
+                        _confirmKeys.Add(new RadialMenuConfirmKey { Type = k.Type, Code = k.Code });
+                    }
+                }
+                UpdateConfirmLabel();
 
                 _cmbMode.SelectedIndex = (ResultBinding.Action.RadialMenuMode == 1) ? 1 : 0;
                 _cmbSlices.SelectedIndex = (ResultBinding.Action.RadialMenuSlices == 12) ? 1 : 0;
@@ -284,7 +312,7 @@ namespace UsbInputMapper.UI
             if (_tabs.SelectedTab == _tabRadialMenu)
             {
                 if (_triggerType == -1) { MessageBox.Show("開始ボタンを設定してください。"); return; }
-                if (_cmbMode.SelectedIndex == 1 && _confirmType == -1) { MessageBox.Show("任意のボタン確定モードの場合、確定ボタンを設定してください。"); return; }
+                if (_cmbMode.SelectedIndex == 1 && _confirmKeys.Count == 0) { MessageBox.Show("任意のボタン確定モードの場合、確定ボタンを追加してください。"); return; }
                 
                 ResultBinding.InputType = _triggerType;
                 ResultBinding.InputCode = _triggerCode;
@@ -294,8 +322,7 @@ namespace UsbInputMapper.UI
                 
                 ResultBinding.Action.ActionType = ActionType.RadialMenu;
                 ResultBinding.Action.RadialMenuMode = _cmbMode.SelectedIndex;
-                ResultBinding.Action.RadialMenuConfirmType = _confirmType;
-                ResultBinding.Action.RadialMenuConfirmCode = _confirmCode;
+                ResultBinding.Action.RadialMenuConfirmKeys = new List<RadialMenuConfirmKey>(_confirmKeys);
                 
                 ResultBinding.Action.RadialMenuSlices = _cmbSlices.SelectedIndex == 0 ? 8 : 12;
                 ResultBinding.Action.RadialMenuSize = (int)_numSize.Value;

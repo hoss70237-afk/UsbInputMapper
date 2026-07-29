@@ -11,6 +11,14 @@ namespace UsbInputMapper.Profiles
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
@@ -50,7 +58,6 @@ namespace UsbInputMapper.Profiles
         private string _lastAppPath = string.Empty;
         private readonly object _lockObj = new object();
 
-        // 【最適化6】アクティブウィンドウ判定時のAPI負荷(CPUスパイク)を防ぐためのメモリキャッシュ
         private readonly ConcurrentDictionary<IntPtr, string> _hwndToPathCache = new ConcurrentDictionary<IntPtr, string>();
 
         public ForegroundAppWatcher()
@@ -92,10 +99,11 @@ namespace UsbInputMapper.Profiles
             IntPtr hwnd = GetForegroundWindow();
             if (hwnd == IntPtr.Zero) return;
 
-            // キャッシュが肥大化したらクリア（HWND再利用による誤爆防止）
+            // 最小化状態や不可視状態のウィンドウにフォーカスが当たった場合はスキップ（誤判定防止）
+            if (IsIconic(hwnd) || !IsWindowVisible(hwnd)) return;
+
             if (_hwndToPathCache.Count > 1000) _hwndToPathCache.Clear();
 
-            // キャッシュヒットすれば重いWin32APIを全スキップして即座に終了
             if (_hwndToPathCache.TryGetValue(hwnd, out string cachedPath))
             {
                 if (!string.Equals(cachedPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
@@ -135,7 +143,6 @@ namespace UsbInputMapper.Profiles
             string currentAppPath = GetExecutablePathProcessId(pid);
             if (!string.IsNullOrEmpty(currentAppPath))
             {
-                // 次回以降高速化するためキャッシュに保存
                 _hwndToPathCache[originalHwnd] = currentAppPath;
 
                 if (!string.Equals(currentAppPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))

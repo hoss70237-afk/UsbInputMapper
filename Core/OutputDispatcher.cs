@@ -16,7 +16,6 @@ namespace UsbInputMapper.Core
         public static volatile int CurrentLayer = 0;
     }
 
-    // クラス全体の unsafe 指定を解除（await エラー防止のため）
     public class OutputDispatcher
     {
         public static OutputDispatcher Instance { get; private set; }
@@ -76,6 +75,64 @@ namespace UsbInputMapper.Core
             catch (Exception ex) { InputLogger.LogError("Failed to release inputs", ex); }
         }
 
+        public void DispatchAnalog(ActionDef action, int inputValue, Binding bindingInfo)
+        {
+            if (action == null || bindingInfo == null) return;
+            try
+            {
+                // 中央を32767として -32767 ~ +32768 の範囲に正規化 (整数演算のみ)
+                int centered = inputValue - 32767;
+                
+                if (bindingInfo.InvertAxis)
+                {
+                    centered = -centered;
+                }
+
+                // デッドゾーン閾値算出 (32767 に対する割合)
+                int dzThreshold = (32767 * bindingInfo.DeadZone) / 100;
+
+                // AxisRange (0:Full, 1:正方向のみ, 2:負方向のみ)
+                if (bindingInfo.AxisRange == 1 && centered < 0) centered = 0;
+                if (bindingInfo.AxisRange == 2 && centered > 0) centered = 0;
+
+                int outputValue = 0;
+                int absCentered = centered < 0 ? -centered : centered;
+
+                if (absCentered > dzThreshold)
+                {
+                    int range = 32767 - dzThreshold;
+                    if (range <= 0) range = 1;
+
+                    // デッドゾーン越えの分を 0 ~ 32767 にマッピング (64bit乗算でオーバーフロー回避)
+                    long mapped = (long)(absCentered - dzThreshold) * 32767L / range;
+                    if (mapped > 32767) mapped = 32767;
+
+                    outputValue = centered > 0 ? (int)mapped : (int)-mapped;
+                }
+
+                if (action.ActionType == ActionType.XboxAxis)
+                {
+                    // XboxAxisは short (-32768 ~ 32767) クランプ
+                    short xboxAxisValue = (short)(outputValue < -32768 ? -32768 : (outputValue > 32767 ? 32767 : outputValue));
+                    _viGEmOutput.SetAxis(GetXboxAxis(action.ArgumentNum), xboxAxisValue);
+                }
+                else if (action.ActionType == ActionType.XboxTrigger)
+                {
+                    // XboxTriggerは byte (0 ~ 255) 負の値は0とし、絶対値をスケール
+                    int absOut = outputValue < 0 ? -outputValue : outputValue;
+                    int trigValue = (absOut * 255) / 32767;
+                    if (trigValue > 255) trigValue = 255;
+                    if (trigValue < 0) trigValue = 0;
+
+                    _viGEmOutput.SetSlider(GetXboxSlider(action.ArgumentNum), (byte)trigValue);
+                }
+            }
+            catch (Exception ex)
+            {
+                InputLogger.LogError($"OutputDispatcher DispatchAnalog Error (Action:{action.ActionType})", ex);
+            }
+        }
+
         public void Dispatch(ActionDef action, bool isDown)
         {
             if (action == null) return;
@@ -124,6 +181,8 @@ namespace UsbInputMapper.Core
                     case ActionType.FolderOpen:
                         if (isDown && !string.IsNullOrEmpty(action.ArgumentStr)) { try { Process.Start("explorer.exe", action.ArgumentStr); } catch { } } break;
                     case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
+                    case ActionType.XboxAxis: _viGEmOutput.SetAxis(GetXboxAxis(action.ArgumentNum), isDown ? (short)32767 : (short)0); break;
+                    case ActionType.XboxTrigger: _viGEmOutput.SetSlider(GetXboxSlider(action.ArgumentNum), isDown ? (byte)255 : (byte)0); break;
                     case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
                     case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; 
                     
@@ -199,7 +258,6 @@ namespace UsbInputMapper.Core
             }
         }
 
-        // 【最適化4】ゼロアロケーション（stackalloc）でのキー入力送信
         public void SendKeyboardInputs(List<int> vKeys, bool isDown)
         {
             if (vKeys == null || vKeys.Count == 0) return;
@@ -255,7 +313,6 @@ namespace UsbInputMapper.Core
             SendInputNative.SendInput((uint)keysToProcess.Count, inputs, sizeof(SendInputNative.INPUT));
         }
 
-        // 【最適化4】ゼロアロケーション（stackalloc）でのマウス入力送信
         public void SendMouseClick(int buttonId, bool isDown)
         {
             if (buttonId >= 1 && buttonId <= 3) { if (isDown) _pressedMouseButtons.TryAdd(buttonId, 1); else _pressedMouseButtons.TryRemove(buttonId, out _); }
@@ -283,7 +340,6 @@ namespace UsbInputMapper.Core
             }
         }
 
-        // 【最適化4】ゼロアロケーション（stackalloc）でのマウス移動送信
         public void SendMouseMove(int x, int y, bool isAbsolute, bool isWindowRelative, bool jiggle)
         {
             unsafe
@@ -380,6 +436,28 @@ namespace UsbInputMapper.Core
                 case 5: return Xbox360Button.LeftShoulder; case 6: return Xbox360Button.RightShoulder; case 7: return Xbox360Button.Back; case 8: return Xbox360Button.Start;
                 case 9: return Xbox360Button.LeftThumb; case 10: return Xbox360Button.RightThumb; case 11: return Xbox360Button.Up; case 12: return Xbox360Button.Down;
                 case 13: return Xbox360Button.Left; case 14: return Xbox360Button.Right; case 15: return Xbox360Button.Guide; default: return Xbox360Button.A;
+            }
+        }
+
+        private Xbox360Axis GetXboxAxis(int id)
+        {
+            switch(id)
+            {
+                case 1: return Xbox360Axis.LeftThumbX;
+                case 2: return Xbox360Axis.LeftThumbY;
+                case 3: return Xbox360Axis.RightThumbX;
+                case 4: return Xbox360Axis.RightThumbY;
+                default: return Xbox360Axis.LeftThumbX;
+            }
+        }
+
+        private Xbox360Slider GetXboxSlider(int id)
+        {
+            switch(id)
+            {
+                case 1: return Xbox360Slider.LeftTrigger;
+                case 2: return Xbox360Slider.RightTrigger;
+                default: return Xbox360Slider.LeftTrigger;
             }
         }
     }

@@ -45,6 +45,12 @@ namespace UsbInputMapper.Profiles
         public RadialMenuDirection() { Action = new ActionDef(); Label = ""; }
     }
 
+    public class RadialMenuConfirmKey
+    {
+        public int Type { get; set; }
+        public int Code { get; set; }
+    }
+
     public class ActionDef
     {
         public ActionType ActionType { get; set; }
@@ -72,12 +78,10 @@ namespace UsbInputMapper.Profiles
         [JsonProperty("GestureSize")]
         public int RadialMenuSize { get; set; } = 200;
         [JsonProperty("GestureMode")]
-        public int RadialMenuMode { get; set; } = 0; // 0: 離して確定(ホールド), 1: 任意のボタンで確定
+        public int RadialMenuMode { get; set; } = 0; // 0: 離して確定(ホールド), 1: 任意のボタン群で確定
         
-        [JsonProperty("RadialConfirmType")]
-        public int RadialMenuConfirmType { get; set; } = -1;
-        [JsonProperty("RadialConfirmCode")]
-        public int RadialMenuConfirmCode { get; set; } = -1;
+        [JsonProperty("RadialConfirmKeys")]
+        public List<RadialMenuConfirmKey> RadialMenuConfirmKeys { get; set; }
 
         [JsonProperty("GestureDirections")]
         public List<RadialMenuDirection> RadialMenuDirections { get; set; }
@@ -104,6 +108,7 @@ namespace UsbInputMapper.Profiles
             MultipleKeys = new List<int>();
             MacroSteps = new List<MacroStep>();
             RadialMenuDirections = new List<RadialMenuDirection>();
+            RadialMenuConfirmKeys = new List<RadialMenuConfirmKey>();
             PlaybackMode = MacroPlaybackMode.Sequence;
             StepTimeoutMs = 1000;
         }

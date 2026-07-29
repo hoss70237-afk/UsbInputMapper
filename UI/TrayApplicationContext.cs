@@ -183,10 +183,25 @@ namespace UsbInputMapper.UI
             {
                 if (_activeRadialAction.RadialMenuMode == 1) // 任意ボタンで確定
                 {
-                    if (e.IsDown && e.Type == _activeRadialAction.RadialMenuConfirmType && e.Code == _activeRadialAction.RadialMenuConfirmCode)
+                    if (e.IsDown && _activeRadialAction.RadialMenuConfirmKeys != null)
                     {
-                        ExecuteAndCloseRadialHudUI();
-                        return; // 入力を消費して終了
+                        bool match = false;
+                        var keys = _activeRadialAction.RadialMenuConfirmKeys;
+                        int count = keys.Count;
+                        for (int i = 0; i < count; i++)
+                        {
+                            if (keys[i].Type == e.Type && keys[i].Code == e.Code)
+                            {
+                                match = true;
+                                break;
+                            }
+                        }
+
+                        if (match)
+                        {
+                            ExecuteAndCloseRadialHudUI();
+                            return; // 入力を消費して終了
+                        }
                     }
                 }
             }

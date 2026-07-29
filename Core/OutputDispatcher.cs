@@ -75,7 +75,7 @@ namespace UsbInputMapper.Core
             catch (Exception ex) { InputLogger.LogError("Failed to release inputs", ex); }
         }
 
-        public void DispatchAnalog(ActionDef action, int inputValue, Binding bindingInfo)
+        public void DispatchAnalog(ActionDef action, int inputValue, UsbInputMapper.Profiles.Binding bindingInfo)
         {
             if (action == null || bindingInfo == null) return;
             try

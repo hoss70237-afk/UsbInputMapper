@@ -72,7 +72,13 @@ namespace UsbInputMapper.Profiles
         [JsonProperty("GestureSize")]
         public int RadialMenuSize { get; set; } = 200;
         [JsonProperty("GestureMode")]
-        public int RadialMenuMode { get; set; } = 0; // ★ 0: 離して確定(ホールド), 1: クリックで確定
+        public int RadialMenuMode { get; set; } = 0; // 0: 離して確定(ホールド), 1: 任意のボタンで確定
+        
+        [JsonProperty("RadialConfirmType")]
+        public int RadialMenuConfirmType { get; set; } = -1;
+        [JsonProperty("RadialConfirmCode")]
+        public int RadialMenuConfirmCode { get; set; } = -1;
+
         [JsonProperty("GestureDirections")]
         public List<RadialMenuDirection> RadialMenuDirections { get; set; }
 
@@ -141,7 +147,7 @@ namespace UsbInputMapper.Profiles
                 case ActionType.ProfileSwitch: return "プロファイル切替: " + ArgumentStr;
                 case ActionType.StickToMouse: return $"スティックマウス(最高速度:{StickMaxSpeed})";
                 case ActionType.RadialMenu: 
-                    string modeStr = RadialMenuMode == 1 ? "クリック確定" : "離して確定";
+                    string modeStr = RadialMenuMode == 1 ? "任意ボタンで確定" : "離して確定";
                     return $"ラジアルメニュー({RadialMenuSlices}分割 / {modeStr})";
                 case ActionType.BackgroundControl: return $"バックグラウンド操作: {(string.IsNullOrEmpty(BgWindowName)?BgClassName:BgWindowName)}";
                 case ActionType.CursorVisibility: 

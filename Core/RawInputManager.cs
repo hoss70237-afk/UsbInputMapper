@@ -86,7 +86,76 @@ namespace UsbInputMapper.Core
             base.WndProc(ref m);
         }
 
-        // 【最適化3】Marshal.PtrToStructure を排除し、unsafeポインタアクセスでCPU負荷を0に
+        private int CalculateBezelCode(int x, int y)
+        {
+            int sW = Screen.PrimaryScreen.Bounds.Width;
+            int sH = Screen.PrimaryScreen.Bounds.Height;
+            int m = 25;
+
+            bool isLeft = x < m;
+            bool isRight = x > sW - m;
+            bool isTop = y < m;
+            bool isBottom = y > sH - m;
+
+            if (!isLeft && !isRight && !isTop && !isBottom) return -1;
+
+            if (isLeft && isTop) return 0;
+            if (isRight && isTop) return 4;
+            if (isRight && isBottom) return 8;
+            if (isLeft && isBottom) return 12;
+
+            if (isTop) { if (x < sW / 3) return 1; if (x < (sW * 2) / 3) return 2; return 3; }
+            if (isRight) { if (y < sH / 3) return 5; if (y < (sH * 2) / 3) return 6; return 7; }
+            if (isBottom) { if (x > (sW * 2) / 3) return 9; if (x > sW / 3) return 10; return 11; }
+            if (isLeft) { if (y > (sH * 2) / 3) return 13; if (y > sH / 3) return 14; return 15; }
+
+            return -1;
+        }
+
+        private void EmitMouseEvent(InputEvent baseEvt, uint currentFlags, uint downFlag, uint upFlag, int mappedCode)
+        {
+            if ((currentFlags & downFlag) != 0)
+            {
+                InputEvent evt = new InputEvent { DeviceIdentifier = baseEvt.DeviceIdentifier, Type = baseEvt.Type, Code = mappedCode, IsDown = true, Timestamp = baseEvt.Timestamp };
+                
+                if (mappedCode == 1 || mappedCode == 2)
+                {
+                    if (SendInputNative.GetCursorPos(out var cursorPos))
+                    {
+                        evt.X = cursorPos.X;
+                        evt.Y = cursorPos.Y;
+                        int bezelCode = CalculateBezelCode(cursorPos.X, cursorPos.Y);
+                        if (bezelCode != -1)
+                        {
+                            InputEvent bezelEvt = new InputEvent { DeviceIdentifier = "SystemBezel", Type = 5, Code = bezelCode, IsDown = true, Timestamp = baseEvt.Timestamp };
+                            OnInputEvent?.Invoke(this, bezelEvt);
+                        }
+                    }
+                }
+                OnInputEvent?.Invoke(this, evt);
+            }
+            else if ((currentFlags & upFlag) != 0)
+            {
+                InputEvent evt = new InputEvent { DeviceIdentifier = baseEvt.DeviceIdentifier, Type = baseEvt.Type, Code = mappedCode, IsDown = false, Timestamp = baseEvt.Timestamp };
+                
+                if (mappedCode == 1 || mappedCode == 2)
+                {
+                    if (SendInputNative.GetCursorPos(out var cursorPos))
+                    {
+                        evt.X = cursorPos.X;
+                        evt.Y = cursorPos.Y;
+                        int bezelCode = CalculateBezelCode(cursorPos.X, cursorPos.Y);
+                        if (bezelCode != -1)
+                        {
+                            InputEvent bezelEvt = new InputEvent { DeviceIdentifier = "SystemBezel", Type = 5, Code = bezelCode, IsDown = false, Timestamp = baseEvt.Timestamp };
+                            OnInputEvent?.Invoke(this, bezelEvt);
+                        }
+                    }
+                }
+                OnInputEvent?.Invoke(this, evt);
+            }
+        }
+
         private void ProcessRawInputData(int dwType)
         {
             byte* pBuffer = (byte*)_sharedBuffer.ToPointer();
@@ -182,20 +251,6 @@ namespace UsbInputMapper.Core
                     }
                     _lastHidData[hDevice] = (byte[])rawData.Clone();
                 }
-            }
-        }
-
-        private void EmitMouseEvent(InputEvent baseEvt, uint currentFlags, uint downFlag, uint upFlag, int mappedCode)
-        {
-            if ((currentFlags & downFlag) != 0)
-            {
-                InputEvent evt = new InputEvent { DeviceIdentifier = baseEvt.DeviceIdentifier, Type = baseEvt.Type, Code = mappedCode, IsDown = true, Timestamp = baseEvt.Timestamp };
-                OnInputEvent?.Invoke(this, evt);
-            }
-            else if ((currentFlags & upFlag) != 0)
-            {
-                InputEvent evt = new InputEvent { DeviceIdentifier = baseEvt.DeviceIdentifier, Type = baseEvt.Type, Code = mappedCode, IsDown = false, Timestamp = baseEvt.Timestamp };
-                OnInputEvent?.Invoke(this, evt);
             }
         }
 

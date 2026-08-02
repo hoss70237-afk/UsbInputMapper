@@ -27,6 +27,12 @@ namespace UsbInputMapper.Core
         private const int WM_LBUTTONUP = 0x0202;
         private const int WM_RBUTTONDOWN = 0x0204;
         private const int WM_RBUTTONUP = 0x0205;
+        private const int WM_MBUTTONDOWN = 0x0207;
+        private const int WM_MBUTTONUP = 0x0208;
+        private const int WM_MOUSEWHEEL = 0x020A;
+        private const int WM_MOUSEHWHEEL = 0x020E;
+        private const int WM_XBUTTONDOWN = 0x020B;
+        private const int WM_XBUTTONUP = 0x020C;
 
         private const uint LLKHF_INJECTED = 0x00000010;
 
@@ -53,6 +59,7 @@ namespace UsbInputMapper.Core
         private IntPtr _mouseHookID = IntPtr.Zero;
         private LowLevelHookProc _keyboardProc;
         private LowLevelHookProc _mouseProc;
+        private bool _requireMouseHook = false;
 
         private ConcurrentDictionary<long, byte> _blockList = new ConcurrentDictionary<long, byte>();
         private ConcurrentDictionary<long, long> _recentBlocked = new ConcurrentDictionary<long, long>();
@@ -94,7 +101,6 @@ namespace UsbInputMapper.Core
             _mouseProc = MouseHookCallback;
 
             IntPtr hMod = Marshal.GetHINSTANCE(typeof(GlobalHookManager).Module);
-            // マウスフックはここでは登録しない (CPU負荷ゼロ化)
             _keyboardHookID = SetWindowsHookEx(WH_KEYBOARD_LL, _keyboardProc, hMod, 0);
 
             _notifyThread = new Thread(NotifyLoop) { IsBackground = true, Priority = ThreadPriority.AboveNormal, Name = "HookNotifyThread" };
@@ -121,13 +127,31 @@ namespace UsbInputMapper.Core
 
         private long GetHookKey(int type, int code) => ((long)type << 32) | (uint)code;
 
-        public void SetBlockList(HashSet<long> blockList) 
+        private void UpdateMouseHookState()
+        {
+            bool shouldBeHooked = _requireMouseHook || IsCoordinateCapturing;
+            
+            if (shouldBeHooked && _mouseHookID == IntPtr.Zero)
+            {
+                IntPtr hMod = Marshal.GetHINSTANCE(typeof(GlobalHookManager).Module);
+                _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, hMod, 0);
+            }
+            else if (!shouldBeHooked && _mouseHookID != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(_mouseHookID);
+                _mouseHookID = IntPtr.Zero;
+            }
+        }
+
+        public void SetBlockList(HashSet<long> blockList, bool requireMouseHook) 
         { 
             _blockList.Clear();
             if (blockList != null)
             {
                 foreach (var item in blockList) _blockList.TryAdd(item, 1);
             }
+            _requireMouseHook = requireMouseHook;
+            UpdateMouseHookState();
         }
 
         public void ResetChatterCount() { BlockedChatterCount = 0; }
@@ -138,25 +162,45 @@ namespace UsbInputMapper.Core
             IsCoordinateCapturing = true; 
             _waitingForUp = false; 
             _waitingForRightUp = false; 
-            
-            // 座標取得時のみマウスフックを一時的に有効化
-            if (_mouseHookID == IntPtr.Zero)
-            {
-                IntPtr hMod = Marshal.GetHINSTANCE(typeof(GlobalHookManager).Module);
-                _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, hMod, 0);
-            }
+            UpdateMouseHookState();
         }
         
         public void StopCoordinateCapture() 
         { 
             IsCoordinateCapturing = false; 
             _coordinateCaptureCallback = null; 
-            
-            if (_mouseHookID != IntPtr.Zero)
-            {
-                UnhookWindowsHookEx(_mouseHookID);
-                _mouseHookID = IntPtr.Zero;
-            }
+            UpdateMouseHookState();
+        }
+
+        private int CalculateBezelCode(int x, int y)
+        {
+            var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(x, y));
+            var bounds = screen.Bounds;
+            int m = 25;
+
+            bool isLeft = x < bounds.Left + m;
+            bool isRight = x > bounds.Right - m;
+            bool isTop = y < bounds.Top + m;
+            bool isBottom = y > bounds.Bottom - m;
+
+            if (!isLeft && !isRight && !isTop && !isBottom) return -1;
+
+            int w = bounds.Width;
+            int h = bounds.Height;
+            int rx = x - bounds.Left;
+            int ry = y - bounds.Top;
+
+            if (isLeft && isTop) return 0;
+            if (isRight && isTop) return 4;
+            if (isRight && isBottom) return 8;
+            if (isLeft && isBottom) return 12;
+
+            if (isTop) { if (rx < w / 3) return 1; if (rx < (w * 2) / 3) return 2; return 3; }
+            if (isRight) { if (ry < h / 3) return 5; if (ry < (h * 2) / 3) return 6; return 7; }
+            if (isBottom) { if (rx > (w * 2) / 3) return 9; if (rx > w / 3) return 10; return 11; }
+            if (isLeft) { if (ry > (h * 2) / 3) return 13; if (ry > h / 3) return 14; return 15; }
+
+            return -1;
         }
 
         private IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -219,26 +263,99 @@ namespace UsbInputMapper.Core
 
         private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            // 動的フック中（座標取得中）のみクリックを横取り
-            if (nCode >= 0 && lParam != IntPtr.Zero && IsCoordinateCapturing)
+            if (nCode >= 0 && lParam != IntPtr.Zero)
             {
-                int msg = (int)wParam;
                 MSLLHOOKSTRUCT* ms = (MSLLHOOKSTRUCT*)lParam;
+                int msg = (int)wParam;
+                bool isInjected = (ms->flags & LLKHF_INJECTED) != 0;
 
-                var hookPt = new POINT { x = ms->pt.x, y = ms->pt.y };
-                if (msg == WM_LBUTTONDOWN) { _capturePoint = hookPt; _waitingForUp = true; return (IntPtr)1; }
-                else if (msg == WM_LBUTTONUP && _waitingForUp) { 
-                    _waitingForUp = false; 
-                    StopCoordinateCapture(); 
-                    EnqueueEvent(() => _coordinateCaptureCallback?.Invoke(_capturePoint, false)); 
-                    return (IntPtr)1; 
+                if (IsCoordinateCapturing)
+                {
+                    var hookPt = new POINT { x = ms->pt.x, y = ms->pt.y };
+                    if (msg == WM_LBUTTONDOWN) { _capturePoint = hookPt; _waitingForUp = true; return (IntPtr)1; }
+                    else if (msg == WM_LBUTTONUP && _waitingForUp) { 
+                        _waitingForUp = false; 
+                        StopCoordinateCapture(); 
+                        EnqueueEvent(() => _coordinateCaptureCallback?.Invoke(_capturePoint, false)); 
+                        return (IntPtr)1; 
+                    }
+                    else if (msg == WM_RBUTTONDOWN) { _waitingForRightUp = true; return (IntPtr)1; }
+                    else if (msg == WM_RBUTTONUP && _waitingForRightUp) { 
+                        _waitingForRightUp = false; 
+                        StopCoordinateCapture(); 
+                        EnqueueEvent(() => _coordinateCaptureCallback?.Invoke(hookPt, true)); 
+                        return (IntPtr)1; 
+                    }
                 }
-                else if (msg == WM_RBUTTONDOWN) { _waitingForRightUp = true; return (IntPtr)1; }
-                else if (msg == WM_RBUTTONUP && _waitingForRightUp) { 
-                    _waitingForRightUp = false; 
-                    StopCoordinateCapture(); 
-                    EnqueueEvent(() => _coordinateCaptureCallback?.Invoke(hookPt, true)); 
-                    return (IntPtr)1; 
+
+                if (_requireMouseHook && !isInjected)
+                {
+                    int mouseCode = -1;
+                    bool isDown = false;
+
+                    if (msg == WM_LBUTTONDOWN) { mouseCode = 1; isDown = true; }
+                    else if (msg == WM_LBUTTONUP) { mouseCode = 1; isDown = false; }
+                    else if (msg == WM_RBUTTONDOWN) { mouseCode = 2; isDown = true; }
+                    else if (msg == WM_RBUTTONUP) { mouseCode = 2; isDown = false; }
+                    else if (msg == WM_MBUTTONDOWN) { mouseCode = 3; isDown = true; }
+                    else if (msg == WM_MBUTTONUP) { mouseCode = 3; isDown = false; }
+                    else if (msg == WM_MOUSEWHEEL)
+                    {
+                        short delta = (short)(ms->mouseData >> 16);
+                        mouseCode = delta > 0 ? 4 : 5;
+                        isDown = true;
+                    }
+                    else if (msg == WM_MOUSEHWHEEL)
+                    {
+                        short delta = (short)(ms->mouseData >> 16);
+                        mouseCode = delta > 0 ? 8 : 9;
+                        isDown = true;
+                    }
+                    else if (msg == WM_XBUTTONDOWN)
+                    {
+                        int xbtn = (int)(ms->mouseData >> 16);
+                        mouseCode = xbtn == 1 ? 6 : 7;
+                        isDown = true;
+                    }
+                    else if (msg == WM_XBUTTONUP)
+                    {
+                        int xbtn = (int)(ms->mouseData >> 16);
+                        mouseCode = xbtn == 1 ? 6 : 7;
+                        isDown = false;
+                    }
+
+                    if (mouseCode != -1)
+                    {
+                        long now = (long)GetTickCount64();
+
+                        if (mouseCode == 1 || mouseCode == 2)
+                        {
+                            int bezelCode = CalculateBezelCode(ms->pt.x, ms->pt.y);
+                            if (bezelCode != -1)
+                            {
+                                long bezelKey = GetHookKey(5, bezelCode);
+                                var evt = new HookInputEvent { Type = 5, Code = bezelCode, IsDown = isDown, Timestamp = now, X = ms->pt.x, Y = ms->pt.y };
+                                
+                                if (_blockList.ContainsKey(bezelKey))
+                                {
+                                    EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
+                                    return (IntPtr)1;
+                                }
+                                else
+                                {
+                                    EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
+                                }
+                            }
+                        }
+
+                        long btnKey = GetHookKey(0, mouseCode);
+                        if (_blockList.ContainsKey(btnKey))
+                        {
+                            var evt = new HookInputEvent { Type = 0, Code = mouseCode, IsDown = isDown, Timestamp = now, X = ms->pt.x, Y = ms->pt.y };
+                            EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
+                            return (IntPtr)1;
+                        }
+                    }
                 }
             }
             return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);

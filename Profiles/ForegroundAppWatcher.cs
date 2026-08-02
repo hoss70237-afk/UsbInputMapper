@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -8,7 +9,12 @@ namespace UsbInputMapper.Profiles
     public class ForegroundAppWatcher : IDisposable
     {
         [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
@@ -30,54 +36,102 @@ namespace UsbInputMapper.Profiles
         private static extern bool EnumChildWindows(IntPtr hwndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
         private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
+        private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
+        
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc, WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
+        [DllImport("user32.dll")]
+        private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        private const uint EVENT_SYSTEM_FOREGROUND = 3;
+        private const uint WINEVENT_OUTOFCONTEXT = 0;
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         public event EventHandler<string> OnForegroundAppChanged;
         
+        private readonly WinEventDelegate _winEventProc;
+        private IntPtr _hWinEventHook = IntPtr.Zero;
         private string _lastAppPath = string.Empty;
-        private IntPtr _lastHwnd = IntPtr.Zero;
-        
+        private readonly object _lockObj = new object();
+
+        private readonly ConcurrentDictionary<IntPtr, string> _hwndToPathCache = new ConcurrentDictionary<IntPtr, string>();
+
+        private BlockingCollection<IntPtr> _queue = new BlockingCollection<IntPtr>();
         private Thread _workerThread;
-        private volatile bool _isRunning = false;
+        private volatile bool _isRunning = true;
 
         public ForegroundAppWatcher()
         {
+            _winEventProc = new WinEventDelegate(WinEventCallback);
+            _workerThread = new Thread(ProcessQueue) { IsBackground = true, Priority = ThreadPriority.AboveNormal, Name = "ForegroundWatcherThread" };
+            _workerThread.Start();
         }
 
         public void Start()
         {
-            if (_isRunning) return;
-            _isRunning = true;
-            _workerThread = new Thread(PollingLoop) { IsBackground = true, Priority = ThreadPriority.Lowest, Name = "ForegroundWatcherThread" };
-            _workerThread.Start();
+            lock (_lockObj)
+            {
+                if (_hWinEventHook == IntPtr.Zero)
+                {
+                    _hWinEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+                    _queue.Add(GetForegroundWindow());
+                }
+            }
         }
 
         public void Stop()
         {
-            _isRunning = false;
-        }
-
-        private void PollingLoop()
-        {
-            while (_isRunning)
+            lock (_lockObj)
             {
-                try
+                if (_hWinEventHook != IntPtr.Zero)
                 {
-                    CheckCurrentForeground();
+                    UnhookWinEvent(_hWinEventHook);
+                    _hWinEventHook = IntPtr.Zero;
                 }
-                catch { }
-                Thread.Sleep(500);
             }
         }
 
-        private void CheckCurrentForeground()
+        private void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd != IntPtr.Zero && _isRunning)
+            {
+                _queue.Add(hwnd);
+            }
+        }
+
+        private void ProcessQueue()
+        {
+            foreach (var hwnd in _queue.GetConsumingEnumerable())
+            {
+                if (!_isRunning) break;
+                try { CheckCurrentForeground(hwnd); } catch { }
+            }
+        }
+
+        private void CheckCurrentForeground(IntPtr hwnd)
+        {
             if (hwnd == IntPtr.Zero) return;
 
-            if (hwnd == _lastHwnd && !string.IsNullOrEmpty(_lastAppPath)) return;
+            if (IsIconic(hwnd) || !IsWindowVisible(hwnd)) return;
+
+            if (_hwndToPathCache.Count > 1000) _hwndToPathCache.Clear();
+
+            if (_hwndToPathCache.TryGetValue(hwnd, out string cachedPath))
+            {
+                if (!string.Equals(cachedPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    _lastAppPath = cachedPath;
+                    OnForegroundAppChanged?.Invoke(this, cachedPath);
+                }
+                return;
+            }
 
             IntPtr originalHwnd = hwnd;
+
             StringBuilder className = new StringBuilder(256);
             GetClassName(hwnd, className, className.Capacity);
 
@@ -103,19 +157,15 @@ namespace UsbInputMapper.Profiles
             if (pid == 0) return;
 
             string currentAppPath = GetExecutablePathProcessId(pid);
-            
             if (!string.IsNullOrEmpty(currentAppPath))
             {
-                _lastHwnd = originalHwnd;
+                _hwndToPathCache[originalHwnd] = currentAppPath;
+
                 if (!string.Equals(currentAppPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
                 {
                     _lastAppPath = currentAppPath;
                     OnForegroundAppChanged?.Invoke(this, currentAppPath);
                 }
-            }
-            else
-            {
-                _lastHwnd = IntPtr.Zero;
             }
         }
 
@@ -143,7 +193,10 @@ namespace UsbInputMapper.Profiles
         public void Dispose()
         {
             Stop();
-            _workerThread?.Join(1000);
+            _isRunning = false;
+            _queue.CompleteAdding();
+            _workerThread?.Join(500);
+            _queue.Dispose();
         }
     }
 }

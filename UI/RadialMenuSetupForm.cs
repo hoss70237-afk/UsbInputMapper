@@ -20,7 +20,6 @@ namespace UsbInputMapper.UI
         private ComboBox _cmbSlices;
         private ComboBox _cmbMode; 
         
-        // 任意確定ボタン用UI
         private Button _btnAddConfirm;
         private Button _btnClearConfirm;
         private Label _lblConfirm;
@@ -38,6 +37,8 @@ namespace UsbInputMapper.UI
         private CheckBox _chkBezelBlock;
         private Button _btnEditBezelAction;
         private Label _lblBezelStatus;
+
+        private Label _lblBezelModValue;
 
         private int _triggerType = -1;
         private int _triggerCode = -1;
@@ -60,6 +61,7 @@ namespace UsbInputMapper.UI
             this.MaximizeBox = false;
 
             ResultBinding = existingBinding ?? new UsbInputMapper.Profiles.Binding();
+            if (ResultBinding.SubTriggers == null) ResultBinding.SubTriggers = new List<TriggerKey>();
 
             _tabs = new TabControl { Location = new Point(10, 10), Size = new Size(444, 380) };
             _tabRadialMenu = new TabPage("ラジアルメニュー");
@@ -186,13 +188,38 @@ namespace UsbInputMapper.UI
             _btnEditBezelAction = new Button { Text = "発動アクションを設定...", Location = new Point(15, 90), Size = new Size(180, 30) };
             _btnEditBezelAction.Click += BtnEditBezelAction_Click;
 
-            _lblBezelStatus = new Label { Text = "アクション: なし", Location = new Point(15, 135), AutoSize = true, ForeColor = Color.Blue };
+            _lblBezelStatus = new Label { Text = "アクション: なし", Location = new Point(15, 130), AutoSize = true, ForeColor = Color.Blue };
+
+            Label lblBezelMod = new Label { Text = "修飾ボタン(同時押し):", Location = new Point(15, 165), AutoSize = true };
+            Button btnCaptureBezelMod = new Button { Text = "登録", Location = new Point(160, 162), Size = new Size(50, 25) };
+            Button btnClearBezelMod = new Button { Text = "クリア", Location = new Point(215, 162), Size = new Size(50, 25) };
+            _lblBezelModValue = new Label { Text = "未設定", Location = new Point(275, 167), AutoSize = true };
+
+            btnCaptureBezelMod.Click += (s, e) => {
+                using(var cap = new CaptureForm(CaptureMode.SingleAny)) {
+                    if (cap.ShowDialog(this) == DialogResult.OK && cap.CapturedEvent != null) {
+                        var ev = cap.CapturedEvent;
+                        ResultBinding.SubTriggers.Clear();
+                        ResultBinding.SubTriggers.Add(new TriggerKey { DeviceIdentifier = ev.DeviceIdentifier, Type = ev.Type, Code = (ev.Type == 1) ? ev.VKey : (int)ev.MouseButtonFlags });
+                        UpdateBezelModLabel();
+                    }
+                }
+            };
+
+            btnClearBezelMod.Click += (s, e) => {
+                ResultBinding.SubTriggers.Clear();
+                UpdateBezelModLabel();
+            };
 
             _tabBezel.Controls.Add(lblArea);
             _tabBezel.Controls.Add(_cmbBezelArea);
             _tabBezel.Controls.Add(_chkBezelBlock);
             _tabBezel.Controls.Add(_btnEditBezelAction);
             _tabBezel.Controls.Add(_lblBezelStatus);
+            _tabBezel.Controls.Add(lblBezelMod);
+            _tabBezel.Controls.Add(btnCaptureBezelMod);
+            _tabBezel.Controls.Add(btnClearBezelMod);
+            _tabBezel.Controls.Add(_lblBezelModValue);
         }
 
         private void UpdateConfirmLabel()
@@ -208,6 +235,16 @@ namespace UsbInputMapper.UI
             }
         }
 
+        private void UpdateBezelModLabel()
+        {
+            if (ResultBinding.SubTriggers == null || ResultBinding.SubTriggers.Count == 0) {
+                _lblBezelModValue.Text = "未設定";
+            } else {
+                var t = ResultBinding.SubTriggers[0];
+                _lblBezelModValue.Text = UsbInputMapper.Profiles.Binding.GetCodeName(t.Type, t.Code);
+            }
+        }
+
         private void LoadBindingData()
         {
             if (ResultBinding.InputType == 5)
@@ -216,6 +253,7 @@ namespace UsbInputMapper.UI
                 _cmbBezelArea.SelectedIndex = Math.Min(15, Math.Max(0, ResultBinding.InputCode));
                 _chkBezelBlock.Checked = ResultBinding.BlockOriginalInput;
                 UpdateBezelStatusText();
+                UpdateBezelModLabel();
             }
             else
             {
@@ -326,6 +364,7 @@ namespace UsbInputMapper.UI
                 
                 ResultBinding.Action.RadialMenuSlices = _cmbSlices.SelectedIndex == 0 ? 8 : 12;
                 ResultBinding.Action.RadialMenuSize = (int)_numSize.Value;
+                ResultBinding.SubTriggers.Clear(); 
             }
             else
             {
@@ -333,7 +372,15 @@ namespace UsbInputMapper.UI
                 ResultBinding.InputCode = _cmbBezelArea.SelectedIndex;
                 ResultBinding.DeviceIdentifier = "SystemBezel";
                 ResultBinding.BlockOriginalInput = _chkBezelBlock.Checked;
-                ResultBinding.Name = $"ベゼル: {BezelNames[_cmbBezelArea.SelectedIndex]}";
+                
+                string modName = "";
+                if (ResultBinding.SubTriggers.Count > 0)
+                {
+                    var t = ResultBinding.SubTriggers[0];
+                    modName = $" [{UsbInputMapper.Profiles.Binding.GetCodeName(t.Type, t.Code)}]";
+                }
+                
+                ResultBinding.Name = $"ベゼル: {BezelNames[_cmbBezelArea.SelectedIndex]}{modName}";
             }
 
             this.DialogResult = DialogResult.OK;

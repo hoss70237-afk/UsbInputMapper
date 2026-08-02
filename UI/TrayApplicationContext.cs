@@ -142,15 +142,31 @@ namespace UsbInputMapper.UI
             }
 
             var blockList = new HashSet<long>();
+            bool hasUnconditionalBezel = false;
+            var bezelModifiers = new HashSet<long>();
             bool needMouseHook = false;
-            bool enableBezel = false;
 
             foreach (var b in profile.Bindings)
             {
-                if (b.InputType == 0 || b.InputType == 5)
+                if (b.InputType == 0)
                 {
                     needMouseHook = true;
-                    if (b.InputType == 5) enableBezel = true;
+                }
+
+                if (b.InputType == 5)
+                {
+                    if (b.SubTriggers == null || b.SubTriggers.Count == 0)
+                    {
+                        hasUnconditionalBezel = true;
+                    }
+                    else
+                    {
+                        foreach(var mod in b.SubTriggers)
+                        {
+                            long modKey = ((long)mod.Type << 32) | (uint)mod.Code;
+                            bezelModifiers.Add(modKey);
+                        }
+                    }
                 }
 
                 if (b.BlockOriginalInput)
@@ -162,7 +178,8 @@ namespace UsbInputMapper.UI
                     }
                 }
             }
-            _hookManager.SetBlockList(blockList, needMouseHook, enableBezel);
+            
+            _hookManager.SetBlockList(blockList, needMouseHook, hasUnconditionalBezel, bezelModifiers);
 
             if (profile.OverlayShowMark || profile.OverlayShowName)
             {
@@ -225,6 +242,20 @@ namespace UsbInputMapper.UI
 
                 if (b.InputType == e.Type && b.InputCode == e.Code)
                 {
+                    if (b.SubTriggers != null && b.SubTriggers.Count > 0)
+                    {
+                        bool modsPressed = true;
+                        foreach (var mod in b.SubTriggers)
+                        {
+                            if (!_hookManager.IsKeyPressed(mod.Type, mod.Code))
+                            {
+                                modsPressed = false;
+                                break;
+                            }
+                        }
+                        if (!modsPressed) continue;
+                    }
+
                     if (b.Action.ActionType == ActionType.RadialMenu)
                     {
                         if (b.Action.RadialMenuMode == 0)

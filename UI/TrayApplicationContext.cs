@@ -125,6 +125,9 @@ namespace UsbInputMapper.UI
 
         private void ProfileManager_OnProfileChanged(object sender, EventArgs e)
         {
+            // 旧プロファイルで実行中のマクロや押しっぱなし状態をリセットし暴発を防ぐ
+            OutputDispatcher.Instance?.ReleaseAllInputs();
+
             var profile = _profileManager.CurrentActiveProfile;
             if (profile == null) return;
 
@@ -140,15 +143,25 @@ namespace UsbInputMapper.UI
             }
 
             var blockList = new HashSet<long>();
-            foreach (var b in profile.Bindings.Where(x => x.BlockOriginalInput))
+            bool needMouseHook = false;
+            foreach (var b in profile.Bindings)
             {
-                if (b.InputType == 0 || b.InputType == 1 || b.InputType == 5)
+                if (b.InputType == 0 || b.InputType == 5)
                 {
-                    long key = ((long)b.InputType << 32) | (uint)b.InputCode;
-                    blockList.Add(key);
+                    needMouseHook = true;
+                }
+
+                if (b.BlockOriginalInput)
+                {
+                    if (b.InputType == 0 || b.InputType == 1 || b.InputType == 5)
+                    {
+                        long key = ((long)b.InputType << 32) | (uint)b.InputCode;
+                        blockList.Add(key);
+                    }
                 }
             }
-            _hookManager.SetBlockList(blockList);
+            // 不要な時はマウスフック(CPU負荷)を無効化する
+            _hookManager.SetBlockList(blockList, needMouseHook);
 
             if (profile.OverlayShowMark || profile.OverlayShowName)
             {
@@ -178,7 +191,7 @@ namespace UsbInputMapper.UI
                 }
             }
 
-            // ★ ラジアルメニューがアクティブな場合、確定判定を行う
+            // ラジアルメニューがアクティブな場合、確定判定を行う
             if (_activeRadialHud != null && _activeRadialAction != null)
             {
                 if (_activeRadialAction.RadialMenuMode == 1) // 任意ボタンで確定

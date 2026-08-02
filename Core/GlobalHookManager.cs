@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace UsbInputMapper.Core
 {
@@ -174,31 +172,26 @@ namespace UsbInputMapper.Core
 
         private int CalculateBezelCode(int x, int y)
         {
-            var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(x, y));
-            var bounds = screen.Bounds;
+            int sW = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Width;
+            int sH = System.Windows.Forms.Screen.PrimaryScreen.Bounds.Height;
             int m = 25;
 
-            bool isLeft = x < bounds.Left + m;
-            bool isRight = x > bounds.Right - m;
-            bool isTop = y < bounds.Top + m;
-            bool isBottom = y > bounds.Bottom - m;
+            bool isLeft = x < m;
+            bool isRight = x > sW - m;
+            bool isTop = y < m;
+            bool isBottom = y > sH - m;
 
             if (!isLeft && !isRight && !isTop && !isBottom) return -1;
-
-            int w = bounds.Width;
-            int h = bounds.Height;
-            int rx = x - bounds.Left;
-            int ry = y - bounds.Top;
 
             if (isLeft && isTop) return 0;
             if (isRight && isTop) return 4;
             if (isRight && isBottom) return 8;
             if (isLeft && isBottom) return 12;
 
-            if (isTop) { if (rx < w / 3) return 1; if (rx < (w * 2) / 3) return 2; return 3; }
-            if (isRight) { if (ry < h / 3) return 5; if (ry < (h * 2) / 3) return 6; return 7; }
-            if (isBottom) { if (rx > (w * 2) / 3) return 9; if (rx > w / 3) return 10; return 11; }
-            if (isLeft) { if (ry > (h * 2) / 3) return 13; if (ry > h / 3) return 14; return 15; }
+            if (isTop) { if (x < sW / 3) return 1; if (x < (sW * 2) / 3) return 2; return 3; }
+            if (isRight) { if (y < sH / 3) return 5; if (y < (sH * 2) / 3) return 6; return 7; }
+            if (isBottom) { if (x > (sW * 2) / 3) return 9; if (x > sW / 3) return 10; return 11; }
+            if (isLeft) { if (y > (sH * 2) / 3) return 13; if (y > sH / 3) return 14; return 15; }
 
             return -1;
         }
@@ -291,59 +284,37 @@ namespace UsbInputMapper.Core
                 if (_requireMouseHook && !isInjected)
                 {
                     int mouseCode = -1;
-                    bool isDown = false;
 
-                    if (msg == WM_LBUTTONDOWN) { mouseCode = 1; isDown = true; }
-                    else if (msg == WM_LBUTTONUP) { mouseCode = 1; isDown = false; }
-                    else if (msg == WM_RBUTTONDOWN) { mouseCode = 2; isDown = true; }
-                    else if (msg == WM_RBUTTONUP) { mouseCode = 2; isDown = false; }
-                    else if (msg == WM_MBUTTONDOWN) { mouseCode = 3; isDown = true; }
-                    else if (msg == WM_MBUTTONUP) { mouseCode = 3; isDown = false; }
+                    if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) mouseCode = 1;
+                    else if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) mouseCode = 2;
+                    else if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP) mouseCode = 3;
                     else if (msg == WM_MOUSEWHEEL)
                     {
                         short delta = (short)(ms->mouseData >> 16);
                         mouseCode = delta > 0 ? 4 : 5;
-                        isDown = true;
                     }
                     else if (msg == WM_MOUSEHWHEEL)
                     {
                         short delta = (short)(ms->mouseData >> 16);
                         mouseCode = delta > 0 ? 8 : 9;
-                        isDown = true;
                     }
-                    else if (msg == WM_XBUTTONDOWN)
+                    else if (msg == WM_XBUTTONDOWN || msg == WM_XBUTTONUP)
                     {
                         int xbtn = (int)(ms->mouseData >> 16);
                         mouseCode = xbtn == 1 ? 6 : 7;
-                        isDown = true;
-                    }
-                    else if (msg == WM_XBUTTONUP)
-                    {
-                        int xbtn = (int)(ms->mouseData >> 16);
-                        mouseCode = xbtn == 1 ? 6 : 7;
-                        isDown = false;
                     }
 
                     if (mouseCode != -1)
                     {
-                        long now = (long)GetTickCount64();
-
                         if (mouseCode == 1 || mouseCode == 2)
                         {
                             int bezelCode = CalculateBezelCode(ms->pt.x, ms->pt.y);
                             if (bezelCode != -1)
                             {
                                 long bezelKey = GetHookKey(5, bezelCode);
-                                var evt = new HookInputEvent { Type = 5, Code = bezelCode, IsDown = isDown, Timestamp = now, X = ms->pt.x, Y = ms->pt.y };
-                                
                                 if (_blockList.ContainsKey(bezelKey))
                                 {
-                                    EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
                                     return (IntPtr)1;
-                                }
-                                else
-                                {
-                                    EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
                                 }
                             }
                         }
@@ -351,8 +322,6 @@ namespace UsbInputMapper.Core
                         long btnKey = GetHookKey(0, mouseCode);
                         if (_blockList.ContainsKey(btnKey))
                         {
-                            var evt = new HookInputEvent { Type = 0, Code = mouseCode, IsDown = isDown, Timestamp = now, X = ms->pt.x, Y = ms->pt.y };
-                            EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
                             return (IntPtr)1;
                         }
                     }

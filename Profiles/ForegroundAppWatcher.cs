@@ -2,15 +2,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 
 namespace UsbInputMapper.Profiles
 {
     public class ForegroundAppWatcher : IDisposable
     {
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool IsIconic(IntPtr hWnd);
@@ -47,6 +44,9 @@ namespace UsbInputMapper.Profiles
         [DllImport("user32.dll")]
         private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
 
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
         private const uint EVENT_SYSTEM_FOREGROUND = 3;
         private const uint WINEVENT_OUTOFCONTEXT = 0;
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
@@ -60,9 +60,15 @@ namespace UsbInputMapper.Profiles
 
         private readonly ConcurrentDictionary<IntPtr, string> _hwndToPathCache = new ConcurrentDictionary<IntPtr, string>();
 
+        private BlockingCollection<IntPtr> _queue = new BlockingCollection<IntPtr>();
+        private Thread _workerThread;
+        private volatile bool _isRunning = true;
+
         public ForegroundAppWatcher()
         {
             _winEventProc = new WinEventDelegate(WinEventCallback);
+            _workerThread = new Thread(ProcessQueue) { IsBackground = true, Priority = ThreadPriority.AboveNormal, Name = "ForegroundWatcherThread" };
+            _workerThread.Start();
         }
 
         public void Start()
@@ -72,7 +78,7 @@ namespace UsbInputMapper.Profiles
                 if (_hWinEventHook == IntPtr.Zero)
                 {
                     _hWinEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
-                    Task.Run(() => CheckCurrentForeground());
+                    _queue.Add(GetForegroundWindow());
                 }
             }
         }
@@ -91,15 +97,25 @@ namespace UsbInputMapper.Profiles
 
         private void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            Task.Run(() => CheckCurrentForeground());
+            if (hwnd != IntPtr.Zero && _isRunning)
+            {
+                _queue.Add(hwnd);
+            }
         }
 
-        private void CheckCurrentForeground()
+        private void ProcessQueue()
         {
-            IntPtr hwnd = GetForegroundWindow();
+            foreach (var hwnd in _queue.GetConsumingEnumerable())
+            {
+                if (!_isRunning) break;
+                try { CheckCurrentForeground(hwnd); } catch { }
+            }
+        }
+
+        private void CheckCurrentForeground(IntPtr hwnd)
+        {
             if (hwnd == IntPtr.Zero) return;
 
-            // 最小化状態や不可視状態のウィンドウにフォーカスが当たった場合はスキップ（誤判定防止）
             if (IsIconic(hwnd) || !IsWindowVisible(hwnd)) return;
 
             if (_hwndToPathCache.Count > 1000) _hwndToPathCache.Clear();
@@ -177,6 +193,10 @@ namespace UsbInputMapper.Profiles
         public void Dispose()
         {
             Stop();
+            _isRunning = false;
+            _queue.CompleteAdding();
+            _workerThread?.Join(500);
+            _queue.Dispose();
         }
     }
 }

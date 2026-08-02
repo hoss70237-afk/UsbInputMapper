@@ -125,7 +125,6 @@ namespace UsbInputMapper.UI
 
         private void ProfileManager_OnProfileChanged(object sender, EventArgs e)
         {
-            // 旧プロファイルで実行中のマクロや押しっぱなし状態をリセットし暴発を防ぐ
             OutputDispatcher.Instance?.ReleaseAllInputs();
 
             var profile = _profileManager.CurrentActiveProfile;
@@ -160,7 +159,6 @@ namespace UsbInputMapper.UI
                     }
                 }
             }
-            // 不要な時はマウスフック(CPU負荷)を無効化する
             _hookManager.SetBlockList(blockList, needMouseHook);
 
             if (profile.OverlayShowMark || profile.OverlayShowName)
@@ -191,10 +189,9 @@ namespace UsbInputMapper.UI
                 }
             }
 
-            // ラジアルメニューがアクティブな場合、確定判定を行う
             if (_activeRadialHud != null && _activeRadialAction != null)
             {
-                if (_activeRadialAction.RadialMenuMode == 1) // 任意ボタンで確定
+                if (_activeRadialAction.RadialMenuMode == 1)
                 {
                     if (e.IsDown && _activeRadialAction.RadialMenuConfirmKeys != null)
                     {
@@ -213,7 +210,7 @@ namespace UsbInputMapper.UI
                         if (match)
                         {
                             ExecuteAndCloseRadialHudUI();
-                            return; // 入力を消費して終了
+                            return; 
                         }
                     }
                 }
@@ -227,17 +224,17 @@ namespace UsbInputMapper.UI
                 {
                     if (b.Action.ActionType == ActionType.RadialMenu)
                     {
-                        if (b.Action.RadialMenuMode == 0) // ホールド（離して確定）
+                        if (b.Action.RadialMenuMode == 0)
                         {
                             if (e.IsDown) { if (_activeRadialHud == null) ShowRadialHudUI(b.Action); }
                             else ExecuteAndCloseRadialHudUI();
                         }
-                        else // モード1 (任意ボタン確定) の場合はトグル起動・解除
+                        else
                         {
                             if (e.IsDown)
                             {
                                 if (_activeRadialHud == null) ShowRadialHudUI(b.Action);
-                                else CloseRadialHudUI(); // 表示中に同じボタンを押したらキャンセル
+                                else CloseRadialHudUI();
                             }
                         }
                         continue;

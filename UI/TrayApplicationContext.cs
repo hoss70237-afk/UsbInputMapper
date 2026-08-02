@@ -143,23 +143,26 @@ namespace UsbInputMapper.UI
 
             var blockList = new HashSet<long>();
             bool needMouseHook = false;
+            bool enableBezel = false;
+
             foreach (var b in profile.Bindings)
             {
                 if (b.InputType == 0 || b.InputType == 5)
                 {
                     needMouseHook = true;
+                    if (b.InputType == 5) enableBezel = true;
                 }
 
                 if (b.BlockOriginalInput)
                 {
-                    if (b.InputType == 0 || b.InputType == 1 || b.InputType == 5)
+                    if (b.InputType == 0 || b.InputType == 1)
                     {
                         long key = ((long)b.InputType << 32) | (uint)b.InputCode;
                         blockList.Add(key);
                     }
                 }
             }
-            _hookManager.SetBlockList(blockList, needMouseHook);
+            _hookManager.SetBlockList(blockList, needMouseHook, enableBezel);
 
             if (profile.OverlayShowMark || profile.OverlayShowName)
             {

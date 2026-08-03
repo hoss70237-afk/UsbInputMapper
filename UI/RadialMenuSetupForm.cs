@@ -38,8 +38,6 @@ namespace UsbInputMapper.UI
         private Button _btnEditBezelAction;
         private Label _lblBezelStatus;
 
-        private Label _lblBezelModValue;
-
         private int _triggerType = -1;
         private int _triggerCode = -1;
         private string _triggerDevId = "Any";
@@ -47,7 +45,7 @@ namespace UsbInputMapper.UI
         private static readonly string[] BezelNames = {
             "0: 左上隅", "1: 上辺(左)", "2: 上辺(中)", "3: 上辺(右)",
             "4: 右上隅", "5: 右辺(上)", "6: 右辺(中)", "7: 右辺(下)",
-            "8: 右下隅", "9: 下辺(右)", "10: 下辺(中)", "11: 下辺(左)",
+            "8: 右下隅", "9: 下辺(右) - 廃止", "10: 下辺(中) - 廃止", "11: 下辺(左) - 廃止",
             "12: 左下隅", "13: 左辺(下)", "14: 左辺(中)", "15: 左辺(上)"
         };
 
@@ -61,7 +59,6 @@ namespace UsbInputMapper.UI
             this.MaximizeBox = false;
 
             ResultBinding = existingBinding ?? new UsbInputMapper.Profiles.Binding();
-            if (ResultBinding.SubTriggers == null) ResultBinding.SubTriggers = new List<TriggerKey>();
 
             _tabs = new TabControl { Location = new Point(10, 10), Size = new Size(444, 380) };
             _tabRadialMenu = new TabPage("ラジアルメニュー");
@@ -178,48 +175,26 @@ namespace UsbInputMapper.UI
 
         private void SetupBezelUI()
         {
-            Label lblArea = new Label { Text = "ベゼル領域 (画面端25px):", Location = new Point(15, 20), AutoSize = true };
+            Label lblArea = new Label { Text = "ベゼル領域 (画面端):", Location = new Point(15, 20), AutoSize = true };
             _cmbBezelArea = new ComboBox { Location = new Point(160, 17), Size = new Size(180, 20), DropDownStyle = ComboBoxStyle.DropDownList };
             foreach (var bName in BezelNames) _cmbBezelArea.Items.Add(bName);
             _cmbBezelArea.SelectedIndex = 0;
 
-            _chkBezelBlock = new CheckBox { Text = "画面端クリックを元のアプリからブロックする", Location = new Point(15, 55), AutoSize = true, Checked = true };
+            _chkBezelBlock = new CheckBox { Text = "画面端クリックを元のアプリからブロックする(互換用・無効)", Location = new Point(15, 55), AutoSize = true, Checked = false, Enabled = false };
 
             _btnEditBezelAction = new Button { Text = "発動アクションを設定...", Location = new Point(15, 90), Size = new Size(180, 30) };
             _btnEditBezelAction.Click += BtnEditBezelAction_Click;
 
             _lblBezelStatus = new Label { Text = "アクション: なし", Location = new Point(15, 130), AutoSize = true, ForeColor = Color.Blue };
 
-            Label lblBezelMod = new Label { Text = "修飾ボタン(同時押し):", Location = new Point(15, 165), AutoSize = true };
-            Button btnCaptureBezelMod = new Button { Text = "登録", Location = new Point(160, 162), Size = new Size(50, 25) };
-            Button btnClearBezelMod = new Button { Text = "クリア", Location = new Point(215, 162), Size = new Size(50, 25) };
-            _lblBezelModValue = new Label { Text = "未設定", Location = new Point(275, 167), AutoSize = true };
-
-            btnCaptureBezelMod.Click += (s, e) => {
-                using(var cap = new CaptureForm(CaptureMode.SingleAny)) {
-                    if (cap.ShowDialog(this) == DialogResult.OK && cap.CapturedEvent != null) {
-                        var ev = cap.CapturedEvent;
-                        ResultBinding.SubTriggers.Clear();
-                        ResultBinding.SubTriggers.Add(new TriggerKey { DeviceIdentifier = ev.DeviceIdentifier, Type = ev.Type, Code = (ev.Type == 1) ? ev.VKey : (int)ev.MouseButtonFlags });
-                        UpdateBezelModLabel();
-                    }
-                }
-            };
-
-            btnClearBezelMod.Click += (s, e) => {
-                ResultBinding.SubTriggers.Clear();
-                UpdateBezelModLabel();
-            };
+            Label lblInfo = new Label { Text = "※下辺(9, 10, 11)はタスクバーとの干渉を防ぐため廃止されました。", Location = new Point(15, 170), AutoSize = true, ForeColor = Color.DimGray };
 
             _tabBezel.Controls.Add(lblArea);
             _tabBezel.Controls.Add(_cmbBezelArea);
             _tabBezel.Controls.Add(_chkBezelBlock);
             _tabBezel.Controls.Add(_btnEditBezelAction);
             _tabBezel.Controls.Add(_lblBezelStatus);
-            _tabBezel.Controls.Add(lblBezelMod);
-            _tabBezel.Controls.Add(btnCaptureBezelMod);
-            _tabBezel.Controls.Add(btnClearBezelMod);
-            _tabBezel.Controls.Add(_lblBezelModValue);
+            _tabBezel.Controls.Add(lblInfo);
         }
 
         private void UpdateConfirmLabel()
@@ -235,25 +210,13 @@ namespace UsbInputMapper.UI
             }
         }
 
-        private void UpdateBezelModLabel()
-        {
-            if (ResultBinding.SubTriggers == null || ResultBinding.SubTriggers.Count == 0) {
-                _lblBezelModValue.Text = "未設定";
-            } else {
-                var t = ResultBinding.SubTriggers[0];
-                _lblBezelModValue.Text = UsbInputMapper.Profiles.Binding.GetCodeName(t.Type, t.Code);
-            }
-        }
-
         private void LoadBindingData()
         {
             if (ResultBinding.InputType == 5)
             {
                 _tabs.SelectedTab = _tabBezel;
                 _cmbBezelArea.SelectedIndex = Math.Min(15, Math.Max(0, ResultBinding.InputCode));
-                _chkBezelBlock.Checked = ResultBinding.BlockOriginalInput;
                 UpdateBezelStatusText();
-                UpdateBezelModLabel();
             }
             else
             {
@@ -368,19 +331,19 @@ namespace UsbInputMapper.UI
             }
             else
             {
-                ResultBinding.InputType = 5;
-                ResultBinding.InputCode = _cmbBezelArea.SelectedIndex;
-                ResultBinding.DeviceIdentifier = "SystemBezel";
-                ResultBinding.BlockOriginalInput = _chkBezelBlock.Checked;
-                
-                string modName = "";
-                if (ResultBinding.SubTriggers.Count > 0)
+                int code = _cmbBezelArea.SelectedIndex;
+                if (code == 9 || code == 10 || code == 11)
                 {
-                    var t = ResultBinding.SubTriggers[0];
-                    modName = $" [{UsbInputMapper.Profiles.Binding.GetCodeName(t.Type, t.Code)}]";
+                    MessageBox.Show("下辺のベゼル領域(9,10,11)は現在廃止されています。別の領域を選択してください。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
                 }
-                
-                ResultBinding.Name = $"ベゼル: {BezelNames[_cmbBezelArea.SelectedIndex]}{modName}";
+
+                ResultBinding.InputType = 5;
+                ResultBinding.InputCode = code;
+                ResultBinding.DeviceIdentifier = "SystemBezel";
+                ResultBinding.BlockOriginalInput = false; // 透明ウィンドウではブロック不要
+                ResultBinding.Name = $"ベゼル: {BezelNames[code]}";
+                ResultBinding.SubTriggers.Clear(); 
             }
 
             this.DialogResult = DialogResult.OK;

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using UsbInputMapper.Core;
 using UsbInputMapper.Profiles;
 
@@ -12,6 +13,9 @@ namespace UsbInputMapper.UI
 {
     public class TrayApplicationContext : ApplicationContext
     {
+        [DllImport("kernel32.dll")]
+        private static extern ulong GetTickCount64();
+
         private NotifyIcon _trayIcon;
         public static TrayApplicationContext Instance { get; private set; }
 
@@ -61,6 +65,12 @@ namespace UsbInputMapper.UI
                 _hookManager.OnBlockedInputFired += (s, e) => RouteToCaptureOrProcess(new InputEvent { 
                     Type = e.Type, Code = e.Code, IsDown = e.IsDown, X = e.X, Y = e.Y, Timestamp = e.Timestamp 
                 });
+
+                BezelWindowManager.Instance.OnBezelFired += (s, code) => {
+                    long ts = (long)GetTickCount64();
+                    RouteToCaptureOrProcess(new InputEvent { Type = 5, Code = code, IsDown = true, Timestamp = ts });
+                    RouteToCaptureOrProcess(new InputEvent { Type = 5, Code = code, IsDown = false, Timestamp = ts + 1 });
+                };
 
                 _profileManager.OnProfileChanged += ProfileManager_OnProfileChanged;
 
@@ -130,6 +140,8 @@ namespace UsbInputMapper.UI
             var profile = _profileManager.CurrentActiveProfile;
             if (profile == null) return;
 
+            BezelWindowManager.Instance.UpdateBezelWindows(profile);
+
             if (profile.OverrideGlobalChattering)
             {
                 _hookManager.EnableChatteringCanceler = profile.EnableChatteringCanceler;
@@ -142,32 +154,11 @@ namespace UsbInputMapper.UI
             }
 
             var blockList = new HashSet<long>();
-            bool hasUnconditionalBezel = false;
-            var bezelModifiers = new HashSet<long>();
             bool needMouseHook = false;
 
             foreach (var b in profile.Bindings)
             {
-                if (b.InputType == 0)
-                {
-                    needMouseHook = true;
-                }
-
-                if (b.InputType == 5)
-                {
-                    if (b.SubTriggers == null || b.SubTriggers.Count == 0)
-                    {
-                        hasUnconditionalBezel = true;
-                    }
-                    else
-                    {
-                        foreach(var mod in b.SubTriggers)
-                        {
-                            long modKey = ((long)mod.Type << 32) | (uint)mod.Code;
-                            bezelModifiers.Add(modKey);
-                        }
-                    }
-                }
+                if (b.InputType == 0) needMouseHook = true;
 
                 if (b.BlockOriginalInput)
                 {
@@ -179,7 +170,7 @@ namespace UsbInputMapper.UI
                 }
             }
             
-            _hookManager.SetBlockList(blockList, needMouseHook, hasUnconditionalBezel, bezelModifiers);
+            _hookManager.SetBlockList(blockList, needMouseHook);
 
             if (profile.OverlayShowMark || profile.OverlayShowName)
             {

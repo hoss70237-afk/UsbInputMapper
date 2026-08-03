@@ -48,13 +48,17 @@ namespace UsbInputMapper.Profiles
         private static extern IntPtr GetForegroundWindow();
 
         private const uint EVENT_SYSTEM_FOREGROUND = 3;
+        private const uint EVENT_SYSTEM_MINIMIZESTART = 0x0016;
+        private const uint EVENT_SYSTEM_MINIMIZEEND = 0x0017;
         private const uint WINEVENT_OUTOFCONTEXT = 0;
-        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000; // 32bit/64bitを越えて取得するための権限
 
         public event EventHandler<string> OnForegroundAppChanged;
         
         private readonly WinEventDelegate _winEventProc;
-        private IntPtr _hWinEventHook = IntPtr.Zero;
+        private IntPtr _hWinEventHookFore = IntPtr.Zero;
+        private IntPtr _hWinEventHookMin = IntPtr.Zero;
+        
         private string _lastAppPath = string.Empty;
         private readonly object _lockObj = new object();
 
@@ -75,9 +79,14 @@ namespace UsbInputMapper.Profiles
         {
             lock (_lockObj)
             {
-                if (_hWinEventHook == IntPtr.Zero)
+                if (_hWinEventHookFore == IntPtr.Zero)
                 {
-                    _hWinEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+                    // フォアグラウンド変更イベント
+                    _hWinEventHookFore = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+                    
+                    // 最小化・復元イベント
+                    _hWinEventHookMin = SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+                    
                     _queue.Add(GetForegroundWindow());
                 }
             }
@@ -87,46 +96,76 @@ namespace UsbInputMapper.Profiles
         {
             lock (_lockObj)
             {
-                if (_hWinEventHook != IntPtr.Zero)
+                if (_hWinEventHookFore != IntPtr.Zero)
                 {
-                    UnhookWinEvent(_hWinEventHook);
-                    _hWinEventHook = IntPtr.Zero;
+                    UnhookWinEvent(_hWinEventHookFore);
+                    UnhookWinEvent(_hWinEventHookMin);
+                    _hWinEventHookFore = IntPtr.Zero;
+                    _hWinEventHookMin = IntPtr.Zero;
                 }
             }
         }
 
         private void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            if (hwnd != IntPtr.Zero && _isRunning)
+            if (_isRunning)
             {
-                _queue.Add(hwnd);
+                _queue.Add(hwnd != IntPtr.Zero ? hwnd : GetForegroundWindow());
             }
         }
 
         private void ProcessQueue()
         {
-            foreach (var hwnd in _queue.GetConsumingEnumerable())
+            while (_isRunning)
             {
-                if (!_isRunning) break;
-                try { CheckCurrentForeground(hwnd); } catch { }
+                IntPtr hwnd = IntPtr.Zero;
+                
+                // イベントキューに要素がある場合は処理するが、250msイベントが来ない場合はタイムアウトする（定期ポーリング用）
+                if (_queue.TryTake(out hwnd, 250))
+                {
+                    if (hwnd == IntPtr.Zero) hwnd = GetForegroundWindow();
+                    if (hwnd != IntPtr.Zero)
+                    {
+                        try { CheckCurrentForeground(hwnd); } catch { }
+                    }
+                }
+                else
+                {
+                    // タイムアウト（250ms間新しいイベントが来なかった）場合は、ポーリングとして現在の状態を再確認
+                    try { CheckCurrentForeground(GetForegroundWindow()); } catch { }
+                }
             }
         }
 
         private void CheckCurrentForeground(IntPtr hwnd)
         {
-            if (hwnd == IntPtr.Zero) return;
+            if (hwnd == IntPtr.Zero)
+            {
+                NotifyPathChanged(string.Empty);
+                return;
+            }
 
-            if (IsIconic(hwnd) || !IsWindowVisible(hwnd)) return;
+            // アイコン化（最小化）されていたり、非表示の場合はプロファイル対象から外す
+            if (IsIconic(hwnd) || !IsWindowVisible(hwnd))
+            {
+                IntPtr fg = GetForegroundWindow();
+                if (fg != hwnd && fg != IntPtr.Zero && !IsIconic(fg) && IsWindowVisible(fg))
+                {
+                    hwnd = fg;
+                }
+                else
+                {
+                    NotifyPathChanged(string.Empty);
+                    return;
+                }
+            }
 
             if (_hwndToPathCache.Count > 1000) _hwndToPathCache.Clear();
 
+            // キャッシュからパスを取得（高速化）
             if (_hwndToPathCache.TryGetValue(hwnd, out string cachedPath))
             {
-                if (!string.Equals(cachedPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    _lastAppPath = cachedPath;
-                    OnForegroundAppChanged?.Invoke(this, cachedPath);
-                }
+                NotifyPathChanged(cachedPath);
                 return;
             }
 
@@ -135,6 +174,7 @@ namespace UsbInputMapper.Profiles
             StringBuilder className = new StringBuilder(256);
             GetClassName(hwnd, className, className.Capacity);
 
+            // Windows 8以降のUWPアプリ（ApplicationFrameWindow）への対応
             if (className.ToString() == "ApplicationFrameWindow")
             {
                 IntPtr realHwnd = IntPtr.Zero;
@@ -154,23 +194,37 @@ namespace UsbInputMapper.Profiles
             }
 
             GetWindowThreadProcessId(hwnd, out uint pid);
-            if (pid == 0) return;
+            if (pid == 0)
+            {
+                NotifyPathChanged(string.Empty);
+                return;
+            }
 
             string currentAppPath = GetExecutablePathProcessId(pid);
             if (!string.IsNullOrEmpty(currentAppPath))
             {
                 _hwndToPathCache[originalHwnd] = currentAppPath;
+                NotifyPathChanged(currentAppPath);
+            }
+            else
+            {
+                // アクセス拒否等でパスが取得できない場合（システムプロセス等）
+                NotifyPathChanged(string.Empty);
+            }
+        }
 
-                if (!string.Equals(currentAppPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    _lastAppPath = currentAppPath;
-                    OnForegroundAppChanged?.Invoke(this, currentAppPath);
-                }
+        private void NotifyPathChanged(string newPath)
+        {
+            if (!string.Equals(newPath, _lastAppPath, StringComparison.OrdinalIgnoreCase))
+            {
+                _lastAppPath = newPath;
+                OnForegroundAppChanged?.Invoke(this, newPath);
             }
         }
 
         private string GetExecutablePathProcessId(uint pid)
         {
+            // PROCESS_QUERY_LIMITED_INFORMATION (0x1000) を使用することで、32bit/64bitのアーキテクチャ境界を越えてプロセスパスを取得可能
             IntPtr hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
             if (hProcess == IntPtr.Zero) return null;
 

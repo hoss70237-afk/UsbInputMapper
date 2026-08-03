@@ -11,13 +11,6 @@ namespace UsbInputMapper.Core
         [DllImport("kernel32.dll")]
         private static extern ulong GetTickCount64();
 
-        [DllImport("user32.dll")]
-        private static extern int GetSystemMetrics(int nIndex);
-        private const int SM_XVIRTUALSCREEN = 76;
-        private const int SM_YVIRTUALSCREEN = 77;
-        private const int SM_CXVIRTUALSCREEN = 78;
-        private const int SM_CYVIRTUALSCREEN = 79;
-
         public static GlobalHookManager Instance { get; private set; }
 
         private const int WH_KEYBOARD_LL = 13;
@@ -28,7 +21,6 @@ namespace UsbInputMapper.Core
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
 
-        private const int WM_MOUSEMOVE = 0x0200;
         private const int WM_LBUTTONDOWN = 0x0201;
         private const int WM_LBUTTONUP = 0x0202;
         private const int WM_RBUTTONDOWN = 0x0204;
@@ -67,11 +59,6 @@ namespace UsbInputMapper.Core
         private LowLevelHookProc _mouseProc;
         
         private bool _requireMouseHook = false;
-        private bool _hasUnconditionalBezel = false;
-        private HashSet<long> _bezelModifiers = new HashSet<long>();
-        
-        private int _lastBezelCode = -1;
-        private int _vsLeft, _vsTop, _vsRight, _vsBottom, _vsWidth, _vsHeight;
 
         private ConcurrentDictionary<long, byte> _blockList = new ConcurrentDictionary<long, byte>();
         private ConcurrentDictionary<long, long> _recentBlocked = new ConcurrentDictionary<long, long>();
@@ -147,7 +134,7 @@ namespace UsbInputMapper.Core
 
         private void UpdateMouseHookState()
         {
-            bool shouldBeHooked = _requireMouseHook || _hasUnconditionalBezel || _bezelModifiers.Count > 0 || IsCoordinateCapturing;
+            bool shouldBeHooked = _requireMouseHook || IsCoordinateCapturing;
             
             if (shouldBeHooked && _mouseHookID == IntPtr.Zero)
             {
@@ -161,7 +148,7 @@ namespace UsbInputMapper.Core
             }
         }
 
-        public void SetBlockList(HashSet<long> blockList, bool requireMouseHook, bool hasUnconditionalBezel, HashSet<long> bezelModifiers) 
+        public void SetBlockList(HashSet<long> blockList, bool requireMouseHook) 
         { 
             _blockList.Clear();
             if (blockList != null)
@@ -169,20 +156,6 @@ namespace UsbInputMapper.Core
                 foreach (var item in blockList) _blockList.TryAdd(item, 1);
             }
             _requireMouseHook = requireMouseHook;
-            _hasUnconditionalBezel = hasUnconditionalBezel;
-            _bezelModifiers = bezelModifiers ?? new HashSet<long>();
-            
-            if (_hasUnconditionalBezel || _bezelModifiers.Count > 0)
-            {
-                _vsLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
-                _vsTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
-                _vsWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-                _vsHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-                _vsRight = _vsLeft + _vsWidth;
-                _vsBottom = _vsTop + _vsHeight;
-                _lastBezelCode = -1;
-            }
-
             UpdateMouseHookState();
         }
 
@@ -204,50 +177,6 @@ namespace UsbInputMapper.Core
             UpdateMouseHookState();
         }
 
-        private int CheckBezelFast(int x, int y, int margin)
-        {
-            bool isLeft = x <= _vsLeft + margin;
-            bool isRight = x >= _vsRight - 1 - margin;
-            bool isTop = y <= _vsTop + margin;
-            bool isBottom = y >= _vsBottom - 1 - margin;
-
-            if (!isLeft && !isRight && !isTop && !isBottom) return -1;
-
-            int rx = x - _vsLeft;
-            int ry = y - _vsTop;
-
-            if (isLeft && isTop) return 0;
-            if (isRight && isTop) return 4;
-            if (isRight && isBottom) return 8;
-            if (isLeft && isBottom) return 12;
-
-            if (isTop) { if (rx < _vsWidth / 3) return 1; if (rx < (_vsWidth * 2) / 3) return 2; return 3; }
-            if (isRight) { if (ry < _vsHeight / 3) return 5; if (ry < (_vsHeight * 2) / 3) return 6; return 7; }
-            if (isBottom) { if (rx > (_vsWidth * 2) / 3) return 9; if (rx > _vsWidth / 3) return 10; return 11; }
-            if (isLeft) { if (ry > (_vsHeight * 2) / 3) return 13; if (ry > _vsHeight / 3) return 14; return 15; }
-
-            return -1;
-        }
-
-        private void CheckBezelReleaseOnModifierUp()
-        {
-            if (_lastBezelCode != -1 && !_hasUnconditionalBezel)
-            {
-                bool stillPressed = false;
-                foreach(var mod in _bezelModifiers) {
-                    if (_pressedState.ContainsKey(mod)) {
-                        stillPressed = true; break;
-                    }
-                }
-                if (!stillPressed) {
-                    long now = (long)GetTickCount64();
-                    var evt = new HookInputEvent { Type = 5, Code = _lastBezelCode, IsDown = false, Timestamp = now, X = 0, Y = 0 };
-                    EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
-                    _lastBezelCode = -1;
-                }
-            }
-        }
-
         private IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode >= 0 && lParam != IntPtr.Zero)
@@ -265,10 +194,7 @@ namespace UsbInputMapper.Core
                     {
                         long key = GetHookKey(1, vkCode);
                         if (isDown) _pressedState[key] = true;
-                        else {
-                            _pressedState.TryRemove(key, out _);
-                            CheckBezelReleaseOnModifierUp();
-                        }
+                        else _pressedState.TryRemove(key, out _);
 
                         if (isDown && EnableChatteringCanceler) 
                         {
@@ -339,95 +265,38 @@ namespace UsbInputMapper.Core
                     }
                 }
 
-                if (!isInjected)
+                if (_requireMouseHook && !isInjected)
                 {
-                    if (msg == WM_MOUSEMOVE)
+                    int mouseCode = -1;
+                    bool isDown = false;
+
+                    if (msg == WM_LBUTTONDOWN) { mouseCode = 1; isDown = true; }
+                    else if (msg == WM_LBUTTONUP) { mouseCode = 1; isDown = false; }
+                    else if (msg == WM_RBUTTONDOWN) { mouseCode = 2; isDown = true; }
+                    else if (msg == WM_RBUTTONUP) { mouseCode = 2; isDown = false; }
+                    else if (msg == WM_MBUTTONDOWN) { mouseCode = 3; isDown = true; }
+                    else if (msg == WM_MBUTTONUP) { mouseCode = 3; isDown = false; }
+                    else if (msg == WM_MOUSEWHEEL) { mouseCode = ((short)(ms->mouseData >> 16)) > 0 ? 4 : 5; isDown = true; }
+                    else if (msg == WM_MOUSEHWHEEL) { mouseCode = ((short)(ms->mouseData >> 16)) > 0 ? 8 : 9; isDown = true; }
+                    else if (msg == WM_XBUTTONDOWN) { mouseCode = ((int)(ms->mouseData >> 16)) == 1 ? 6 : 7; isDown = true; }
+                    else if (msg == WM_XBUTTONUP) { mouseCode = ((int)(ms->mouseData >> 16)) == 1 ? 6 : 7; isDown = false; }
+
+                    if (mouseCode != -1)
                     {
-                        bool shouldCheckBezel = _hasUnconditionalBezel;
-                        if (!shouldCheckBezel && _bezelModifiers.Count > 0)
+                        if (mouseCode == 1 || mouseCode == 2 || mouseCode == 3 || mouseCode == 6 || mouseCode == 7)
                         {
-                            foreach (var mod in _bezelModifiers) {
-                                if (_pressedState.ContainsKey(mod)) {
-                                    shouldCheckBezel = true; 
-                                    break;
-                                }
-                            }
+                            long btnKey = GetHookKey(0, mouseCode);
+                            if (isDown) _pressedState[btnKey] = true;
+                            else _pressedState.TryRemove(btnKey, out _);
                         }
 
-                        if (shouldCheckBezel)
+                        long blockKey = GetHookKey(0, mouseCode);
+                        if (_blockList.ContainsKey(blockKey))
                         {
-                            if (_lastBezelCode == -1)
-                            {
-                                int bezelCode = CheckBezelFast(ms->pt.x, ms->pt.y, 2);
-                                if (bezelCode != -1)
-                                {
-                                    _lastBezelCode = bezelCode;
-                                    long now = (long)GetTickCount64();
-                                    var evt = new HookInputEvent { Type = 5, Code = bezelCode, IsDown = true, Timestamp = now, X = ms->pt.x, Y = ms->pt.y };
-                                    EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
-                                }
-                            }
-                            else
-                            {
-                                if (CheckBezelFast(ms->pt.x, ms->pt.y, 20) == -1)
-                                {
-                                    long now = (long)GetTickCount64();
-                                    var evt = new HookInputEvent { Type = 5, Code = _lastBezelCode, IsDown = false, Timestamp = now, X = ms->pt.x, Y = ms->pt.y };
-                                    EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
-                                    _lastBezelCode = -1;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            if (_lastBezelCode != -1)
-                            {
-                                long now = (long)GetTickCount64();
-                                var evt = new HookInputEvent { Type = 5, Code = _lastBezelCode, IsDown = false, Timestamp = now, X = ms->pt.x, Y = ms->pt.y };
-                                EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
-                                _lastBezelCode = -1;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        int mouseCode = -1;
-                        bool isDown = false;
-
-                        if (msg == WM_LBUTTONDOWN) { mouseCode = 1; isDown = true; }
-                        else if (msg == WM_LBUTTONUP) { mouseCode = 1; isDown = false; }
-                        else if (msg == WM_RBUTTONDOWN) { mouseCode = 2; isDown = true; }
-                        else if (msg == WM_RBUTTONUP) { mouseCode = 2; isDown = false; }
-                        else if (msg == WM_MBUTTONDOWN) { mouseCode = 3; isDown = true; }
-                        else if (msg == WM_MBUTTONUP) { mouseCode = 3; isDown = false; }
-                        else if (msg == WM_MOUSEWHEEL) { mouseCode = ((short)(ms->mouseData >> 16)) > 0 ? 4 : 5; isDown = true; }
-                        else if (msg == WM_MOUSEHWHEEL) { mouseCode = ((short)(ms->mouseData >> 16)) > 0 ? 8 : 9; isDown = true; }
-                        else if (msg == WM_XBUTTONDOWN) { mouseCode = ((int)(ms->mouseData >> 16)) == 1 ? 6 : 7; isDown = true; }
-                        else if (msg == WM_XBUTTONUP) { mouseCode = ((int)(ms->mouseData >> 16)) == 1 ? 6 : 7; isDown = false; }
-
-                        if (mouseCode != -1)
-                        {
-                            if (mouseCode == 1 || mouseCode == 2 || mouseCode == 3 || mouseCode == 6 || mouseCode == 7)
-                            {
-                                long btnKey = GetHookKey(0, mouseCode);
-                                if (isDown) _pressedState[btnKey] = true;
-                                else {
-                                    _pressedState.TryRemove(btnKey, out _);
-                                    CheckBezelReleaseOnModifierUp();
-                                }
-                            }
-
-                            if (_requireMouseHook)
-                            {
-                                long btnKey = GetHookKey(0, mouseCode);
-                                if (_blockList.ContainsKey(btnKey))
-                                {
-                                    long now = (long)GetTickCount64();
-                                    var evt = new HookInputEvent { Type = 0, Code = mouseCode, IsDown = isDown, Timestamp = now, X = ms->pt.x, Y = ms->pt.y };
-                                    EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
-                                    return (IntPtr)1;
-                                }
-                            }
+                            long now = (long)GetTickCount64();
+                            var evt = new HookInputEvent { Type = 0, Code = mouseCode, IsDown = isDown, Timestamp = now, X = ms->pt.x, Y = ms->pt.y };
+                            EnqueueEvent(() => OnBlockedInputFired?.Invoke(this, evt));
+                            return (IntPtr)1;
                         }
                     }
                 }

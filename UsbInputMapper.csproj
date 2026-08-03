@@ -54,6 +54,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="Core\BezelWindowManager.cs" />
     <Compile Include="Core\RawInputNative.cs" />
     <Compile Include="Core\RawInputManager.cs" />
     <Compile Include="Core\GlobalHookManager.cs" />

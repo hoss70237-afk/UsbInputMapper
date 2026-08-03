@@ -51,7 +51,7 @@ namespace UsbInputMapper.Profiles
         private const uint EVENT_SYSTEM_MINIMIZESTART = 0x0016;
         private const uint EVENT_SYSTEM_MINIMIZEEND = 0x0017;
         private const uint WINEVENT_OUTOFCONTEXT = 0;
-        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000; // 32bit/64bitを越えて取得するための権限
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         public event EventHandler<string> OnForegroundAppChanged;
         
@@ -87,7 +87,7 @@ namespace UsbInputMapper.Profiles
                     // 最小化・復元イベント
                     _hWinEventHookMin = SetWinEventHook(EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MINIMIZEEND, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
                     
-                    _queue.Add(GetForegroundWindow());
+                    _queue.Add(IntPtr.Zero);
                 }
             }
         }
@@ -110,7 +110,11 @@ namespace UsbInputMapper.Profiles
         {
             if (_isRunning)
             {
-                _queue.Add(hwnd != IntPtr.Zero ? hwnd : GetForegroundWindow());
+                // キューが溢れるのを防ぐため、未処理のイベントが少ない場合のみトリガーとして追加
+                if (_queue.Count < 5)
+                {
+                    _queue.Add(IntPtr.Zero);
+                }
             }
         }
 
@@ -118,22 +122,22 @@ namespace UsbInputMapper.Profiles
         {
             while (_isRunning)
             {
-                IntPtr hwnd = IntPtr.Zero;
-                
-                // イベントキューに要素がある場合は処理するが、250msイベントが来ない場合はタイムアウトする（定期ポーリング用）
-                if (_queue.TryTake(out hwnd, 250))
+                // ブロッキング待機 (500msごとにタイムアウトして定期チェックを行う)
+                // スレッドは待機状態になるため、CPUリソースは全く消費しません。
+                _queue.TryTake(out _, 500);
+
+                // キューに連続してイベントが溜まっている場合、1回の処理にまとめるために全て捨てる
+                while (_queue.TryTake(out _, 0)) { }
+
+                if (!_isRunning) break;
+
+                try
                 {
-                    if (hwnd == IntPtr.Zero) hwnd = GetForegroundWindow();
-                    if (hwnd != IntPtr.Zero)
-                    {
-                        try { CheckCurrentForeground(hwnd); } catch { }
-                    }
+                    // どんなイベントが発生した場合でも、必ずその瞬間の「最も前面のウィンドウ」だけをチェック対象とする
+                    IntPtr hwnd = GetForegroundWindow();
+                    CheckCurrentForeground(hwnd);
                 }
-                else
-                {
-                    // タイムアウト（250ms間新しいイベントが来なかった）場合は、ポーリングとして現在の状態を再確認
-                    try { CheckCurrentForeground(GetForegroundWindow()); } catch { }
-                }
+                catch { }
             }
         }
 
@@ -148,16 +152,8 @@ namespace UsbInputMapper.Profiles
             // アイコン化（最小化）されていたり、非表示の場合はプロファイル対象から外す
             if (IsIconic(hwnd) || !IsWindowVisible(hwnd))
             {
-                IntPtr fg = GetForegroundWindow();
-                if (fg != hwnd && fg != IntPtr.Zero && !IsIconic(fg) && IsWindowVisible(fg))
-                {
-                    hwnd = fg;
-                }
-                else
-                {
-                    NotifyPathChanged(string.Empty);
-                    return;
-                }
+                NotifyPathChanged(string.Empty);
+                return;
             }
 
             if (_hwndToPathCache.Count > 1000) _hwndToPathCache.Clear();
@@ -208,7 +204,7 @@ namespace UsbInputMapper.Profiles
             }
             else
             {
-                // アクセス拒否等でパスが取得できない場合（システムプロセス等）
+                // アクセス拒否等でパスが取得できない場合
                 NotifyPathChanged(string.Empty);
             }
         }

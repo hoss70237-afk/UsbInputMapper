@@ -135,50 +135,54 @@ namespace UsbInputMapper.UI
 
         private void ProfileManager_OnProfileChanged(object sender, EventArgs e)
         {
-            OutputDispatcher.Instance?.ReleaseAllInputs();
-
-            var profile = _profileManager.CurrentActiveProfile;
-            if (profile == null) return;
-
-            BezelWindowManager.Instance.UpdateBezelWindows(profile);
-
-            if (profile.OverrideGlobalChattering)
+            // 必ずUIメインスレッドでウィンドウ生成・処理を行う
+            InvokeOnUI(() =>
             {
-                _hookManager.EnableChatteringCanceler = profile.EnableChatteringCanceler;
-                _hookManager.ChatteringThresholdMs = profile.ChatteringThresholdMs;
-            }
-            else
-            {
-                _hookManager.EnableChatteringCanceler = _profileManager.GlobalConfig.EnableChatteringCanceler;
-                _hookManager.ChatteringThresholdMs = _profileManager.GlobalConfig.ChatteringThresholdMs;
-            }
+                OutputDispatcher.Instance?.ReleaseAllInputs();
 
-            var blockList = new HashSet<long>();
-            bool needMouseHook = false;
+                var profile = _profileManager.CurrentActiveProfile;
+                if (profile == null) return;
 
-            foreach (var b in profile.Bindings)
-            {
-                if (b.InputType == 0) needMouseHook = true;
+                BezelWindowManager.Instance.UpdateBezelWindows(profile);
 
-                if (b.BlockOriginalInput)
+                if (profile.OverrideGlobalChattering)
                 {
-                    if (b.InputType == 0 || b.InputType == 1)
+                    _hookManager.EnableChatteringCanceler = profile.EnableChatteringCanceler;
+                    _hookManager.ChatteringThresholdMs = profile.ChatteringThresholdMs;
+                }
+                else
+                {
+                    _hookManager.EnableChatteringCanceler = _profileManager.GlobalConfig.EnableChatteringCanceler;
+                    _hookManager.ChatteringThresholdMs = _profileManager.GlobalConfig.ChatteringThresholdMs;
+                }
+
+                var blockList = new HashSet<long>();
+                bool needMouseHook = false;
+
+                foreach (var b in profile.Bindings)
+                {
+                    if (b.InputType == 0) needMouseHook = true;
+
+                    if (b.BlockOriginalInput)
                     {
-                        long key = ((long)b.InputType << 32) | (uint)b.InputCode;
-                        blockList.Add(key);
+                        if (b.InputType == 0 || b.InputType == 1)
+                        {
+                            long key = ((long)b.InputType << 32) | (uint)b.InputCode;
+                            blockList.Add(key);
+                        }
                     }
                 }
-            }
-            
-            _hookManager.SetBlockList(blockList, needMouseHook);
+                
+                _hookManager.SetBlockList(blockList, needMouseHook);
 
-            if (profile.OverlayShowMark || profile.OverlayShowName)
-            {
-                Task.Run(() => {
-                    try { using (var overlay = new ProfileOverlayForm(profile)) { Application.Run(overlay); } }
-                    catch { }
-                });
-            }
+                if (profile.OverlayShowMark || profile.OverlayShowName)
+                {
+                    Task.Run(() => {
+                        try { using (var overlay = new ProfileOverlayForm(profile)) { Application.Run(overlay); } }
+                        catch { }
+                    });
+                }
+            });
         }
 
         private void ProcessInput(InputEvent e)

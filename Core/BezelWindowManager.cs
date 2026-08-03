@@ -47,18 +47,19 @@ namespace UsbInputMapper.Core
                     if (ob.Left == b.Right && ob.Bottom > b.Top && ob.Top < b.Bottom) hasRightNeighbor = true;
                 }
 
-                var topWin = new BezelEdgeWindow(this, new Rectangle(b.Left, b.Top, b.Width, 2), "Top");
+                // 太さを1ピクセルにし、座標を正確に設定
+                var topWin = new BezelEdgeWindow(this, new Rectangle(b.Left, b.Top, b.Width, 1), "Top");
                 _windows.Add(topWin);
 
                 if (!hasLeftNeighbor)
                 {
-                    var leftWin = new BezelEdgeWindow(this, new Rectangle(b.Left, b.Top, 2, b.Height), "Left");
+                    var leftWin = new BezelEdgeWindow(this, new Rectangle(b.Left, b.Top, 1, b.Height), "Left");
                     _windows.Add(leftWin);
                 }
 
                 if (!hasRightNeighbor)
                 {
-                    var rightWin = new BezelEdgeWindow(this, new Rectangle(b.Right - 2, b.Top, 2, b.Height), "Right");
+                    var rightWin = new BezelEdgeWindow(this, new Rectangle(b.Right - 1, b.Top, 1, b.Height), "Right");
                     _windows.Add(rightWin);
                 }
             }
@@ -119,6 +120,7 @@ namespace UsbInputMapper.Core
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            // Alpha = 1 で、目に見えないレベルの透明度にする（0にするとマウスイベントが透過してしまうため）
             SetLayeredWindowAttributes(this.Handle, 0, 1, 0x2); 
         }
 

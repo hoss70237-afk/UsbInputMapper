@@ -151,7 +151,6 @@ namespace UsbInputMapper.UI
 
         private void ProfileManager_OnProfileChanged(object sender, EventArgs e)
         {
-            // 必ずUIメインスレッドでウィンドウ生成・処理を行う
             InvokeOnUI(() =>
             {
                 OutputDispatcher.Instance?.ReleaseAllInputs();
@@ -268,7 +267,9 @@ namespace UsbInputMapper.UI
 
             foreach (var b in profile.Bindings)
             {
-                if (b.RequiredLayer != 0 && b.RequiredLayer != LayerManager.CurrentLayer) continue;
+                // ダウン(押した時)のみ現在のレイヤーと一致しているかチェックする。
+                // アップ(離した時)はレイヤー変更後であっても、スタックを防ぐために必ず通す。
+                if (e.IsDown && b.RequiredLayer != 0 && b.RequiredLayer != LayerManager.CurrentLayer) continue;
 
                 if (b.InputType == e.Type && b.InputCode == e.Code)
                 {

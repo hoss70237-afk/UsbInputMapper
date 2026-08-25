@@ -342,7 +342,15 @@ namespace UsbInputMapper.UI
                     for (int i = 0; i < xboxBtns.Length; i++) cmbKeyButton.Items.Add(new ComboItem { Text = xboxBtns[i], Value = i + 1 });
                     break;
                 case ActionType.XboxAxis:
-                    cmbKeyButton.Visible = true; cmbKeyButton.Items.Add(new ComboItem { Text = "左スティック X軸", Value = 1 }); cmbKeyButton.Items.Add(new ComboItem { Text = "左スティック Y軸", Value = 2 }); cmbKeyButton.Items.Add(new ComboItem { Text = "右スティック X軸", Value = 3 }); cmbKeyButton.Items.Add(new ComboItem { Text = "右スティック Y軸", Value = 4 });
+                    cmbKeyButton.Visible = true; 
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "左スティック 右方向 (X+)", Value = 1 }); 
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "左スティック 左方向 (X-)", Value = -1 }); 
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "左スティック 上方向 (Y+)", Value = 2 }); 
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "左スティック 下方向 (Y-)", Value = -2 });
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "右スティック 右方向 (X+)", Value = 3 }); 
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "右スティック 左方向 (X-)", Value = -3 }); 
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "右スティック 上方向 (Y+)", Value = 4 }); 
+                    cmbKeyButton.Items.Add(new ComboItem { Text = "右スティック 下方向 (Y-)", Value = -4 });
                     break;
                 case ActionType.XboxTrigger:
                     cmbKeyButton.Visible = true; cmbKeyButton.Items.Add(new ComboItem { Text = "左トリガー (LT)", Value = 1 }); cmbKeyButton.Items.Add(new ComboItem { Text = "右トリガー (RT)", Value = 2 });
@@ -400,7 +408,7 @@ namespace UsbInputMapper.UI
 
             if (cmbActionType.SelectedItem is ComboItem actItem) ResultBinding.Action.ActionType = (ActionType)actItem.Value;
             
-            if (cmbKeyButton.Visible && cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value >= 0) 
+            if (cmbKeyButton.Visible && cmbKeyButton.SelectedItem is ComboItem cItem && cItem.Value != -2) 
             { 
                 ResultBinding.Action.ArgumentNum = cItem.Value; 
                 ResultBinding.Action.MultipleKeys.Clear(); 

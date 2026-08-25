@@ -142,7 +142,16 @@ namespace UsbInputMapper.Profiles
                 case ActionType.XboxController: 
                     string xState = ActionState == 1 ? " [押す]" : ActionState == 2 ? " [離す]" : "";
                     return "Xboxボタン: " + ArgumentNum + xState;
-                case ActionType.XboxAxis: return "Xboxスティック軸: " + ArgumentNum;
+                case ActionType.XboxAxis: 
+                    string axisName = "";
+                    switch (Math.Abs(ArgumentNum)) {
+                        case 1: axisName = "左X"; break;
+                        case 2: axisName = "左Y"; break;
+                        case 3: axisName = "右X"; break;
+                        case 4: axisName = "右Y"; break;
+                    }
+                    string dir = ArgumentNum > 0 ? "(+)" : "(-)";
+                    return $"Xboxスティック: {axisName} {dir}";
                 case ActionType.XboxTrigger: return "Xboxトリガー: " + ArgumentNum;
                 case ActionType.AppLaunch: return "アプリ起動: " + System.IO.Path.GetFileName(ArgumentStr);
                 case ActionType.FileOpen: return "ファイル実行: " + System.IO.Path.GetFileName(ArgumentStr);

@@ -30,6 +30,8 @@ namespace UsbInputMapper.UI
 
         private RadialMenuHudForm _activeRadialHud = null;
         private ActionDef _activeRadialAction = null;
+        
+        private bool _isPaused = false;
 
         public TrayApplicationContext()
         {
@@ -78,6 +80,19 @@ namespace UsbInputMapper.UI
                 var mnuOpen = new ToolStripMenuItem("設定を開く");
                 mnuOpen.Click += (s, e) => ShowMainForm();
                 
+                var mnuPause = new ToolStripMenuItem("一時停止");
+                mnuPause.Click += (s, e) => {
+                    _isPaused = !_isPaused;
+                    mnuPause.Text = _isPaused ? "再開" : "一時停止";
+                    if (_isPaused) {
+                        OutputDispatcher.Instance?.ReleaseAllInputs();
+                        _trayIcon.ShowBalloonTip(2000, "一時停止", "入力変換を一時停止しました。", ToolTipIcon.Info);
+                    } else {
+                        _trayIcon.ShowBalloonTip(2000, "再開", "入力変換を再開しました。", ToolTipIcon.Info);
+                    }
+                    UpdateHookBlockList();
+                };
+                
                 var mnuPanic = new ToolStripMenuItem("緊急停止 (パニックボタン)");
                 mnuPanic.Click += (s, e) => TriggerPanic();
                 
@@ -85,6 +100,7 @@ namespace UsbInputMapper.UI
                 mnuExit.Click += (s, e) => ExitApplication();
 
                 menu.Items.Add(mnuOpen);
+                menu.Items.Add(mnuPause);
                 menu.Items.Add(mnuPanic);
                 menu.Items.Add(new ToolStripSeparator());
                 menu.Items.Add(mnuExit);
@@ -145,6 +161,31 @@ namespace UsbInputMapper.UI
 
                 BezelWindowManager.Instance.UpdateBezelWindows(profile);
 
+                UpdateHookBlockList();
+
+                if (profile.OverlayShowMark || profile.OverlayShowName)
+                {
+                    Task.Run(() => {
+                        try { using (var overlay = new ProfileOverlayForm(profile)) { Application.Run(overlay); } }
+                        catch { }
+                    });
+                }
+            });
+        }
+
+        private void UpdateHookBlockList()
+        {
+            InvokeOnUI(() =>
+            {
+                if (_isPaused)
+                {
+                    _hookManager.SetBlockList(new HashSet<long>(), false);
+                    return;
+                }
+
+                var profile = _profileManager.CurrentActiveProfile;
+                if (profile == null) return;
+
                 if (profile.OverrideGlobalChattering)
                 {
                     _hookManager.EnableChatteringCanceler = profile.EnableChatteringCanceler;
@@ -174,19 +215,13 @@ namespace UsbInputMapper.UI
                 }
                 
                 _hookManager.SetBlockList(blockList, needMouseHook);
-
-                if (profile.OverlayShowMark || profile.OverlayShowName)
-                {
-                    Task.Run(() => {
-                        try { using (var overlay = new ProfileOverlayForm(profile)) { Application.Run(overlay); } }
-                        catch { }
-                    });
-                }
             });
         }
 
         private void ProcessInput(InputEvent e)
         {
+            if (_isPaused) return;
+
             if (_hookManager.IsRecording || _hookManager.IsCoordinateCapturing) return;
 
             var profile = _profileManager.CurrentActiveProfile;

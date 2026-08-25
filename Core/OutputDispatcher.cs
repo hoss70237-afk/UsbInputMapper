@@ -114,7 +114,8 @@ namespace UsbInputMapper.Core
                 {
                     // XboxAxisは short (-32768 ~ 32767) クランプ
                     short xboxAxisValue = (short)(outputValue < -32768 ? -32768 : (outputValue > 32767 ? 32767 : outputValue));
-                    _viGEmOutput.SetAxis(GetXboxAxis(action.ArgumentNum), xboxAxisValue);
+                    int axisId = Math.Abs(action.ArgumentNum);
+                    _viGEmOutput.SetAxis(GetXboxAxis(axisId), xboxAxisValue);
                 }
                 else if (action.ActionType == ActionType.XboxTrigger)
                 {
@@ -180,9 +181,19 @@ namespace UsbInputMapper.Core
                         if (isDown) LaunchApp(action.ArgumentStr, action.ArgumentExtraStr); break;
                     case ActionType.FolderOpen:
                         if (isDown && !string.IsNullOrEmpty(action.ArgumentStr)) { try { Process.Start("explorer.exe", action.ArgumentStr); } catch { } } break;
-                    case ActionType.XboxController: _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); break;
-                    case ActionType.XboxAxis: _viGEmOutput.SetAxis(GetXboxAxis(action.ArgumentNum), isDown ? (short)32767 : (short)0); break;
-                    case ActionType.XboxTrigger: _viGEmOutput.SetSlider(GetXboxSlider(action.ArgumentNum), isDown ? (byte)255 : (byte)0); break;
+                    
+                    case ActionType.XboxController: 
+                        _viGEmOutput.SetButton(GetXboxButton(action.ArgumentNum), isDown); 
+                        break;
+                    case ActionType.XboxAxis: 
+                        int axisId = Math.Abs(action.ArgumentNum);
+                        short val = action.ArgumentNum > 0 ? (short)32767 : (short)-32768;
+                        _viGEmOutput.SetAxis(GetXboxAxis(axisId), isDown ? val : (short)0); 
+                        break;
+                    case ActionType.XboxTrigger: 
+                        _viGEmOutput.SetSlider(GetXboxSlider(action.ArgumentNum), isDown ? (byte)255 : (byte)0); 
+                        break;
+                        
                     case ActionType.Macro: if (isDown) _ = ExecuteMacroAsync(action); break; 
                     case ActionType.BackgroundControl: DispatchBackground(action, isDown); break; 
                     
